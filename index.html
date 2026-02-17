@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal Rogue</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="game-wrapper">
+        <div class="stats-bar">
+            <div class="stats-group">
+                <span>LV: <span id="lv">1</span></span>
+                <span>HP: <span id="hp">20/20</span></span>
+                <span>ST: <span id="stamina">100</span>%</span>
+            </div>
+            <div class="stats-group">
+                <span>FL: <span id="floor">1</span></span>
+            </div>
+        </div>
+        <canvas id="game-canvas"></canvas>
+        <div id="log" class="game-log">
+            <div>Welcome to the Depths.</div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
