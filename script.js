@@ -21,7 +21,9 @@ const SYMBOLS = {
     STAIRS: '>',
     SAVE: 'S',
     KEY: 'k',
-    DOOR: '田'
+    DOOR: '田',
+    SWORD: '†',
+    ARMOR: '🛡'
 };
 
 // サウンドシステム
@@ -79,7 +81,24 @@ const SOUNDS = {
     GET_ITEM: () => playMelody([{ f: 880, d: 0.1 }, { f: 1760, d: 0.1 }]),
     UNLOCK: () => playSound(300, 'square', 0.4),
     SNAKE_MOVE: () => playSound(100, 'sine', 0.1, 0.05),
-    GOLD_FLIGHT: () => playSound(900, 'sine', 0.05, 0.05) // 金色敵の逃走音
+    GOLD_FLIGHT: () => playSound(900, 'sine', 0.05, 0.05),
+    CRITICAL: () => {
+        playSound(800, 'square', 0.05, 0.2);
+        setTimeout(() => playSound(1200, 'square', 0.1, 0.2), 50);
+    },
+    FATAL: () => {
+        playSound(100, 'sawtooth', 0.4, 0.3);
+        playSound(50, 'sawtooth', 0.4, 0.3);
+    },
+    TRAGIC_DEATH: () => {
+        playSound(100, 'sawtooth', 1.0, 0.4);
+        playSound(50, 'sawtooth', 1.5, 0.4);
+    },
+    TRAGIC_MELODY: () => {
+        playMelody([
+            { f: 196.00, d: 0.4 }, { f: 185.00, d: 0.4 }, { f: 174.61, d: 0.4 }, { f: 155.56, d: 0.8 }
+        ]);
+    }
 };
 
 // ゲーム状態
@@ -90,6 +109,8 @@ let player = {
     x: 0, y: 0, hp: 20, maxHp: 20, level: 1, exp: 0, nextExp: 10,
     stamina: 100,
     hasKey: false,
+    hasSword: false,
+    armorCount: 0,
     flashUntil: 0, offsetX: 0, offsetY: 0,
     totalKills: 0
 };
@@ -99,8 +120,26 @@ let damageTexts = [];
 let attackLines = [];
 let isProcessing = false;
 let turnCount = 0;
+let isPlayerVisible = true;
+let gameOverAlpha = 0;
 
 let transition = { active: false, text: "", alpha: 0 };
+let screenShake = { x: 0, y: 0, until: 0 };
+
+function setScreenShake(intensity, duration) {
+    const end = performance.now() + duration;
+    function shake() {
+        const now = performance.now();
+        if (now < end) {
+            screenShake.x = (Math.random() - 0.5) * intensity;
+            screenShake.y = (Math.random() - 0.5) * intensity;
+            requestAnimationFrame(shake);
+        } else {
+            screenShake.x = 0; screenShake.y = 0;
+        }
+    }
+    shake();
+}
 
 function loadGame() {
     const saved = localStorage.getItem('minimal_rogue_save');
@@ -113,6 +152,8 @@ function loadGame() {
         player.nextExp = player.level * 10;
         player.stamina = 100;
         player.hasKey = false;
+        player.hasSword = data.hasSword || false;
+        player.armorCount = data.armorCount || 0;
         player.totalKills = data.totalKills || 0;
         floorLevel = data.floorLevel || 1;
         updateUI();
@@ -126,7 +167,9 @@ function saveGame() {
         level: player.level,
         exp: player.exp,
         floorLevel: floorLevel,
-        totalKills: player.totalKills
+        totalKills: player.totalKills,
+        hasSword: player.hasSword,
+        armorCount: player.armorCount
     };
     localStorage.setItem('minimal_rogue_save', JSON.stringify(data));
     SOUNDS.SAVE();
@@ -136,19 +179,29 @@ function saveGame() {
 
 function updateUI() {
     hpElement.innerText = `${player.hp}/${player.maxHp}`;
-    const hpRatio = player.hp / player.maxHp;
-    if (hpRatio <= 0.25) hpElement.style.color = '#f87171';
-    else if (hpRatio <= 0.5) hpElement.style.color = '#fbbf24';
-    else hpElement.style.color = '#ffffff';
+    hpElement.style.color = '#ffffff';
 
     staminaElement.innerText = player.stamina;
-    const stRatio = player.stamina / 100;
-    if (stRatio <= 0.25) staminaElement.style.color = '#f87171';
-    else if (stRatio <= 0.5) staminaElement.style.color = '#fbbf24';
-    else staminaElement.style.color = '#ffffff';
+    staminaElement.style.color = '#ffffff';
 
     lvElement.innerText = player.level;
+    lvElement.style.color = '#ffffff';
     floorElement.innerText = floorLevel;
+
+    // 剣の所持状態をUIに追加（もしhtml側の準備がなくてもコンソールなりで見れるようにするか、既存要素に追記）
+    if (!document.getElementById('sword-status')) {
+        const span = document.createElement('span');
+        span.id = 'sword-status';
+        lvElement.parentElement.appendChild(span);
+    }
+    document.getElementById('sword-status').innerText = player.hasSword ? " 🔥SWORD" : "";
+
+    if (!document.getElementById('armor-status')) {
+        const span = document.createElement('span');
+        span.id = 'armor-status';
+        lvElement.parentElement.appendChild(span);
+    }
+    document.getElementById('armor-status').innerText = player.armorCount > 0 ? ` 🛡x${player.armorCount}` : "";
 }
 
 function initMap() {
@@ -159,21 +212,86 @@ function initMap() {
     player.hasKey = false;
 
     const rooms = [];
-    for (let i = 0; i < 6; i++) {
+    const roomCount = Math.floor(Math.random() * 4) + 8; // 8〜11 rooms
+
+    for (let i = 0; i < roomCount; i++) {
         const w = Math.floor(Math.random() * 6) + 4;
         const h = Math.floor(Math.random() * 4) + 4;
         const x = Math.floor(Math.random() * (COLS - w - 2)) + 1;
         const y = Math.floor(Math.random() * (ROWS - h - 2)) + 1;
+
+        // Dig room
         for (let ry = y; ry < y + h; ry++) {
             for (let rx = x; rx < x + w; rx++) { map[ry][rx] = SYMBOLS.FLOOR; }
         }
+
+        // Add internal obstacles (pillars or rubble) to larger rooms
+        if (w >= 5 && h >= 5) {
+            const pattern = Math.random();
+            const cx = Math.floor(x + w / 2);
+            const cy = Math.floor(y + h / 2);
+            if (pattern < 0.3) {
+                // Center pillar
+                map[cy][cx] = SYMBOLS.WALL;
+            } else if (pattern < 0.5) {
+                // Four corners pillars
+                map[y + 1][x + 1] = SYMBOLS.WALL;
+                map[y + 1][x + w - 2] = SYMBOLS.WALL;
+                map[y + h - 2][x + 1] = SYMBOLS.WALL;
+                map[y + h - 2][x + w - 2] = SYMBOLS.WALL;
+            } else if (pattern < 0.6) {
+                // Scatter rubble (non-blocking decorative walls)
+                for (let j = 0; j < 3; j++) {
+                    const rx = x + Math.floor(Math.random() * (w - 2)) + 1;
+                    const ry = y + Math.floor(Math.random() * (h - 2)) + 1;
+                    map[ry][rx] = SYMBOLS.WALL;
+                }
+            }
+        }
+
         rooms.push({ x, y, w, h, cx: Math.floor(x + w / 2), cy: Math.floor(y + h / 2) });
     }
 
+    // Connect rooms with winding corridors
     for (let i = 0; i < rooms.length - 1; i++) {
-        let cur = rooms[i]; let next = rooms[i + 1];
-        for (let x = Math.min(cur.cx, next.cx); x <= Math.max(cur.cx, next.cx); x++) { map[cur.cy][x] = SYMBOLS.FLOOR; }
-        for (let y = Math.min(cur.cy, next.cy); y <= Math.max(cur.cy, next.cy); y++) { map[y][next.cx] = SYMBOLS.FLOOR; }
+        let cur = rooms[i];
+        let next = rooms[i + 1];
+
+        let cx = cur.cx;
+        let cy = cur.cy;
+        const tx = next.cx;
+        const ty = next.cy;
+
+        // Simple random walk toward target
+        while (cx !== tx || cy !== ty) {
+            if (cx !== tx && (cy === ty || Math.random() < 0.5)) {
+                cx += (tx > cx ? 1 : -1);
+            } else {
+                cy += (ty > cy ? 1 : -1);
+            }
+            if (cx >= 0 && cx < COLS && cy >= 0 && cy < ROWS) {
+                map[cy][cx] = SYMBOLS.FLOOR;
+                // Occasionally make double-wide corridor
+                if (Math.random() < 0.1) {
+                    if (cy + 1 < ROWS) map[cy + 1][cx] = SYMBOLS.FLOOR;
+                    if (cx + 1 < COLS) map[cy][cx + 1] = SYMBOLS.FLOOR;
+                }
+            }
+        }
+    }
+
+    // Add some random extra connections to create loops
+    for (let k = 0; k < 3; k++) {
+        const r1 = rooms[Math.floor(Math.random() * rooms.length)];
+        const r2 = rooms[Math.floor(Math.random() * rooms.length)];
+        if (r1 !== r2) {
+            let cx = r1.cx; let cy = r1.cy;
+            while (cx !== r2.cx || cy !== r2.cy) {
+                if (cx !== r2.cx && (cy === r2.cy || Math.random() < 0.5)) cx += (r2.cx > cx ? 1 : -1);
+                else cy += (r2.cy > cy ? 1 : -1);
+                map[cy][cx] = SYMBOLS.FLOOR;
+            }
+        }
     }
 
     player.x = rooms[0].cx;
@@ -192,51 +310,64 @@ function initMap() {
     }
 
     if (floorLevel % 10 === 0) {
-        const midRoom = rooms[1];
+        const midRoom = rooms[Math.floor(rooms.length / 2)];
         if (map[midRoom.cy][midRoom.cx] === SYMBOLS.FLOOR) {
             map[midRoom.cy][midRoom.cx] = SYMBOLS.SAVE;
             addLog("A Save Point (S) is on this floor!");
         }
     }
 
+    // 5階以降で剣が出現する可能性がある
+    if (floorLevel >= 5 && !player.hasSword && Math.random() < 0.3) {
+        const swordRoom = rooms[Math.floor(Math.random() * (rooms.length - 1)) + 1];
+        if (map[swordRoom.cy][swordRoom.cx] === SYMBOLS.FLOOR) {
+            map[swordRoom.cy][swordRoom.cx] = SYMBOLS.SWORD;
+            addLog("A legendary SWORD (†) is hidden here!");
+        }
+    }
+
+    // 防具もたまに出現
+    if (Math.random() < 0.2) {
+        const armorRoom = rooms[Math.floor(Math.random() * (rooms.length - 1)) + 1];
+        if (map[armorRoom.cy][armorRoom.cx] === SYMBOLS.FLOOR) {
+            map[armorRoom.cy][armorRoom.cx] = SYMBOLS.ARMOR;
+        }
+    }
+
+    // Spawn enemies
     for (let i = 1; i < rooms.length; i++) {
         const room = rooms[i];
 
-        // 出現抽選
+        // 最初の3階は敵の数を減らす
+        if (floorLevel <= 3 && Math.random() < 0.4) continue; // 40%の確率でその部屋には敵を出さない
+
         const rand = Math.random();
-        if (rand < 0.03) {
-            // 3%の確率で「GOLD」敵（経験値10倍、逃走する）
-            const ex = room.cx;
-            const ey = room.cy;
+        if (rand < 0.04) {
             enemies.push({
-                type: 'GOLD', x: ex, y: ey, hp: 4, maxHp: 4, // HPを少し低めに
-                flashUntil: 0, offsetX: 0, offsetY: 0,
-                expValue: 500 // 通常の100倍！
+                type: 'GOLD', x: room.cx, y: room.cy, hp: 4, maxHp: 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500
             });
             addLog("!! A Golden Shiny Enemy appeared !!");
-        } else if (rand < 0.08) {
-            // 5%の確率で「SNAKE」大蛇
-            const ex = room.cx;
-            const ey = room.cy;
+        } else if (rand < (floorLevel <= 3 ? 0.03 : 0.10)) { // 序盤は大蛇の率も下げる
             enemies.push({
-                type: 'SNAKE', x: ex, y: ey,
-                body: [{ x: ex, y: ey }, { x: ex, y: ey }, { x: ex, y: ey }, { x: ex, y: ey }],
+                type: 'SNAKE', x: room.cx, y: room.cy,
+                body: [{ x: room.cx, y: room.cy }, { x: room.cx, y: room.cy }, { x: room.cx, y: room.cy }, { x: room.cx, y: room.cy }],
                 symbols: ['E', 'N', 'E', 'M', 'Y'],
                 hp: 15 + floorLevel * 5, maxHp: 15 + floorLevel * 5,
-                flashUntil: 0, offsetX: 0, offsetY: 0,
-                expValue: 30
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30
             });
             addLog("!! A huge ENEMY appeared !!");
         } else {
-            const numEnemies = Math.floor(Math.random() * 2) + 1;
+            // 最初の3階は1部屋最大1体、それ以降は最大2体
+            const maxPerRoom = floorLevel <= 3 ? 1 : 2;
+            const numEnemies = Math.floor(Math.random() * maxPerRoom) + 1;
             for (let j = 0; j < numEnemies; j++) {
                 const ex = room.x + Math.floor(Math.random() * room.w);
                 const ey = room.y + Math.floor(Math.random() * room.h);
                 if (map[ey][ex] === SYMBOLS.FLOOR) {
                     enemies.push({
                         type: 'NORMAL', x: ex, y: ey, hp: 5 + floorLevel, maxHp: 5 + floorLevel,
-                        flashUntil: 0, offsetX: 0, offsetY: 0,
-                        expValue: 5
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5
                     });
                 }
             }
@@ -268,6 +399,8 @@ function gameLoop(now) {
     } else if (gameState === 'STATUS') {
         draw(now);
         drawStatusScreen();
+    } else if (gameState === 'GAMEOVER') {
+        drawGameOver();
     } else {
         draw(now);
         damageTexts = damageTexts.filter(d => now - d.startTime < 1000);
@@ -302,44 +435,88 @@ function drawTitle() {
     ctx.fillText('[Arrows] to Select  [Enter] to Decide', canvas.width / 2, canvas.height - 40);
 }
 
+function drawGameOver() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'center';
+
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 48px Courier New';
+    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
+
+    ctx.fillStyle = '#666';
+    ctx.font = '18px Courier New';
+    ctx.fillText('Your journey ends here...', canvas.width / 2, canvas.height / 2 + 30);
+
+    ctx.fillStyle = '#444';
+    ctx.font = '14px Courier New';
+    ctx.fillText('Press [Enter] to Title', canvas.width / 2, canvas.height - 100);
+}
+
 function drawStatusScreen() {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(50, 50, canvas.width - 100, canvas.height - 100);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
-    ctx.strokeRect(50, 50, canvas.width - 100, canvas.height - 100);
+    ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
+
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 24px Courier New';
-    ctx.fillText('-- STATUS --', canvas.width / 2, 90);
+    ctx.fillText('-- STATUS (ステータス) --', canvas.width / 2, 80);
+
     ctx.textAlign = 'left';
-    ctx.font = '18px Courier New';
-    const startX = 100;
-    const startY = 140;
-    const gap = 30;
+    ctx.font = '16px Courier New';
+    const startX = 80;
+    const startY = 120;
+    const gap = 25;
+
     const stats = [
-        { label: "CHARACTER", val: "@ (PLAYER)" },
-        { label: "LEVEL", val: player.level, color: '#fbbf24' },
-        { label: "HP", val: `${player.hp} / ${player.maxHp}`, color: '#f87171' },
-        { label: "STAMINA", val: `${player.stamina} %`, color: '#38bdf8' },
-        { label: "EXPERIENCE", val: `${player.exp} / ${player.nextExp}`, color: '#fff' },
-        { label: "", val: "" },
-        { label: "CURRENT FLOOR", val: `${floorLevel} F` },
-        { label: "TOTAL KILLS", val: player.totalKills },
-        { label: "TOTAL TURNS", val: turnCount }
+        { label: "CHARACTER [キャラ]", val: "@ (PLAYER)" },
+        { label: "LEVEL     [レベル]", val: player.level },
+        { label: "HP        [体力]", val: `${player.hp} / ${player.maxHp}` },
+        { label: "ST        [スタミナ]", val: `${player.stamina} %`, desc: "※連続攻撃で低下し攻撃力減少。移動や待機で回復。" },
+        { label: "EXP       [経験値]", val: `${player.exp} / ${player.nextExp}` },
+        { label: "DEFENSE   [防御力]", val: player.armorCount },
+        { label: "FLOOR     [階層]", val: `${floorLevel} F` },
+        { label: "KILLS     [討伐数]", val: player.totalKills }
     ];
+
     stats.forEach((s, i) => {
-        if (s.label) {
-            ctx.fillStyle = '#888';
-            ctx.fillText(s.label.padEnd(15, '.'), startX, startY + i * gap);
-            ctx.fillStyle = s.color || '#fff';
-            ctx.fillText(s.val, startX + 180, startY + i * gap);
+        ctx.font = '16px Courier New';
+        ctx.fillStyle = '#888';
+        ctx.fillText(s.label.padEnd(18, ' '), startX, startY + i * gap);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(s.val, startX + 220, startY + i * gap);
+
+        if (s.desc) {
+            ctx.fillStyle = '#666';
+            ctx.font = '11px "Meiryo", sans-serif';
+            ctx.fillText(s.desc, startX + 310, startY + i * gap);
         }
     });
+
+    // アイテム説明セクション
+    ctx.fillStyle = '#444';
+    ctx.fillRect(startX, startY + stats.length * gap + 10, canvas.width - 160, 2);
+
+    ctx.font = 'bold 14px "Courier New", "Meiryo", sans-serif';
+    ctx.fillStyle = '#aaa';
+    const infoY = startY + stats.length * gap + 35;
+
+    ctx.fillText('【装備アイテムの効果】', startX, infoY);
+
+    ctx.font = '13px "Courier New", "Meiryo", sans-serif';
+    ctx.fillStyle = player.hasSword ? '#38bdf8' : '#555';
+    ctx.fillText(`† 三方向の剣: ${player.hasSword ? "所持中 (正面と左右を同時攻撃)" : "未所持 (5F以降に出現)"}`, startX, infoY + 25);
+
+    ctx.fillStyle = player.armorCount > 0 ? '#94a3b8' : '#555';
+    ctx.fillText(`🛡 アーマー  : ${player.armorCount > 0 ? `セットx${player.armorCount} (被弾ダメージを ${player.armorCount} 軽減)` : "未所持 (各部屋に低確率で出現)"}`, startX, infoY + 50);
+
     ctx.textAlign = 'center';
     ctx.fillStyle = '#666';
-    ctx.font = '14px Courier New';
-    ctx.fillText('Press [X] or [I] to Close', canvas.width / 2, canvas.height - 80);
+    ctx.font = '13px "Courier New", "Meiryo", sans-serif';
+    ctx.fillText('Press [X] or [I] to Close (閉じる)', canvas.width / 2, canvas.height - 65);
 }
 
 function spawnFloatingText(x, y, text, color) {
@@ -360,7 +537,9 @@ function spawnSlash(tx, ty) {
 }
 
 function draw(now) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(screenShake.x, screenShake.y);
+    ctx.clearRect(-20, -20, canvas.width + 40, canvas.height + 40);
     ctx.font = `${TILE_SIZE - 2}px 'Courier New'`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -380,6 +559,12 @@ function draw(now) {
                 ctx.fillStyle = '#fbbf24'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
             } else if (char === SYMBOLS.DOOR) {
                 ctx.fillStyle = '#ffffff'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+            } else if (char === SYMBOLS.SWORD) {
+                ctx.fillStyle = '#38bdf8'; ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
+                ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                ctx.font = `${TILE_SIZE - 2}px 'Courier New'`;
+            } else if (char === SYMBOLS.ARMOR) {
+                ctx.fillStyle = '#94a3b8'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
             } else {
                 ctx.fillStyle = '#444'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
             }
@@ -407,9 +592,11 @@ function draw(now) {
     });
 
     const pFlashing = now < player.flashUntil;
-    ctx.fillStyle = pFlashing ? '#f87171' : '#fff';
-    ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
-    ctx.fillText(SYMBOLS.PLAYER, player.x * TILE_SIZE + TILE_SIZE / 2 + player.offsetX, player.y * TILE_SIZE + TILE_SIZE / 2 + player.offsetY);
+    if (isPlayerVisible) {
+        ctx.fillStyle = pFlashing ? '#f87171' : '#fff';
+        ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
+        ctx.fillText(SYMBOLS.PLAYER, player.x * TILE_SIZE + TILE_SIZE / 2 + player.offsetX, player.y * TILE_SIZE + TILE_SIZE / 2 + player.offsetY);
+    }
 
     attackLines.forEach(l => {
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
@@ -424,6 +611,11 @@ function draw(now) {
         ctx.font = 'bold 16px Courier New';
         ctx.fillText(d.text, d.x * TILE_SIZE + TILE_SIZE, d.y * TILE_SIZE - slideY); ctx.restore();
     });
+
+    if (gameOverAlpha > 0) {
+        ctx.fillStyle = `rgba(255, 0, 0, ${gameOverAlpha})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     if (transition.active) {
         ctx.save(); ctx.globalAlpha = transition.alpha; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -446,14 +638,38 @@ async function handleAction(dx, dy) {
     const nx = player.x + dx; const ny = player.y + dy;
     if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) { isProcessing = false; return; }
 
-    const victim = enemies.find(e => {
+    const targets = [];
+
+    // 正面の敵
+    const mainVictim = enemies.find(e => {
         if (e.x === nx && e.y === ny) return true;
         if (e.type === 'SNAKE') return e.body.some(seg => seg.x === nx && seg.y === ny);
         return false;
     });
+    if (mainVictim) targets.push({ enemy: mainVictim, x: nx, y: ny });
 
-    if (victim) {
-        await attackEnemy(victim, dx, dy);
+    // 剣を持っている場合、左右斜めも攻撃
+    if (player.hasSword) {
+        const sideMoves = dx !== 0 ? [{ x: dx, y: -1 }, { x: dx, y: 1 }] : [{ x: -1, y: dy }, { x: 1, y: dy }];
+        sideMoves.forEach(sm => {
+            const sx = player.x + sm.x, sy = player.y + sm.y;
+            const sideVictim = enemies.find(e => {
+                if (e.x === sx && e.y === sy) return true;
+                if (e.type === 'SNAKE') return e.body.some(seg => seg.x === sx && seg.y === sy);
+                return false;
+            });
+            if (sideVictim) targets.push({ enemy: sideVictim, x: sx, y: sy });
+        });
+    }
+
+    if (targets.length > 0) {
+        player.offsetX = dx * 10; player.offsetY = dy * 10;
+        for (const target of targets) {
+            await attackEnemy(target.enemy, target.x - player.x, target.y - player.y, target === targets[0]);
+        }
+        player.stamina = Math.max(0, player.stamina - 20);
+        await new Promise(r => setTimeout(r, 100));
+        player.offsetX = 0; player.offsetY = 0;
     } else {
         player.stamina = Math.min(100, player.stamina + 20);
         if (map[ny][nx] === SYMBOLS.WALL) {
@@ -465,6 +681,16 @@ async function handleAction(dx, dy) {
             if (nextTile === SYMBOLS.DOOR) {
                 if (player.hasKey) { SOUNDS.UNLOCK(); map[ny][nx] = SYMBOLS.STAIRS; addLog("The DOOR is unlocked!"); player.hasKey = false; }
                 else { addLog("The door is locked."); player.offsetX = dx * 5; player.offsetY = dy * 5; await new Promise(r => setTimeout(r, 100)); player.offsetX = 0; player.offsetY = 0; }
+            } else if (nextTile === SYMBOLS.SWORD) {
+                player.hasSword = true; map[ny][nx] = SYMBOLS.FLOOR;
+                SOUNDS.GET_ITEM(); addLog("🚨 You obtained the SWORD of THREE WAYS! 🚨");
+                spawnFloatingText(nx, ny, "3-WAY ATTACK!", "#38bdf8");
+                player.x = nx; player.y = ny;
+            } else if (nextTile === SYMBOLS.ARMOR) {
+                player.armorCount++; map[ny][nx] = SYMBOLS.FLOOR;
+                SOUNDS.GET_ITEM(); addLog(`Found ARMOR piece! (Defense: ${player.armorCount})`);
+                spawnFloatingText(nx, ny, "DEFENSE UP", "#94a3b8");
+                player.x = nx; player.y = ny;
             } else {
                 player.x = nx; player.y = ny;
                 if (nextTile === SYMBOLS.STAIRS) { floorLevel++; await startFloorTransition(); }
@@ -477,17 +703,26 @@ async function handleAction(dx, dy) {
     if (!transition.active) { turnCount++; updateUI(); await enemyTurn(); isProcessing = false; }
 }
 
-async function attackEnemy(enemy, dx, dy) {
-    spawnSlash(player.x + dx, player.y + dy); SOUNDS.HIT();
-    player.offsetX = dx * 10; player.offsetY = dy * 10;
+async function attackEnemy(enemy, dx, dy, isMain = true) {
+    spawnSlash(player.x + dx, player.y + dy); if (isMain) SOUNDS.HIT();
+    if (isMain) { player.offsetX = dx * 10; player.offsetY = dy * 10; }
     const staminaFactor = Math.max(0.3, player.stamina / 100);
     let damage = Math.max(1, Math.floor((2 + player.level) * staminaFactor));
+    let isCritical = Math.random() < 0.10; // 10%のかいしんの一撃
+
+    if (isCritical) {
+        damage *= 3;
+        SOUNDS.CRITICAL();
+        setScreenShake(8, 200);
+        addLog("✨ かいしんの一撃！ ✨");
+        spawnFloatingText(player.x + dx, player.y + dy, "CRITICAL!!", "#fbbf24");
+    }
 
     // 金色敵（メタルスライム風）はダメージを1に固定
-    if (enemy.type === 'GOLD') damage = 1;
+    if (enemy.type === 'GOLD') damage = isCritical ? 3 : 1;
 
     enemy.hp -= damage; enemy.flashUntil = performance.now() + 200;
-    spawnDamageText(player.x + dx, player.y + dy, damage, '#f87171');
+    spawnDamageText(player.x + dx, player.y + dy, damage, isCritical ? '#fbbf24' : '#f87171');
     player.stamina = Math.max(0, player.stamina - 20);
     setTimeout(() => { animateBounce(enemy); }, 50);
     await new Promise(r => setTimeout(r, 200));
@@ -524,34 +759,71 @@ async function enemyTurn() {
         if (e.type === 'GOLD') {
             // 金色敵はプレイヤーから逃げる (距離が8以下の場合)
             if (dist <= 8) {
-                SOUNDS.GOLD_FLIGHT();
-                let bestMove = { x: e.x, y: e.y, score: dist };
-                const moves = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-                moves.forEach(m => {
-                    const nx = e.x + m.x, ny = e.y + m.y;
-                    if (canEnemyMove(nx, ny)) {
-                        const nDist = Math.abs(player.x - nx) + Math.abs(player.y - ny);
-                        if (nDist > bestMove.score) {
-                            bestMove = { x: nx, y: ny, score: nDist };
-                        }
+                // 完全に最適な行動ではなく、たまにミスをするように調整
+                const rand = Math.random();
+                let nextPos = { x: e.x, y: e.y };
+
+                if (rand < 0.15) {
+                    // 15%の確率でその場に立ち止まる（迷っている）
+                    addLog("The Golden Enemy is hesitant!");
+                } else if (rand < 0.3) {
+                    // 15%の確率でランダムな方向に動く（パニック）
+                    const moves = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+                    const m = moves[Math.floor(Math.random() * moves.length)];
+                    if (canEnemyMove(e.x + m.x, e.y + m.y)) {
+                        nextPos = { x: e.x + m.x, y: e.y + m.y };
                     }
-                });
-                e.x = bestMove.x; e.y = bestMove.y;
+                } else {
+                    // 70%の確率で逃走AIを実行（従来通り）
+                    let bestMove = { x: e.x, y: e.y, score: dist };
+                    const moves = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+                    moves.forEach(m => {
+                        const nx = e.x + m.x, ny = e.y + m.y;
+                        if (canEnemyMove(nx, ny)) {
+                            const nDist = Math.abs(player.x - nx) + Math.abs(player.y - ny);
+                            if (nDist > bestMove.score) {
+                                bestMove = { x: nx, y: ny, score: nDist };
+                            }
+                        }
+                    });
+                    nextPos = { x: bestMove.x, y: bestMove.y };
+                }
+
+                if (nextPos.x !== e.x || nextPos.y !== e.y) {
+                    SOUNDS.GOLD_FLIGHT();
+                    e.x = nextPos.x; e.y = nextPos.y;
+                }
             }
             continue;
         }
 
         if (dist === 1) {
-            spawnSlash(player.x, player.y); SOUNDS.DAMAGE();
+            spawnSlash(player.x, player.y);
             e.offsetX = dx * 10; e.offsetY = dy * 10;
-            const damage = Math.max(1, Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : 0));
+
+            let damage = Math.max(1, Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : 0));
+            const isFatal = Math.random() < 0.05; // 5%の致命的な一撃
+
+            if (isFatal) {
+                damage *= 3;
+                SOUNDS.FATAL();
+                setScreenShake(15, 400);
+                addLog("💥 致命的な一撃を受けた！ 💥");
+                spawnFloatingText(player.x, player.y, "FATAL BLOW!!", "#ff0000");
+            } else {
+                SOUNDS.DAMAGE();
+            }
+
+            // 防具によるダメージ軽減 (最低 1ダメージ)
+            damage = Math.max(1, damage - player.armorCount);
+
             player.hp -= damage; player.flashUntil = performance.now() + 200;
-            spawnDamageText(player.x, player.y, damage, '#ffffff');
+            spawnDamageText(player.x, player.y, damage, isFatal ? '#ff0000' : '#ffffff');
             setTimeout(() => { animateBounce(player); }, 50);
             attackOccurred = true;
             await new Promise(r => setTimeout(r, 200));
             e.offsetX = 0; e.offsetY = 0;
-            if (player.hp <= 0) { alert("Game Over."); gameState = 'TITLE'; return; }
+            if (player.hp <= 0) { triggerGameOver(); return; }
         } else if (dist <= 8) {
             const oldPos = { x: e.x, y: e.y };
             let sx = dx === 0 ? 0 : dx / Math.abs(dx); let sy = dy === 0 ? 0 : dy / Math.abs(dy);
@@ -593,8 +865,38 @@ function gainExp(amount) {
     }
 }
 
+async function triggerGameOver() {
+    isProcessing = true;
+    gameState = 'GAMEOVER_SEQ';
+    SOUNDS.TRAGIC_DEATH();
+    setScreenShake(25, 1500);
+
+    // 赤い一撃のフラッシュ
+    gameOverAlpha = 0.7;
+
+    // プレイヤーの点滅と消失演出
+    for (let i = 0; i < 12; i++) {
+        isPlayerVisible = !isPlayerVisible;
+        await new Promise(r => setTimeout(r, 120));
+        gameOverAlpha *= 0.8; // 徐々に赤みを引かせる
+    }
+    isPlayerVisible = false;
+    gameOverAlpha = 0;
+
+    // 画面を真っ暗にするフェード
+    transition.active = true;
+    transition.text = "";
+    for (let a = 0; a <= 1; a += 0.1) { transition.alpha = a; await new Promise(r => setTimeout(r, 50)); }
+
+    gameState = 'GAMEOVER';
+    SOUNDS.TRAGIC_MELODY();
+    transition.active = false;
+    isProcessing = false;
+}
+
 function startGame() {
-    player = { x: 0, y: 0, hp: 20, maxHp: 20, level: 1, exp: 0, nextExp: 10, stamina: 100, hasKey: false, flashUntil: 0, offsetX: 0, offsetY: 0, totalKills: 0 };
+    player = { x: 0, y: 0, hp: 20, maxHp: 20, level: 1, exp: 0, nextExp: 10, stamina: 100, hasKey: false, hasSword: false, armorCount: 0, flashUntil: 0, offsetX: 0, offsetY: 0, totalKills: 0 };
+    isPlayerVisible = true; gameOverAlpha = 0;
     floorLevel = 1; turnCount = 0; initMap(); updateUI(); gameState = 'PLAYING'; addLog("Welcome to the Dungeon.");
 }
 
@@ -603,6 +905,16 @@ function continueGame() {
 }
 
 window.addEventListener('keydown', e => {
+    if (gameState === 'GAMEOVER_SEQ') return; // 演出中は入力を受け付けない
+
+    if (gameState === 'GAMEOVER') {
+        if (e.key === 'Enter' || e.key === ' ') {
+            gameState = 'TITLE';
+            SOUNDS.SELECT();
+        }
+        return;
+    }
+
     if (gameState === 'TITLE') {
         const hasSave = localStorage.getItem('minimal_rogue_save') !== null;
         if (e.key === 'ArrowUp' || e.key === 'w') { titleSelection = 0; SOUNDS.SELECT(); }
@@ -621,6 +933,7 @@ window.addEventListener('keydown', e => {
             case 'ArrowDown': case 's': handleAction(0, 1); break;
             case 'ArrowLeft': case 'a': handleAction(-1, 0); break;
             case 'ArrowRight': case 'd': handleAction(1, 0); break;
+            case ' ': handleAction(0, 0); break; // スペースキーでその場待機
         }
     }
 });
