@@ -1885,6 +1885,8 @@ async function handleAction(dx, dy) {
                     player.offsetX = dx * 5; player.offsetY = dy * 5;
                     await new Promise(r => setTimeout(r, 100));
                     player.offsetX = 0; player.offsetY = 0;
+                    if (!transition.active) { turnCount++; updateUI(); await moveWisps(); await enemyTurn(); isProcessing = false; }
+                    return;
                 }
             } else if (nextTile === SYMBOLS.SWORD) {
                 map[ny][nx] = SYMBOLS.FLOOR; // 先に消す
