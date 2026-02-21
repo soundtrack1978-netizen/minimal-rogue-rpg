@@ -1645,19 +1645,20 @@ function draw(now) {
     // 物語のページのようなメッセージ表示
     if (storyMessage) {
         const lines = storyMessage.lines;
-        const y = canvas.height - 110; // 位置を下に下げる
+        const lineHeight = 20;
+        const totalHeight = lines.length * lineHeight;
+        const y = canvas.height - totalHeight - 40;
 
         ctx.save();
         ctx.globalAlpha = storyMessage.alpha;
 
-        // テキスト描画 (ウィンドウなし、白文字)
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = "italic 18px 'Courier New'";
+        ctx.font = "italic 14px 'Courier New', sans-serif";
 
         lines.forEach((line, i) => {
-            ctx.fillText(line, canvas.width / 2, y + i * 25);
+            ctx.fillText(line, canvas.width / 2, y + i * lineHeight);
         });
 
 
