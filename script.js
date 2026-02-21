@@ -718,6 +718,47 @@ function initMap() {
         }
     }
 
+    // --- 出口(EXIT)と鍵(KEY)の最終配置 ---
+    const lastRoom = rooms[rooms.length - 1];
+    const isLockedFloor = floorLevel >= 3 && Math.random() < 0.3;
+
+    // 出口周辺を通常の床に戻す（氷や毒沼での消失・滑りすぎ防止）
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            const ty = lastRoom.cy + dy, tx = lastRoom.cx + dx;
+            if (ty >= 1 && ty < ROWS - 1 && tx >= 1 && tx < COLS - 1) {
+                const t = map[ty][tx];
+                if (t === SYMBOLS.ICE || t === SYMBOLS.POISON || t === SYMBOLS.WALL) map[ty][tx] = SYMBOLS.FLOOR;
+            }
+        }
+    }
+
+    // 出口は確実に接続済みの床タイル中央に置く (上書きを厭わない)
+    map[lastRoom.cy][lastRoom.cx] = isLockedFloor ? SYMBOLS.DOOR : SYMBOLS.STAIRS;
+
+    if (isLockedFloor) {
+        // 鍵の配置
+        let keyRoomIdx = 1;
+        if (rooms.length > 2) keyRoomIdx = Math.floor(Math.random() * (rooms.length - 2)) + 1;
+        const keyRoom = rooms[keyRoomIdx];
+
+        // 鍵の場所も氷や毒沼、壁なら床に戻す
+        if (map[keyRoom.cy][keyRoom.cx] === SYMBOLS.ICE || map[keyRoom.cy][keyRoom.cx] === SYMBOLS.POISON || map[keyRoom.cy][keyRoom.cx] === SYMBOLS.WALL) {
+            map[keyRoom.cy][keyRoom.cx] = SYMBOLS.FLOOR;
+        }
+
+        if (keyRoom.cx === lastRoom.cx && keyRoom.cy === lastRoom.cy) {
+            // 出口と重なる場合はスタート地点の隣を床にして鍵を置く (念のためのフェイルセーフ)
+            const kx = rooms[0].cx + 1, ky = rooms[0].cy;
+            map[ky][kx] = SYMBOLS.FLOOR; // 確実に床にする
+            map[ky][kx] = SYMBOLS.KEY;
+        } else {
+            // 鍵を配置。場所が壁などの場合は床属性を上書きする
+            map[keyRoom.cy][keyRoom.cx] = SYMBOLS.KEY;
+        }
+        addLog("This floor is locked. Find the KEY (k)!");
+    }
+
     // Spawn enemies
     for (let i = 1; i < rooms.length; i++) {
         const room = rooms[i];
@@ -819,46 +860,6 @@ function initMap() {
         if (actualSpawned > 0) addLog("Beware of the Wisps (※) following the walls!");
     }
 
-    // --- 出口(EXIT)と鍵(KEY)の最終配置 (絶対に最後に実行) ---
-    const lastRoom = rooms[rooms.length - 1];
-    const isLockedFloor = floorLevel >= 3 && Math.random() < 0.3;
-
-    // 出口周辺を通常の床に戻す（氷や毒沼での消失・滑りすぎ防止）
-    for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-            const ty = lastRoom.cy + dy, tx = lastRoom.cx + dx;
-            if (ty >= 1 && ty < ROWS - 1 && tx >= 1 && tx < COLS - 1) {
-                const t = map[ty][tx];
-                if (t === SYMBOLS.ICE || t === SYMBOLS.POISON || t === SYMBOLS.WALL) map[ty][tx] = SYMBOLS.FLOOR;
-            }
-        }
-    }
-
-    // 出口は確実に接続済みの床タイル中央に置く (上書きを厭わない)
-    map[lastRoom.cy][lastRoom.cx] = isLockedFloor ? SYMBOLS.DOOR : SYMBOLS.STAIRS;
-
-    if (isLockedFloor) {
-        // 鍵の配置
-        let keyRoomIdx = 1;
-        if (rooms.length > 2) keyRoomIdx = Math.floor(Math.random() * (rooms.length - 2)) + 1;
-        const keyRoom = rooms[keyRoomIdx];
-
-        // 鍵の場所も氷や毒沼、壁なら床に戻す
-        if (map[keyRoom.cy][keyRoom.cx] === SYMBOLS.ICE || map[keyRoom.cy][keyRoom.cx] === SYMBOLS.POISON || map[keyRoom.cy][keyRoom.cx] === SYMBOLS.WALL) {
-            map[keyRoom.cy][keyRoom.cx] = SYMBOLS.FLOOR;
-        }
-
-        if (keyRoom.cx === lastRoom.cx && keyRoom.cy === lastRoom.cy) {
-            // 出口と重なる場合はスタート地点の隣を床にして鍵を置く (念のためのフェイルセーフ)
-            const kx = rooms[0].cx + 1, ky = rooms[0].cy;
-            map[ky][kx] = SYMBOLS.FLOOR; // 確実に床にする
-            map[ky][kx] = SYMBOLS.KEY;
-        } else {
-            // 鍵を配置。場所が壁などの場合は床属性を上書きする
-            map[keyRoom.cy][keyRoom.cx] = SYMBOLS.KEY;
-        }
-        addLog("This floor is locked. Find the KEY (k)!");
-    }
 }
 
 function isWallAt(x, y) {
@@ -940,6 +941,52 @@ async function animateItemGet(itemSymbol) {
 
     player.itemInHand = null;
     isProcessing = false;
+}
+
+async function processPickedItems(items) {
+    for (const item of items) {
+        if (item.symbol === SYMBOLS.WAND) {
+            await animateItemGet(SYMBOLS.WAND);
+            player.hasWand = true;
+            if (floorLevel === 2) {
+                await triggerWandEvent();
+            } else {
+                addLog("🚨 Obtained 'Magic Wand'! 🚨");
+                addLog("TUTORIAL: You can now place blocks with [Space] + [Dir]!");
+            }
+        } else if (item.symbol === SYMBOLS.KEY) {
+            await animateItemGet(SYMBOLS.KEY);
+            player.hasKey = true;
+            addLog("Picked up the KEY!");
+            spawnFloatingText(item.x, item.y, "GOT KEY", "#fbbf24");
+        } else if (item.symbol === SYMBOLS.SPEED) {
+            await animateItemGet(SYMBOLS.TOME);
+            player.hasteTomes++;
+            addLog("📜 YOU DECIPHERED: 'Haste Tome'! (Press [E] to recite)");
+            spawnFloatingText(item.x, item.y, "HASTE TOME IDENTIFIED", "#38bdf8");
+        } else if (item.symbol === SYMBOLS.CHARM) {
+            await animateItemGet(SYMBOLS.TOME);
+            player.charmTomes++;
+            addLog("📜 YOU DECIPHERED: 'Charm Tome'! (Press [C] to recite)");
+            spawnFloatingText(item.x, item.y, "CHARM TOME IDENTIFIED", "#60a5fa");
+        } else if (item.symbol === SYMBOLS.STEALTH) {
+            await animateItemGet(SYMBOLS.TOME);
+            player.stealthTomes++;
+            addLog("📜 YOU DECIPHERED: 'Stealth Tome'! (Inventory to recite)");
+            spawnFloatingText(item.x, item.y, "STEALTH TOME IDENTIFIED", "#94a3b8");
+        } else if (item.symbol === SYMBOLS.SWORD) {
+            await animateItemGet(SYMBOLS.SWORD);
+            player.swordCount++;
+            addLog(`🚨 You obtained a SWORD! (Attack: +3) 🚨`);
+            spawnFloatingText(item.x, item.y, "ATTACK UP", "#38bdf8");
+        } else if (item.symbol === SYMBOLS.ARMOR) {
+            await animateItemGet(SYMBOLS.ARMOR);
+            player.armorCount++;
+            addLog(`Found ARMOR piece! (Defense: ${player.armorCount})`);
+            spawnFloatingText(item.x, item.y, "DEFENSE UP", "#94a3b8");
+        }
+        updateUI();
+    }
 }
 
 async function animateEnemyFall(e) {
@@ -1632,7 +1679,7 @@ async function slidePlayer(dx, dy) {
             player.hp -= 1; player.flashUntil = performance.now() + 200;
             spawnDamageText(player.x, player.y, 1, '#a855f7');
             SOUNDS.DAMAGE();
-            if (player.hp <= 0) { triggerGameOver(); return; }
+            if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
         }
     }
 }
@@ -1834,7 +1881,7 @@ async function handleAction(dx, dy) {
         player.flashUntil = performance.now() + 200;
         spawnDamageText(player.x, player.y, 1, '#a855f7');
         SOUNDS.DAMAGE();
-        if (player.hp <= 0) { triggerGameOver(); return; }
+        if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
     }
 
     if (!transition.active) {
@@ -2308,6 +2355,7 @@ async function enemyTurn() {
                     else SOUNDS.DAMAGE();
                     player.hp -= damage; player.flashUntil = performance.now() + 200;
                     spawnDamageText(player.x, player.y, damage, fatal ? '#ff0000' : '#ffffff');
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); }
 
                     // オークの吹き飛ばし攻撃
                     if (e.type === 'ORC') {
@@ -2337,6 +2385,7 @@ async function enemyTurn() {
 
                         // 吹き飛ばしスライド
                         let slideSteps = 0;
+                        let pickedDuringSlide = [];
                         while (slideSteps < 100) {
                             const nx = player.x + kx;
                             const ny = player.y + ky;
@@ -2348,6 +2397,14 @@ async function enemyTurn() {
                                 SOUNDS.EXPLODE();
                                 setScreenShake(10, 200);
                                 break;
+                            }
+
+                            // 通過タイトルのアイテム回収判定
+                            const nextTile = map[ny][nx];
+                            const itemSymbols = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.KEY, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.WAND];
+                            if (itemSymbols.includes(nextTile)) {
+                                pickedDuringSlide.push({ symbol: nextTile, x: nx, y: ny });
+                                map[ny][nx] = SYMBOLS.FLOOR; // 即座に消す
                             }
 
                             // 設置ブロックとの衝突判定：破壊して突き進む
@@ -2400,14 +2457,16 @@ async function enemyTurn() {
                                 addLog("You were knocked into the dark hole!");
                                 isPlayerVisible = false;
                                 floorLevel++;
+                                if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
                                 await startFloorTransition();
                                 return;
                             }
                         }
+                        if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
                         await new Promise(r => setTimeout(r, 200));
                     }
 
-                    if (player.hp <= 0) { triggerGameOver(); return; }
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
                 }
             } else {
                 // 味方への攻撃
@@ -2498,7 +2557,7 @@ async function applyLaserDamage() {
                     spawnDamageText(player.x, player.y, lDmg, '#f87171');
                     addLog("🚨 LASERED! Burn damage! 🚨");
                     SOUNDS.DAMAGE();
-                    if (player.hp <= 0) { triggerGameOver(); return; }
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
                 }
                 // 他の敵判定 (味方含む)
                 enemies.forEach(oe => {
@@ -2551,6 +2610,7 @@ function gainExp(amount) {
 }
 
 async function triggerGameOver() {
+    player.hp = 0; updateUI(); // HPを確実に0にしてUIへ反映
     isProcessing = true;
     gameState = 'GAMEOVER_SEQ';
     SOUNDS.TRAGIC_DEATH();
