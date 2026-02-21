@@ -247,6 +247,7 @@ let isSpacePressed = false;
 let spaceUsedForBlock = false; // 今回のスペース押下でブロックを置いたかフラグ
 let gameOverAlpha = 0;
 let storyMessage = null; // { lines: [], alpha: 0 }
+let isWandTutorialActive = false; // チュートリアル入力待ちフラグ
 
 let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [] };
 let screenShake = { x: 0, y: 0, until: 0 };
@@ -1022,14 +1023,18 @@ async function triggerWandEvent() {
         alpha: 0
     };
 
+    isWandTutorialActive = true;
+
     // フェードイン
     for (let a = 0; a <= 1; a += 0.05) {
         storyMessage.alpha = a;
         await new Promise(r => setTimeout(r, 20));
     }
 
-    // 3.5秒間表示
-    await new Promise(r => setTimeout(r, 3500));
+    // キー入力があるまで待機
+    while (isWandTutorialActive) {
+        await new Promise(r => requestAnimationFrame(r));
+    }
 
     // フェードアウト
     for (let a = 1; a >= 0; a -= 0.05) {
@@ -1636,42 +1641,26 @@ function draw(now) {
     // 物語のページのようなメッセージ表示
     if (storyMessage) {
         const lines = storyMessage.lines;
-        const boxW = 340;
-        const boxH = lines.length * 28 + 50;
-        const x = (canvas.width - boxW) / 2;
-        const y = canvas.height / 2 + 50; // 画面中心の少し下
+        const y = canvas.height - 110; // 位置を下に下げる
 
         ctx.save();
         ctx.globalAlpha = storyMessage.alpha;
 
-        // 羊皮紙のようなデザイン
-        ctx.fillStyle = '#fef3c7'; // Parchment color (Amber 50)
-        ctx.shadowColor = 'rgba(0,0,0,0.6)';
-        ctx.shadowBlur = 20;
-        ctx.shadowOffsetY = 5;
-        ctx.fillRect(x, y, boxW, boxH);
-
-        // 装飾的な枠線
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#92400e'; // Border color (Amber 800)
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(x + 5, y + 5, boxW - 10, boxH - 10);
-        ctx.strokeRect(x + 8, y + 8, boxW - 16, boxH - 16);
-
-        // テキスト描画
-        ctx.fillStyle = '#451a03'; // Text color (Amber 950)
+        // テキスト描画 (ウィンドウなし、白文字)
+        ctx.fillStyle = '#fff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = "italic 18px 'Georgia', serif";
-
-        // フォントのフォールバック
-        if (!ctx.font.includes('Georgia') && !ctx.font.includes('serif')) {
-            ctx.font = "italic bold 16px 'Courier New'";
-        }
+        ctx.font = "italic 18px 'Courier New'";
 
         lines.forEach((line, i) => {
-            ctx.fillText(line, canvas.width / 2, y + 35 + i * 28);
+            ctx.fillText(line, canvas.width / 2, y + i * 25);
         });
+
+        // 継続プロンプト
+        if (isWandTutorialActive) {
+            ctx.font = "12px 'Courier New'";
+            ctx.fillText("[ Press any key to continue ]", canvas.width / 2, y + lines.length * 25 + 15);
+        }
 
         ctx.restore();
     }
@@ -2782,6 +2771,12 @@ async function continueGame() {
 }
 
 window.addEventListener('keydown', e => {
+    if (isWandTutorialActive) {
+        isWandTutorialActive = false;
+        e.preventDefault();
+        return;
+    }
+
     if (gameState === 'GAMEOVER_SEQ') return;
 
     if (e.key === ' ') {
