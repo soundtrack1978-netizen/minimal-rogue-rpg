@@ -3045,12 +3045,18 @@ window.addEventListener('keydown', e => {
     }
     if (e.key === 'ArrowLeft' || e.key === 'a') {
         if (['TITLE', 'STATUS'].includes(gameState)) e.preventDefault();
-        if (gameState === 'TITLE' && titleSelection === 2) { testFloor = Math.max(1, testFloor - 1); SOUNDS.SELECT(); return; }
+        if (gameState === 'TITLE' && titleSelection === 2) {
+            testFloor = (testFloor - 2 + 100) % 100 + 1; // 1から左で100へ
+            SOUNDS.SELECT(); return;
+        }
         if (gameState === 'STATUS') { statusPage = (statusPage + 1) % 2; SOUNDS.SELECT(); return; }
     }
     if (e.key === 'ArrowRight' || e.key === 'd') {
         if (['TITLE', 'STATUS'].includes(gameState)) e.preventDefault();
-        if (gameState === 'TITLE' && titleSelection === 2) { testFloor = Math.min(100, testFloor + 1); SOUNDS.SELECT(); return; }
+        if (gameState === 'TITLE' && titleSelection === 2) {
+            testFloor = (testFloor % 100) + 1; // 100から右で1へ
+            SOUNDS.SELECT(); return;
+        }
         if (gameState === 'STATUS') { statusPage = (statusPage + 1) % 2; SOUNDS.SELECT(); return; }
     }
     if (e.key === 'Enter') {
