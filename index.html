@@ -14,10 +14,13 @@
             <div class="stats-group">
                 <span>LV: <span id="lv">1</span></span>
                 <span>HP: <span id="hp">20/20</span></span>
-                <span>ST: <span id="stamina">100</span>%</span>
+                <div class="stamina-container">ST: <span class="stamina-gauge-bg"><span id="stamina-bar"></span></span>
+                </div>
             </div>
             <div class="stats-group">
                 <span>FL: <span id="floor">1</span></span>
+                <span id="sword-status"></span>
+                <span id="armor-status"></span>
             </div>
         </div>
         <canvas id="game-canvas"></canvas>

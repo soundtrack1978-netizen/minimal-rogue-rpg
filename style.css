@@ -17,6 +17,9 @@ body {
     align-items: center;
     height: 100vh;
     overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
 }
 
 .game-wrapper {
@@ -52,6 +55,7 @@ body {
 #game-canvas {
     border: 1px solid var(--border-color);
     background-color: #000;
+    cursor: default;
 }
 
 .game-log {
@@ -66,4 +70,35 @@ body {
 
 .game-log div:last-child {
     color: var(--text-color);
+}
+
+/* Stamina Gauge */
+.stamina-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 18px;
+    /* 高さを固定 */
+}
+
+.stamina-gauge-bg {
+    display: inline-block;
+    width: 60px;
+    height: 6px;
+    /* 少し太くして見やすく */
+    background-color: #333;
+    border: 1px solid #444;
+    position: relative;
+    overflow: hidden;
+}
+
+#stamina-bar {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #38bdf8;
+    transition: width 0.2s ease-out;
 }
