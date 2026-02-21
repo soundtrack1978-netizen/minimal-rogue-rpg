@@ -34,7 +34,8 @@ const SYMBOLS = {
     TOME: '▤', // 描画用の統一文字
     WAND: '/',
     ORC: 'O',
-    ICE: '▢'
+    ICE: '▢',
+    TURRET: 'T'
 };
 
 // サウンドシステム
@@ -754,7 +755,27 @@ function initMap() {
                 const ey = room.y + Math.floor(Math.random() * room.h);
                 if (map[ey][ex] === SYMBOLS.FLOOR) {
                     const enemyRoll = Math.random();
-                    if (floorLevel >= 10 && enemyRoll < 0.15) {
+                    if (floorLevel >= 12 && enemyRoll < 0.12) {
+                        let bestDir = 0;
+                        let maxDist = -1;
+                        for (let d = 0; d < 4; d++) {
+                            const dx_c = [0, 1, 0, -1][d];
+                            const dy_c = [-1, 0, 1, 0][d];
+                            let dist = 0;
+                            let tx = ex + dx_c, ty = ey + dy_c;
+                            while (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS && !isWallAt(tx, ty)) {
+                                dist++;
+                                tx += dx_c; ty += dy_c;
+                            }
+                            if (dist > maxDist) { maxDist = dist; bestDir = d; }
+                        }
+                        enemies.push({
+                            type: 'TURRET', x: ex, y: ey,
+                            hp: 15 + floorLevel, maxHp: 15 + floorLevel,
+                            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15,
+                            dir: bestDir, stunTurns: 0
+                        });
+                    } else if (floorLevel >= 10 && enemyRoll < 0.25) {
                         enemies.push({
                             type: 'ORC', x: ex, y: ey,
                             hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
@@ -808,7 +829,7 @@ function initMap() {
             const ty = lastRoom.cy + dy, tx = lastRoom.cx + dx;
             if (ty >= 1 && ty < ROWS - 1 && tx >= 1 && tx < COLS - 1) {
                 const t = map[ty][tx];
-                if (t === SYMBOLS.ICE || t === SYMBOLS.POISON) map[ty][tx] = SYMBOLS.FLOOR;
+                if (t === SYMBOLS.ICE || t === SYMBOLS.POISON || t === SYMBOLS.WALL) map[ty][tx] = SYMBOLS.FLOOR;
             }
         }
     }
@@ -822,14 +843,15 @@ function initMap() {
         if (rooms.length > 2) keyRoomIdx = Math.floor(Math.random() * (rooms.length - 2)) + 1;
         const keyRoom = rooms[keyRoomIdx];
 
-        // 鍵の場所も氷や毒沼なら床に戻す
-        if (map[keyRoom.cy][keyRoom.cx] === SYMBOLS.ICE || map[keyRoom.cy][keyRoom.cx] === SYMBOLS.POISON) {
+        // 鍵の場所も氷や毒沼、壁なら床に戻す
+        if (map[keyRoom.cy][keyRoom.cx] === SYMBOLS.ICE || map[keyRoom.cy][keyRoom.cx] === SYMBOLS.POISON || map[keyRoom.cy][keyRoom.cx] === SYMBOLS.WALL) {
             map[keyRoom.cy][keyRoom.cx] = SYMBOLS.FLOOR;
         }
 
         if (keyRoom.cx === lastRoom.cx && keyRoom.cy === lastRoom.cy) {
             // 出口と重なる場合はスタート地点の隣を床にして鍵を置く (念のためのフェイルセーフ)
             const kx = rooms[0].cx + 1, ky = rooms[0].cy;
+            map[ky][kx] = SYMBOLS.FLOOR; // 確実に床にする
             map[ky][kx] = SYMBOLS.KEY;
         } else {
             // 鍵を配置。場所が壁などの場合は床属性を上書きする
@@ -913,8 +935,8 @@ async function animateItemGet(itemSymbol) {
     player.itemInHand = itemSymbol;
     SOUNDS.GET_WAND();
 
-    // 演出時間 (1.8秒程度に少しゆったり)
-    await new Promise(r => setTimeout(r, 1800));
+    // 演出時間 (800msに短縮：テンポ重視)
+    await new Promise(r => setTimeout(r, 800));
 
     player.itemInHand = null;
     isProcessing = false;
@@ -1401,6 +1423,41 @@ function draw(now) {
             if (!e.isAlly) ctx.fillStyle = isFlashing ? '#fff' : '#ef4444';
             ctx.font = `bold ${TILE_SIZE * 1.2}px 'Courier New'`;
             ctx.fillText(SYMBOLS.ORC, e.x * TILE_SIZE + TILE_SIZE / 2 + e.offsetX, e.y * TILE_SIZE + TILE_SIZE / 2 + e.offsetY);
+        } else if (e.type === 'TURRET') {
+            if (!e.isAlly) ctx.fillStyle = isFlashing ? '#fff' : '#ef4444';
+            ctx.font = `bold ${TILE_SIZE * 1.2}px 'Courier New'`;
+            ctx.fillText(SYMBOLS.TURRET, e.x * TILE_SIZE + TILE_SIZE / 2 + e.offsetX, e.y * TILE_SIZE + TILE_SIZE / 2 + e.offsetY);
+
+            // 方向インジケータ（小さな点）
+            const range = TILE_SIZE * 0.4;
+            const dx = [0, 1, 0, -1][e.dir];
+            const dy = [-1, 0, 1, 0][e.dir];
+            ctx.beginPath();
+            ctx.arc(e.x * TILE_SIZE + TILE_SIZE / 2 + dx * range, e.y * TILE_SIZE + TILE_SIZE / 2 + dy * range, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // レーザーの描画
+            if (!e.isFalling && e.hp > 0) {
+                const dx = [0, 1, 0, -1][e.dir];
+                const dy = [-1, 0, 1, 0][e.dir];
+                let lx = e.x + dx, ly = e.y + dy;
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.lineWidth = 2 + Math.sin(now / 30) * 1;
+                ctx.beginPath();
+                ctx.moveTo(e.x * TILE_SIZE + TILE_SIZE / 2, e.y * TILE_SIZE + TILE_SIZE / 2);
+                while (lx >= 0 && lx < COLS && ly >= 0 && ly < ROWS) {
+                    if (isWallAt(lx, ly)) {
+                        ctx.lineTo(lx * TILE_SIZE + TILE_SIZE / 2, ly * TILE_SIZE + TILE_SIZE / 2);
+                        break;
+                    }
+                    lx += dx; ly += dy;
+                }
+                if (lx < 0 || lx >= COLS || ly < 0 || ly >= ROWS) ctx.lineTo(lx * TILE_SIZE + TILE_SIZE / 2, ly * TILE_SIZE + TILE_SIZE / 2);
+                ctx.stroke();
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.restore();
+            }
         } else {
             ctx.fillText(SYMBOLS.ENEMY, e.x * TILE_SIZE + TILE_SIZE / 2 + e.offsetX, e.y * TILE_SIZE + TILE_SIZE / 2 + e.offsetY);
         }
@@ -1440,7 +1497,12 @@ function draw(now) {
         // ゼルダ風アイテム持ち上げ描画
         if (player.itemInHand) {
             ctx.save();
-            ctx.fillStyle = '#f472b6'; // 杖の色
+            let itemColor = '#fff';
+            if (player.itemInHand === SYMBOLS.SWORD || player.itemInHand === SYMBOLS.ARMOR) itemColor = '#38bdf8';
+            else if (player.itemInHand === SYMBOLS.WAND) itemColor = '#f472b6';
+            else if (player.itemInHand === SYMBOLS.KEY || player.itemInHand === SYMBOLS.TOME) itemColor = '#fbbf24';
+
+            ctx.fillStyle = itemColor;
             ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
             ctx.fillText(player.itemInHand, px, py - TILE_SIZE - 5);
             ctx.restore();
@@ -1628,7 +1690,14 @@ async function handleAction(dx, dy) {
         await new Promise(r => setTimeout(r, 200));
         player.offsetX = 0; player.offsetY = 0;
 
-        if (!transition.active) { turnCount++; updateUI(); await enemyTurn(); isProcessing = false; }
+        if (!transition.active) {
+            turnCount++;
+            updateUI();
+            // ブロックが壊れた瞬間にレーザーが通る可能性があるので判定
+            await applyLaserDamage();
+            await enemyTurn();
+            isProcessing = false;
+        }
         return;
     }
 
@@ -1653,18 +1722,40 @@ async function handleAction(dx, dy) {
         } else {
             const nextTile = map[ny][nx];
             if (nextTile === SYMBOLS.DOOR) {
-                if (player.hasKey) { SOUNDS.UNLOCK(); map[ny][nx] = SYMBOLS.STAIRS; addLog("The seal on the HOLE is broken!"); player.hasKey = false; }
-                else { addLog("The door is locked."); player.offsetX = dx * 5; player.offsetY = dy * 5; await new Promise(r => setTimeout(r, 100)); player.offsetX = 0; player.offsetY = 0; }
+                if (player.hasKey) {
+                    SOUNDS.UNLOCK();
+                    map[ny][nx] = SYMBOLS.STAIRS;
+                    addLog("The seal on the HOLE is broken!");
+                    player.hasKey = false;
+                    // 解錠演出として、その場にとどまる（nx, ny に移動しない）
+                    player.offsetX = dx * 5; player.offsetY = dy * 5;
+                    await new Promise(r => setTimeout(r, 200));
+                    player.offsetX = 0; player.offsetY = 0;
+                    // 以降の処理（player.x = nx など）をスキップして、敵のターンへ
+                    if (!transition.active) { turnCount++; updateUI(); await moveWisps(); await enemyTurn(); isProcessing = false; }
+                    return;
+                } else {
+                    addLog("The door is locked.");
+                    player.offsetX = dx * 5; player.offsetY = dy * 5;
+                    await new Promise(r => setTimeout(r, 100));
+                    player.offsetX = 0; player.offsetY = 0;
+                }
             } else if (nextTile === SYMBOLS.SWORD) {
-                player.swordCount++; map[ny][nx] = SYMBOLS.FLOOR;
-                SOUNDS.GET_ITEM(); addLog(`🚨 You obtained a SWORD! (Attack: +3) 🚨`);
+                map[ny][nx] = SYMBOLS.FLOOR; // 先に消す
+                player.x = nx; player.y = ny;
+                updateUI();
+                await animateItemGet(SYMBOLS.SWORD);
+                player.swordCount++;
+                addLog(`🚨 You obtained a SWORD! (Attack: +3) 🚨`);
                 spawnFloatingText(nx, ny, "ATTACK UP", "#38bdf8");
-                player.x = nx; player.y = ny;
             } else if (nextTile === SYMBOLS.ARMOR) {
-                player.armorCount++; map[ny][nx] = SYMBOLS.FLOOR;
-                SOUNDS.GET_ITEM(); addLog(`Found ARMOR piece! (Defense: ${player.armorCount})`);
-                spawnFloatingText(nx, ny, "DEFENSE UP", "#94a3b8");
+                map[ny][nx] = SYMBOLS.FLOOR;
                 player.x = nx; player.y = ny;
+                updateUI();
+                await animateItemGet(SYMBOLS.ARMOR);
+                player.armorCount++;
+                addLog(`Found ARMOR piece! (Defense: ${player.armorCount})`);
+                spawnFloatingText(nx, ny, "DEFENSE UP", "#94a3b8");
             } else {
                 if (dx === 0 && dy === 0) {
                     player.isDefending = true;
@@ -1676,11 +1767,9 @@ async function handleAction(dx, dy) {
                 if (nextTile === SYMBOLS.WAND) {
                     map[ny][nx] = SYMBOLS.FLOOR;
                     player.x = nx; player.y = ny;
-                    updateUI(); // 杖を消してから演出開始
+                    updateUI();
                     await animateItemGet(SYMBOLS.WAND);
                     player.hasWand = true;
-
-                    // ステージ2特有の演出：杖を取ると敵が降ってくる
                     if (floorLevel === 2) {
                         await triggerWandEvent();
                     } else {
@@ -1688,38 +1777,53 @@ async function handleAction(dx, dy) {
                         addLog("TUTORIAL: You can now place blocks with [Space] + [Dir]!");
                     }
                 } else if (nextTile === SYMBOLS.KEY) {
-                    player.hasKey = true; map[ny][nx] = SYMBOLS.FLOOR;
-                    SOUNDS.GET_ITEM(); addLog("Picked up the KEY!");
+                    map[ny][nx] = SYMBOLS.FLOOR;
+                    player.x = nx; player.y = ny;
+                    updateUI();
+                    await animateItemGet(SYMBOLS.KEY);
+                    player.hasKey = true;
+                    addLog("Picked up the KEY!");
                     spawnFloatingText(nx, ny, "GOT KEY", "#fbbf24");
                 } else if (nextTile === SYMBOLS.SPEED) {
-                    player.hasteTomes++; map[ny][nx] = SYMBOLS.FLOOR;
-                    SOUNDS.GET_ITEM(); addLog("📜 YOU DECIPHERED: 'Haste Tome'! (Press [E] to recite)");
+                    map[ny][nx] = SYMBOLS.FLOOR;
+                    player.x = nx; player.y = ny;
+                    updateUI();
+                    await animateItemGet(SYMBOLS.TOME);
+                    player.hasteTomes++;
+                    addLog("📜 YOU DECIPHERED: 'Haste Tome'! (Press [E] to recite)");
                     spawnFloatingText(nx, ny, "HASTE TOME IDENTIFIED", "#38bdf8");
                 } else if (nextTile === SYMBOLS.CHARM) {
-                    player.charmTomes++; map[ny][nx] = SYMBOLS.FLOOR;
-                    SOUNDS.GET_ITEM(); addLog("📜 YOU DECIPHERED: 'Charm Tome'! (Press [C] to recite)");
+                    map[ny][nx] = SYMBOLS.FLOOR;
+                    player.x = nx; player.y = ny;
+                    updateUI();
+                    await animateItemGet(SYMBOLS.TOME);
+                    player.charmTomes++;
+                    addLog("📜 YOU DECIPHERED: 'Charm Tome'! (Press [C] to recite)");
                     spawnFloatingText(nx, ny, "CHARM TOME IDENTIFIED", "#60a5fa");
                 } else if (nextTile === SYMBOLS.STEALTH) {
-                    player.stealthTomes++; map[ny][nx] = SYMBOLS.FLOOR;
-                    SOUNDS.GET_ITEM(); addLog("📜 YOU DECIPHERED: 'Stealth Tome'! (Inventory to recite)");
+                    map[ny][nx] = SYMBOLS.FLOOR;
+                    player.x = nx; player.y = ny;
+                    updateUI();
+                    await animateItemGet(SYMBOLS.TOME);
+                    player.stealthTomes++;
+                    addLog("📜 YOU DECIPHERED: 'Stealth Tome'! (Inventory to recite)");
                     spawnFloatingText(nx, ny, "STEALTH TOME IDENTIFIED", "#94a3b8");
                 } else if (nextTile === SYMBOLS.SAVE) {
                     saveGame();
                 }
+            }
+            player.x = nx; player.y = ny;
 
-                player.x = nx; player.y = ny;
+            // 氷のスライド処理
+            if (map[player.y][player.x] === SYMBOLS.ICE && (dx !== 0 || dy !== 0)) {
+                await slidePlayer(dx, dy);
+            }
 
-                // 氷のスライド処理
-                if (map[player.y][player.x] === SYMBOLS.ICE && (dx !== 0 || dy !== 0)) {
-                    await slidePlayer(dx, dy);
-                }
-
-                if (nextTile === SYMBOLS.STAIRS) {
-                    addLog("You fall into the dark hole...");
-                    isPlayerVisible = false;
-                    floorLevel++;
-                    await startFloorTransition();
-                }
+            if (nextTile === SYMBOLS.STAIRS) {
+                addLog("You fall into the dark hole...");
+                isPlayerVisible = false;
+                floorLevel++;
+                await startFloorTransition();
             }
         }
     }
@@ -1869,8 +1973,12 @@ function handleEnemyDeath(enemy) {
             for (let dx2 = -1; dx2 <= 1; dx2++) {
                 const tx = enemy.x + dx2;
                 const ty = enemy.y + dy2;
-                if (ty >= 0 && ty < ROWS && tx >= 0 && tx < COLS && (map[ty][tx] === SYMBOLS.FLOOR || (tx === enemy.x && ty === enemy.y))) {
-                    potentialTiles.push({ x: tx, y: ty });
+                if (ty >= 0 && ty < ROWS && tx >= 0 && tx < COLS) {
+                    const t = map[ty][tx];
+                    // 確実に床（または氷、毒沼）であり、穴や壁ではない場所を候補にする
+                    if (t === SYMBOLS.FLOOR || t === SYMBOLS.ICE || t === SYMBOLS.POISON) {
+                        potentialTiles.push({ x: tx, y: ty });
+                    }
                 }
             }
         }
@@ -2001,6 +2109,9 @@ async function enemyTurn() {
             addLog("Enemy is stunned...");
             continue;
         }
+
+        // タレットは移動・通常攻撃をしない
+        if (e.type === 'TURRET') continue;
 
         if (e.isAlly) {
             // 味方：近くに敵がいれば攻撃・追従、いなければプレイヤーを追いかける
@@ -2315,49 +2426,14 @@ async function enemyTurn() {
             const dx = bestTarget.x - e.x, dy = bestTarget.y - e.y;
             let sx = dx === 0 ? 0 : dx / Math.abs(dx), sy = dy === 0 ? 0 : dy / Math.abs(dy);
             let moved = false;
-            if (e.type === 'ORC') {
-                // オーク専用の「おしのけ」移動ロジック
-                const tryOrcMove = (nx, ny) => {
-                    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return false;
-                    if (map[ny][nx] === SYMBOLS.WALL || map[ny][nx] === SYMBOLS.DOOR) return false;
-                    if (tempWalls.some(w => w.x === nx && w.y === ny)) return false;
-                    if (player.x === nx && player.y === ny) return false;
 
-                    // 進路に他の敵（メイン座標）がいるかチェック
-                    const other = enemies.find(oe => oe !== e && oe.hp > 0 && oe.x === nx && oe.y === ny);
-                    if (other) {
-                        // 場所を入れ替える
-                        other.x = e.x; other.y = e.y;
-                        e.x = nx; e.y = ny;
-                        addLog("The Orc shoves another enemy aside!");
-                        SOUNDS.MOVE();
-                        return true;
-                    }
-
-                    // 誰もいないなら通常移動
-                    if (canEnemyMove(nx, ny)) {
-                        e.x = nx; e.y = ny;
-                        return true;
-                    }
-                    return false;
-                };
-
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    if (tryOrcMove(e.x + sx, e.y)) moved = true;
-                    else if (tryOrcMove(e.x, e.y + sy)) moved = true;
-                } else {
-                    if (tryOrcMove(e.x, e.y + sy)) moved = true;
-                    else if (tryOrcMove(e.x + sx, e.y)) moved = true;
-                }
+            // 通常の移動
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (canEnemyMove(e.x + sx, e.y)) { e.x += sx; moved = true; }
+                else if (canEnemyMove(e.x, e.y + sy)) { e.y += sy; moved = true; }
             } else {
-                // 通常の移動
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    if (canEnemyMove(e.x + sx, e.y)) { e.x += sx; moved = true; }
-                    else if (canEnemyMove(e.x, e.y + sy)) { e.y += sy; moved = true; }
-                } else {
-                    if (canEnemyMove(e.x, e.y + sy)) { e.y += sy; moved = true; }
-                    else if (canEnemyMove(e.x + sx, e.y)) { e.x += sx; moved = true; }
-                }
+                if (canEnemyMove(e.x, e.y + sy)) { e.y += sy; moved = true; }
+                else if (canEnemyMove(e.x + sx, e.y)) { e.x += sx; moved = true; }
             }
 
             if (moved) {
@@ -2403,6 +2479,48 @@ async function enemyTurn() {
         }
     }
     if (!attackOccurred && enemies.length > 0) await new Promise(r => setTimeout(r, 50));
+
+    // ターンの最後にレーザー判定
+    await applyLaserDamage();
+}
+
+async function applyLaserDamage() {
+    for (const e of enemies) {
+        if (e.type === 'TURRET' && e.hp > 0 && !e.isFalling) {
+            const dx = [0, 1, 0, -1][e.dir];
+            const dy = [-1, 0, 1, 0][e.dir];
+            let lx = e.x + dx, ly = e.y + dy;
+            while (lx >= 0 && lx < COLS && ly >= 0 && ly < ROWS) {
+                // プレイヤー判定
+                if (player.x === lx && player.y === ly) {
+                    const lDmg = 5 + Math.floor(floorLevel / 5);
+                    player.hp -= lDmg; player.flashUntil = performance.now() + 200;
+                    spawnDamageText(player.x, player.y, lDmg, '#f87171');
+                    addLog("🚨 LASERED! Burn damage! 🚨");
+                    SOUNDS.DAMAGE();
+                    if (player.hp <= 0) { triggerGameOver(); return; }
+                }
+                // 他の敵判定 (味方含む)
+                enemies.forEach(oe => {
+                    if (oe !== e && oe.hp > 0 && !oe._dead) {
+                        const enemyLaserDmg = 50 + floorLevel * 5;
+                        if (oe.x === lx && oe.y === ly) {
+                            oe.hp -= enemyLaserDmg; oe.flashUntil = performance.now() + 100;
+                            spawnDamageText(oe.x, oe.y, enemyLaserDmg, '#f87171');
+                            if (oe.hp <= 0) handleEnemyDeath(oe);
+                        } else if (oe.type === 'SNAKE' && oe.body.some(s => s.x === lx && s.y === ly)) {
+                            oe.hp -= enemyLaserDmg; oe.flashUntil = performance.now() + 100;
+                            spawnDamageText(lx, ly, enemyLaserDmg, '#f87171');
+                            if (oe.hp <= 0) handleEnemyDeath(oe);
+                        }
+                    }
+                });
+                if (isWallAt(lx, ly)) break;
+                // isWallAtは設置ブロックも含むので、ここで遮断される
+                lx += dx; ly += dy;
+            }
+        }
+    }
 }
 
 function canEnemyMove(x, y) {
@@ -2410,6 +2528,10 @@ function canEnemyMove(x, y) {
     if (map[y][x] === SYMBOLS.WALL || map[y][x] === SYMBOLS.DOOR) return false;
     if (tempWalls.some(w => w.x === x && w.y === y)) return false;
     if (player.x === x && player.y === y) return false;
+
+    // レーザーの経路は避ける
+    if (isTileInLaser(x, y)) return false;
+
     return !enemies.some(e => {
         if (e.x === x && e.y === y) return true;
         if (e.type === 'SNAKE') return e.body.some(seg => seg.x === x && seg.y === y);
@@ -2455,6 +2577,22 @@ async function triggerGameOver() {
     SOUNDS.TRAGIC_MELODY();
     transition.active = false;
     isProcessing = false;
+}
+
+function isTileInLaser(x, y) {
+    for (const e of enemies) {
+        if (e.type === 'TURRET' && e.hp > 0 && !e.isFalling) {
+            const dx = [0, 1, 0, -1][e.dir];
+            const dy = [-1, 0, 1, 0][e.dir];
+            let lx = e.x + dx, ly = e.y + dy;
+            while (lx >= 0 && lx < COLS && ly >= 0 && ly < ROWS) {
+                if (lx === x && ly === y) return true;
+                if (isWallAt(lx, ly)) break; // 壁や設置ブロックで遮断
+                lx += dx; ly += dy;
+            }
+        }
+    }
+    return false;
 }
 
 async function startGame(startFloor = 1) {
