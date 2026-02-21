@@ -663,7 +663,8 @@ function initMap() {
 
     // (出口と鍵は関数の最後で確実に配置されるようになりました)
 
-    if (floorLevel % 10 === 0) {
+    // 5階層に1回程度の確率（20%）でランダムにセーブポイントを配置
+    if (Math.random() < 0.2) {
         const midRoom = rooms[Math.floor(rooms.length / 2)];
         if (map[midRoom.cy][midRoom.cx] === SYMBOLS.FLOOR) {
             map[midRoom.cy][midRoom.cx] = SYMBOLS.SAVE;
