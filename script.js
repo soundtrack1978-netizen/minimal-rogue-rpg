@@ -21,7 +21,7 @@ const SYMBOLS = {
     STAIRS: '◯', // 大きな円に変更
     SAVE: 'S',
     KEY: 'k',
-    DOOR: '☒',
+    DOOR: '⊗',
     SWORD: '†',
     ARMOR: '▼',
     POISON: '≈',
@@ -29,6 +29,7 @@ const SYMBOLS = {
     BLOCK_CRACKED: '▧',
     WISP: '※',
     CHARM: '☷', // 内部的な識別値としての文字
+    STEALTH: '☷', // 隠身の魔導書
     SPEED: '▤',
     TOME: '▤', // 描画用の統一文字
     WAND: '/',
@@ -221,14 +222,16 @@ let player = {
     swordCount: 0,
     armorCount: 0,
     hasteTomes: 0,
-    charmTomes: 0, // 新アイテム
-    isSpeeding: false, // フロア中加速中か
-    isExtraTurn: false, // 2回行動の1回目か
-    facing: 'LEFT', // 向き ('LEFT' or 'RIGHT')
+    charmTomes: 0,
+    stealthTomes: 0, // 新アイテム
+    isSpeeding: false,
+    isStealth: false, // 姿を消しているか
+    isExtraTurn: false,
+    facing: 'LEFT',
     flashUntil: 0, offsetX: 0, offsetY: 0,
     totalKills: 0,
     hasWand: false,
-    itemInHand: null // ゼルダ風持ち上げ演出用
+    itemInHand: null
 };
 let enemies = [];
 let wisps = []; // {x, y, dirIndex} - 無敵の障害物
@@ -376,6 +379,7 @@ function initMap() {
     tempWalls = []; // 設置ブロックをリセット
     wisps = []; // ウィルをリセット
     player.hasKey = false;
+    player.isStealth = false; // フロア移動で解除
 
     // --- TUTORIAL STAGES (Floor 1-3) ---
     if (floorLevel === 1) {
@@ -702,6 +706,17 @@ function initMap() {
         }
     }
 
+    // 隠身アイテムの出現 (8.5%の確率)
+    if (Math.random() < 0.085) {
+        const roomsToUse = rooms.slice(1);
+        if (roomsToUse.length > 0) {
+            const stealthRoom = roomsToUse[Math.floor(Math.random() * roomsToUse.length)];
+            if (map[stealthRoom.cy][stealthRoom.cx] === SYMBOLS.FLOOR) {
+                map[stealthRoom.cy][stealthRoom.cx] = SYMBOLS.STEALTH;
+            }
+        }
+    }
+
     // Spawn enemies
     for (let i = 1; i < rooms.length; i++) {
         const room = rooms[i];
@@ -714,7 +729,7 @@ function initMap() {
             if (map[room.cy][room.cx] === SYMBOLS.FLOOR) {
                 enemies.push({
                     type: 'GOLD', x: room.cx, y: room.cy, hp: 4, maxHp: 4,
-                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500 + (floorLevel * 100)
                 });
                 addLog("!! A Golden Shiny Enemy appeared !!");
             }
@@ -1270,10 +1285,14 @@ function draw(now) {
                     ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 1); // 1px下に微調整
                     ctx.font = `${TILE_SIZE - 2}px 'Courier New'`;
                 } else {
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = `bold ${TILE_SIZE * 1.6}px 'Courier New'`;
-                    ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 1); // 1px下に微調整
-                    ctx.font = `${TILE_SIZE - 2}px 'Courier New'`;
+                    // 鍵のかかった穴（DOOR）を強調
+                    ctx.save();
+                    ctx.fillStyle = '#fffbeb'; // ほんのり温かみのある白
+                    ctx.shadowColor = '#fbbf24'; // 金色の光彩
+                    ctx.shadowBlur = 10;
+                    ctx.font = `bold ${TILE_SIZE * 1.05}px 'Courier New'`; // 通常の穴と同じサイズ感に
+                    ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 1);
+                    ctx.restore();
                 }
             } else if (char === SYMBOLS.SAVE) {
                 ctx.fillStyle = '#38bdf8'; ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
@@ -1400,6 +1419,8 @@ function draw(now) {
 
     const pFlashing = now < player.flashUntil;
     if (isPlayerVisible) {
+        ctx.save();
+        if (player.isStealth) ctx.globalAlpha = 0.5; // ステルス中は半透明
         ctx.fillStyle = pFlashing ? '#f87171' : '#fff';
         ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
         const px = player.x * TILE_SIZE + TILE_SIZE / 2 + player.offsetX;
@@ -1414,6 +1435,7 @@ function draw(now) {
         } else {
             ctx.fillText(SYMBOLS.PLAYER, px, py);
         }
+        ctx.restore();
 
         // ゼルダ風アイテム持ち上げ描画
         if (player.itemInHand) {
@@ -1611,6 +1633,10 @@ async function handleAction(dx, dy) {
     }
 
     if (victim) {
+        if (player.isStealth) {
+            player.isStealth = false;
+            addLog("Stealth broken by attack!");
+        }
         player.offsetX = dx * 10; player.offsetY = dy * 10;
         await attackEnemy(victim, nx - player.x, ny - player.y, true);
         player.stamina = Math.max(0, player.stamina - 20);
@@ -1673,6 +1699,10 @@ async function handleAction(dx, dy) {
                     player.charmTomes++; map[ny][nx] = SYMBOLS.FLOOR;
                     SOUNDS.GET_ITEM(); addLog("📜 YOU DECIPHERED: 'Charm Tome'! (Press [C] to recite)");
                     spawnFloatingText(nx, ny, "CHARM TOME IDENTIFIED", "#60a5fa");
+                } else if (nextTile === SYMBOLS.STEALTH) {
+                    player.stealthTomes++; map[ny][nx] = SYMBOLS.FLOOR;
+                    SOUNDS.GET_ITEM(); addLog("📜 YOU DECIPHERED: 'Stealth Tome'! (Inventory to recite)");
+                    spawnFloatingText(nx, ny, "STEALTH TOME IDENTIFIED", "#94a3b8");
                 } else if (nextTile === SYMBOLS.SAVE) {
                     saveGame();
                 }
@@ -1955,8 +1985,9 @@ async function animateLanding() {
 
 async function enemyTurn() {
     let attackOccurred = false;
-    for (const e of enemies) {
-        if (e.hp <= 0) continue;
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        if (!e || e.hp <= 0) continue;
 
         // 毒沼
         if (map[e.y][e.x] === SYMBOLS.POISON) {
@@ -1997,7 +2028,56 @@ async function enemyTurn() {
                     attackOccurred = true;
 
                     if (bestTarget.hp <= 0) handleEnemyDeath(bestTarget);
-                    await new Promise(r => setTimeout(r, 150));
+                    else if (e.type === 'ORC') {
+                        // 味方オークによる突き飛ばし
+                        addLog("Ally Orc's mighty blow sends the enemy flying!");
+                        SOUNDS.FATAL();
+                        let kx = bestTarget.x - e.x, ky = bestTarget.y - e.y;
+                        const isRealWall = (tx, ty) => {
+                            if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) return true;
+                            return (map[ty][tx] === SYMBOLS.WALL || map[ty][tx] === SYMBOLS.DOOR);
+                        };
+                        // 背後が真の壁なら別の方向へ（ブロックは破壊できるので無視）
+                        if (isRealWall(bestTarget.x + kx, bestTarget.y + ky)) {
+                            const cands = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+                            for (const c of cands) {
+                                if (bestTarget.x + c.x === e.x && bestTarget.y + c.y === e.y) continue;
+                                if (!isRealWall(bestTarget.x + c.x, bestTarget.y + c.y)) { kx = c.x; ky = c.y; break; }
+                            }
+                        }
+
+                        let slideSteps = 0;
+                        while (slideSteps < 10) {
+                            const nx = bestTarget.x + kx, ny = bestTarget.y + ky;
+                            if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || map[ny][nx] === SYMBOLS.WALL || map[ny][nx] === SYMBOLS.DOOR) {
+                                SOUNDS.EXPLODE(); break;
+                            }
+                            const bwIdx = tempWalls.findIndex(w => w.x === nx && w.y === ny);
+                            if (bwIdx !== -1) {
+                                tempWalls.splice(bwIdx, 1);
+                                addLog("CRASH! The enemy smashed the block!");
+                                SOUNDS.EXPLODE(); setScreenShake(10, 200);
+                            }
+
+                            if (bestTarget.type === 'SNAKE') {
+                                for (let i = bestTarget.body.length - 1; i > 0; i--) {
+                                    bestTarget.body[i].x = bestTarget.body[i - 1].x;
+                                    bestTarget.body[i].y = bestTarget.body[i - 1].y;
+                                }
+                                bestTarget.body[0].x = nx; bestTarget.body[0].y = ny;
+                            }
+                            bestTarget.x = nx; bestTarget.y = ny;
+                            slideSteps++;
+                            draw();
+                            await new Promise(r => setTimeout(r, 40));
+                            if (map[bestTarget.y][bestTarget.x] === SYMBOLS.STAIRS) {
+                                addLog("The enemy was knocked into the hole!");
+                                bestTarget.hp = 0; break;
+                            }
+                        }
+                        if (bestTarget.hp <= 0) handleEnemyDeath(bestTarget);
+                    }
+                    await new Promise(r => setTimeout(r, 100)); // わずかに短縮
                     e.offsetX = 0; e.offsetY = 0;
                 } else {
                     // 敵に接近
@@ -2040,9 +2120,15 @@ async function enemyTurn() {
             }
             continue;
         }
-        // 通常の敵：プレイヤーまたは近くの味方を狙う
-        const targets = [{ x: player.x, y: player.y, isPlayer: true }];
+        // 通常の敵：プレイヤー（姿が見えれば）または近くの味方を狙う
+        const targets = [];
+        if (!player.isStealth) targets.push({ x: player.x, y: player.y, isPlayer: true });
         enemies.filter(ally => ally.isAlly).forEach(ally => targets.push({ x: ally.x, y: ally.y, isAlly: true, obj: ally }));
+
+        // ターゲットがいない（ステルス中かつ味方がいない）場合は待機
+        if (targets.length === 0) {
+            continue;
+        }
 
         // 最も近いターゲットを探す
         let bestTarget = targets[0]; // デフォルトはプレイヤー
@@ -2076,11 +2162,11 @@ async function enemyTurn() {
                 SOUNDS.SELECT(); // 溜め開始の合図
 
                 // グッと身を引き、小刻みに震えて力を溜める
-                for (let i = 0; i < 12; i++) {
+                for (let i = 0; i < 6; i++) {
                     e.offsetX = baseOX + (Math.random() - 0.5) * 4;
                     e.offsetY = baseOY + (Math.random() - 0.5) * 4;
                     draw();
-                    await new Promise(r => setTimeout(r, 50));
+                    await new Promise(r => setTimeout(r, 40));
                 }
 
                 // 限界まで溜めて赤く光る（フラッシュ演出）
@@ -2121,16 +2207,17 @@ async function enemyTurn() {
                         let kx = player.x - e.x;
                         let ky = player.y - e.y;
 
-                        // 背後に壁がある場合、他の空いている方向（オークがいる方向以外）へ逃がす
-                        const primaryTX = player.x + kx, primaryTY = player.y + ky;
-                        if (primaryTX < 0 || primaryTX >= COLS || primaryTY < 0 || primaryTY >= ROWS || map[primaryTY][primaryTX] === SYMBOLS.WALL || map[primaryTY][primaryTX] === SYMBOLS.DOOR) {
+                        const isRealWall = (tx, ty) => {
+                            if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) return true;
+                            return (map[ty][tx] === SYMBOLS.WALL || map[ty][tx] === SYMBOLS.DOOR);
+                        };
+
+                        // 背後が真の壁がある場合のみ、逃げ道（ブロックがある道も含む）を探す
+                        if (isRealWall(player.x + kx, player.y + ky)) {
                             const candidates = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
                             for (const c of candidates) {
-                                // オークがいるマスに戻るのはNG
                                 if (player.x + c.x === e.x && player.y + c.y === e.y) continue;
-
-                                const targetX = player.x + c.x, targetY = player.y + c.y;
-                                if (targetX >= 0 && targetX < COLS && targetY >= 0 && targetY < ROWS && map[targetY][targetX] !== SYMBOLS.WALL && map[targetY][targetX] !== SYMBOLS.DOOR) {
+                                if (!isRealWall(player.x + c.x, player.y + c.y)) {
                                     kx = c.x; ky = c.y; // 新しい突き飛ばし方向に決定
                                     break;
                                 }
@@ -2142,50 +2229,68 @@ async function enemyTurn() {
                         while (slideSteps < 100) {
                             const nx = player.x + kx;
                             const ny = player.y + ky;
-                            if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && map[ny][nx] !== SYMBOLS.WALL && map[ny][nx] !== SYMBOLS.DOOR) {
-                                player.x = nx;
-                                player.y = ny;
-                                slideSteps++;
 
-                                // 進路上の敵に衝突
-                                const hitEnemies = enemies.filter(targetE => {
-                                    if (targetE === e) return false; // 自分を殴ったオークは除外
-                                    if (targetE.x === nx && targetE.y === ny) return true;
-                                    if (targetE.type === 'SNAKE' && targetE.body.some(b => b.x === nx && b.y === ny)) return true;
-                                    return false;
-                                });
+                            // 真の壁判定
+                            const isRealWall = (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || map[ny][nx] === SYMBOLS.WALL || map[ny][nx] === SYMBOLS.DOOR);
 
-                                for (const targetE of hitEnemies) {
-                                    const colDmg = 8 + Math.floor(floorLevel / 2);
-                                    targetE.hp -= colDmg;
-                                    targetE.flashUntil = performance.now() + 150;
-                                    spawnDamageText(targetE.x, targetE.y, colDmg, '#ef4444');
-                                    SOUNDS.DAMAGE();
-                                    addLog("BUMP! An enemy was hit by your flying body!");
-
-                                    // おしのける (隣接する空きスペースへ移動)
-                                    const adjs = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
-                                    for (const adj of adjs) {
-                                        const ax = targetE.x + adj.dx, ay = targetE.y + adj.dy;
-                                        if (ax >= 0 && ax < COLS && ay >= 0 && ay < ROWS && map[ay][ax] === SYMBOLS.FLOOR && !enemies.some(ee => ee.x === ax && ee.y === ay)) {
-                                            targetE.x = ax; targetE.y = ay;
-                                            break;
-                                        }
-                                    }
-                                    if (targetE.hp <= 0) handleEnemyDeath(targetE);
-                                }
-
-                                // 描画更新とウェイト
-                                draw();
-                                await new Promise(r => setTimeout(r, 40));
-
-                                // 途中で穴に落ちたら終了
-                                if (map[player.y][player.x] === SYMBOLS.STAIRS) break;
-                            } else {
-                                // 壁に激突
+                            if (isRealWall) {
                                 SOUNDS.EXPLODE();
                                 setScreenShake(10, 200);
                                 break;
+                            }
+
+                            // 設置ブロックとの衝突判定：破壊して突き進む
+                            const blockIdx = tempWalls.findIndex(w => w.x === nx && w.y === ny);
+                            if (blockIdx !== -1) {
+                                tempWalls.splice(blockIdx, 1);
+                                addLog("CRASH! Your flying body SMASHED the block and kept going!");
+                                SOUNDS.EXPLODE();
+                                setScreenShake(20, 300);
+                                spawnFloatingText(nx, ny, "SMASH!!", "#ffffff");
+                                // 停止せず継続（通り抜ける）
+                            }
+
+                            player.x = nx;
+                            player.y = ny;
+                            slideSteps++;
+
+                            // 進路上の敵に衝突
+                            const hitEnemies = enemies.filter(targetE => {
+                                if (targetE === e) return false;
+                                if (targetE.x === nx && targetE.y === ny) return true;
+                                if (targetE.type === 'SNAKE' && targetE.body.some(b => b.x === nx && b.y === ny)) return true;
+                                return false;
+                            });
+
+                            for (const targetE of hitEnemies) {
+                                const colDmg = 8 + Math.floor(floorLevel / 2);
+                                targetE.hp -= colDmg;
+                                targetE.flashUntil = performance.now() + 150;
+                                spawnDamageText(targetE.x, targetE.y, colDmg, '#ef4444');
+                                SOUNDS.DAMAGE();
+                                addLog("BUMP! An enemy was hit by your flying body!");
+
+                                const adjs = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
+                                for (const adj of adjs) {
+                                    const ax = targetE.x + adj.dx, ay = targetE.y + adj.dy;
+                                    if (ax >= 0 && ax < COLS && ay >= 0 && ay < ROWS && map[ay][ax] === SYMBOLS.FLOOR && !enemies.some(ee => ee.x === ax && ee.y === ay)) {
+                                        targetE.x = ax; targetE.y = ay;
+                                        break;
+                                    }
+                                }
+                                if (targetE.hp <= 0) handleEnemyDeath(targetE);
+                            }
+
+                            draw();
+                            await new Promise(r => setTimeout(r, 40));
+
+                            // 途中で穴に落ちたら即座に次のフロアへ
+                            if (map[player.y][player.x] === SYMBOLS.STAIRS) {
+                                addLog("You were knocked into the dark hole!");
+                                isPlayerVisible = false;
+                                floorLevel++;
+                                await startFloorTransition();
+                                return;
                             }
                         }
                         await new Promise(r => setTimeout(r, 200));
@@ -2266,6 +2371,7 @@ async function enemyTurn() {
                 let esx = e.x - oldPos.x, esy = e.y - oldPos.y;
                 while (map[e.y][e.x] === SYMBOLS.ICE) {
                     const nx = e.x + esx, ny = e.y + esy;
+                    if (nx === e.x && ny === e.y) break; // 無限ループ回避
                     if (!canEnemyMove(nx, ny)) break;
                     const oldEPos = { x: e.x, y: e.y };
                     e.x = nx; e.y = ny;
@@ -2290,9 +2396,9 @@ async function enemyTurn() {
                     addLog("An enemy fell into the HOLE!");
                 }
                 SOUNDS.FALL_WHIZ();
-                await new Promise(r => setTimeout(r, 1000)); // 1秒間点滅待機
+                await new Promise(r => setTimeout(r, 800)); // 待機を少し短縮
                 handleEnemyDeath(e);
-                break;
+                continue;
             }
         }
     }
@@ -2359,7 +2465,7 @@ async function startGame(startFloor = 1) {
     player = {
         x: 0, y: 0, hp: 30, maxHp: 30, level: startFloor, exp: 0, nextExp: 10,
         stamina: 100, swordCount: 0, armorCount: 0,
-        hasteTomes: 0, charmTomes: 0, isSpeeding: false, isExtraTurn: false,
+        hasteTomes: 0, charmTomes: 0, stealthTomes: 0, isSpeeding: false, isStealth: false, isExtraTurn: false,
         facing: 'LEFT',
         totalKills: 0, offsetX: 0, offsetY: 0, flashUntil: 0,
         hasSword: false, hasKey: false, isDefending: false,
@@ -2432,7 +2538,7 @@ window.addEventListener('keydown', e => {
         if (gameState === 'TITLE') { titleSelection = (titleSelection + 2) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 2; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
-            const items = [player.hasteTomes, player.charmTomes].filter(c => c > 0);
+            const items = [player.hasteTomes, player.charmTomes, player.stealthTomes].filter(c => c > 0);
             const count = Math.max(1, items.length);
             inventorySelection = (inventorySelection + count - 1) % count;
             SOUNDS.SELECT(); return;
@@ -2443,7 +2549,7 @@ window.addEventListener('keydown', e => {
         if (gameState === 'TITLE') { titleSelection = (titleSelection + 1) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 2; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
-            const items = [player.hasteTomes, player.charmTomes].filter(c => c > 0);
+            const items = [player.hasteTomes, player.charmTomes, player.stealthTomes].filter(c => c > 0);
             const count = Math.max(1, items.length);
             inventorySelection = (inventorySelection + 1) % count;
             SOUNDS.SELECT(); return;
@@ -2476,7 +2582,8 @@ window.addEventListener('keydown', e => {
         } else if (gameState === 'INVENTORY') {
             const fullItems = [
                 { id: 'HASTE', count: player.hasteTomes },
-                { id: 'CHARM', count: player.charmTomes }
+                { id: 'CHARM', count: player.charmTomes },
+                { id: 'STEALTH', count: player.stealthTomes }
             ];
             const items = fullItems.filter(it => it.count > 0);
             const selectedItem = items[inventorySelection];
@@ -2494,6 +2601,13 @@ window.addEventListener('keydown', e => {
                         player.charmTomes--;
                         gameState = 'PLAYING';
                     }
+                } else if (selectedItem.id === 'STEALTH' && !player.isStealth) {
+                    player.stealthTomes--;
+                    player.isStealth = true;
+                    SOUNDS.SPEED_UP(); // 代用
+                    addLog("Recited the Stealth Tome! You vanished from sight!");
+                    spawnFloatingText(player.x, player.y, "INVISIBLE!!", "#94a3b8");
+                    gameState = 'PLAYING';
                 }
             }
             return;
