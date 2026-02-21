@@ -1017,7 +1017,12 @@ async function triggerWandEvent() {
     storyMessage = {
         lines: [
             "With this Wand, you can shape the world.",
-            "Hold [Space] and press [Arrow Keys]"
+            "Hold [Space] and press [Arrow Keys]",
+            "to construct a magic block.",
+            "",
+            "この杖は世界を形作る。",
+            "[Space]キーと[矢印キー]で",
+            "魔法のブロックを構築せよ。"
         ],
         alpha: 0
     };
