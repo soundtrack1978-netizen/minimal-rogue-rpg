@@ -819,13 +819,24 @@ function initMap() {
                             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15,
                             dir: bestDir, stunTurns: 0
                         });
-                    } else if (floorLevel >= 10 && enemyRoll < 0.25) {
-                        enemies.push({
-                            type: 'ORC', x: ex, y: ey,
-                            hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
-                            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
-                            stunTurns: 0
-                        });
+                    } else if (floorLevel >= 5 && enemyRoll < 0.25) {
+                        const orcCount = enemies.filter(e => e.type === 'ORC').length;
+                        // 5〜7階の間は、ステージに最大1体まで
+                        if (floorLevel < 8 && orcCount >= 1) {
+                            enemies.push({
+                                type: 'NORMAL', x: ex, y: ey,
+                                hp: 5 + floorLevel, maxHp: 5 + floorLevel,
+                                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
+                                stunTurns: 0
+                            });
+                        } else {
+                            enemies.push({
+                                type: 'ORC', x: ex, y: ey,
+                                hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
+                                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                                stunTurns: 0
+                            });
+                        }
                     } else {
                         enemies.push({
                             type: 'NORMAL', x: ex, y: ey,
