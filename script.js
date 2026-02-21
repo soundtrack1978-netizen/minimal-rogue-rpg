@@ -36,7 +36,8 @@ const SYMBOLS = {
     ORC: 'O',
     ICE: '▢',
     TURRET: 'T',
-    CORE: '❂'
+    CORE: '❂',
+    LAVA: '~'
 };
 
 // サウンドシステム
@@ -418,28 +419,30 @@ function initMap() {
         addLog("THE BOTTOM OF THE WORLD");
         addLog("The Dungeon Core awaits...");
 
-        // 広い空間を作成
-        for (let y = 3; y < ROWS - 3; y++) {
-            for (let x = 3; x < COLS - 3; x++) {
-                map[y][x] = SYMBOLS.FLOOR;
+        // 周囲以外を溶岩にする
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                if (y < 3 || y >= ROWS - 3 || x < 3 || x >= COLS - 3) {
+                    map[y][x] = SYMBOLS.WALL;
+                } else {
+                    map[y][x] = SYMBOLS.LAVA;
+                }
             }
         }
 
-        // 柱の列を追加
-        for (let y = 6; y < ROWS - 6; y += 4) {
-            for (let x = 6; x < COLS - 6; x += 6) {
-                map[y][x] = SYMBOLS.WALL;
-            }
-        }
+        // スタート地点を床にする
+        const startX = Math.floor(COLS / 2);
+        const startY = ROWS - 5;
+        player.x = startX;
+        player.y = startY;
+        map[startY][startX] = SYMBOLS.FLOOR;
 
-        player.x = Math.floor(COLS / 2);
-        player.y = ROWS - 5;
-
-        // ダンジョンコアの配置
+        // ダンジョンコアの配置とその周囲を床にする
         const coreX = Math.floor(COLS / 2);
         const coreY = 6;
         map[coreY][coreX] = SYMBOLS.CORE;
-        dungeonCore = { x: coreX, y: coreY, hp: 5 }; // 5回攻撃で破壊
+        map[coreY + 1][coreX] = SYMBOLS.FLOOR; // 足場
+        dungeonCore = { x: coreX, y: coreY, hp: 5 };
         return;
     }
 
@@ -1543,9 +1546,26 @@ function draw(now) {
                 ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
                 ctx.fillText(SYMBOLS.TOME, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                 ctx.font = `${TILE_SIZE - 2}px 'Courier New'`;
-            } else if (char === SYMBOLS.POISON) {
-                ctx.fillStyle = '#a855f7'; // 紫色を復旧
-                ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+            } else if (char === SYMBOLS.POISON || char === SYMBOLS.LAVA) {
+                if (char === SYMBOLS.POISON) {
+                    ctx.fillStyle = '#a855f7'; // 紫
+                    ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                } else {
+                    // 溶岩の描画 (アニメーション)
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.clip();
+
+                    const swirl = Math.sin(now / 200 + (x + y) * 0.5) * 3;
+                    ctx.fillStyle = '#991b1b'; // ダークレッド
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+                    ctx.fillStyle = '#ef4444'; // 明るい赤
+                    ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
+                    ctx.fillText(char, px + TILE_SIZE / 2 + swirl, py + TILE_SIZE / 2);
+                    ctx.restore();
+                }
             } else if (char === SYMBOLS.ICE) {
                 // タイルをまたいで連続する斜線パターン
                 ctx.save();
@@ -2160,6 +2180,18 @@ async function handleAction(dx, dy) {
         player.flashUntil = performance.now() + 200;
         spawnDamageText(player.x, player.y, 1, '#a855f7');
         SOUNDS.DAMAGE();
+        if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+    }
+
+    // 溶岩ダメージ
+    if (map[player.y][player.x] === SYMBOLS.LAVA) {
+        const damage = 10;
+        player.hp -= damage;
+        player.flashUntil = performance.now() + 300;
+        spawnDamageText(player.x, player.y, damage, '#ef4444');
+        SOUNDS.FATAL();
+        setScreenShake(10, 200);
+        addLog("OUCH! The LAVA is burning!");
         if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
     }
 
