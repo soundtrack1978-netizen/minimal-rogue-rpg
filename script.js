@@ -105,7 +105,28 @@ const SOUNDS = {
     UNLOCK: () => playSound(300, 'square', 0.4),
     SNAKE_MOVE: () => playSound(100, 'sine', 0.1, 0.05),
     GOLD_FLIGHT: () => playSound(900, 'sine', 0.05, 0.05),
-    MOVE: () => playSound(200, 'triangle', 0.05, 0.05),
+    MOVE: () => {
+        // 「ザッ」という砂を踏むような足音 (ノイズベース)
+        const duration = 0.05;
+        const bufferSize = audioCtx.sampleRate * duration;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 800;
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime(0.03, audioCtx.currentTime); // 小さめの音量
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        noise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(audioCtx.destination);
+        noise.start();
+    },
     CRITICAL: () => {
         playSound(800, 'square', 0.05, 0.2);
         setTimeout(() => playSound(1200, 'square', 0.1, 0.2), 50);
@@ -1973,6 +1994,7 @@ async function handleAction(dx, dy) {
                 }
             }
             player.x = nx; player.y = ny;
+            SOUNDS.MOVE();
 
             // 氷のスライド処理
             if (map[player.y][player.x] === SYMBOLS.ICE && (dx !== 0 || dy !== 0)) {
