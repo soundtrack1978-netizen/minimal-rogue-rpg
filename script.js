@@ -714,10 +714,22 @@ function initMap() {
         addLog("❄️ WARNING: This floor is completely FROZEN! (Slippery)");
     }
 
-    // Ensure start point is ALWAYS floor (important for avoiding spawning on pillars or ice)
+    // Ensure start point is ALWAYS floor and safe from lasers
     map[rooms[0].cy][rooms[0].cx] = SYMBOLS.FLOOR;
     player.x = rooms[0].cx;
     player.y = rooms[0].cy;
+
+    // スタート地点がレーザー上なら安全な場所を探す
+    let retry = 0;
+    while (isTileInLaser(player.x, player.y) && retry < 20) {
+        const rx = rooms[0].x + Math.floor(Math.random() * rooms[0].w);
+        const ry = rooms[0].y + Math.floor(Math.random() * rooms[0].h);
+        if (map[ry][rx] === SYMBOLS.FLOOR) {
+            player.x = rx;
+            player.y = ry;
+        }
+        retry++;
+    }
 
     // (出口と鍵は関数の最後で確実に配置されるようになりました)
 
@@ -1842,6 +1854,7 @@ function tryPlaceBlock(dx, dy) {
 }
 
 async function slidePlayer(dx, dy) {
+    let pickedDuringSlide = [];
     while (map[player.y][player.x] === SYMBOLS.ICE) {
         nextSlideAction = null;
         await new Promise(r => setTimeout(r, 60)); // スライド速度
@@ -1866,6 +1879,14 @@ async function slidePlayer(dx, dy) {
             break;
         }
 
+        // 通過タイトルのアイテム回収判定
+        const nextTile = map[ny][nx];
+        const itemSymbols = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.KEY, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.WAND];
+        if (itemSymbols.includes(nextTile)) {
+            pickedDuringSlide.push({ symbol: nextTile, x: nx, y: ny });
+            map[ny][nx] = SYMBOLS.FLOOR; // 即座に消す
+        }
+
         player.x = nx; player.y = ny;
         updateUI();
         draw();
@@ -1887,6 +1908,7 @@ async function slidePlayer(dx, dy) {
             if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
         }
     }
+    if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
 }
 
 // エンディングへの遷移
@@ -3028,7 +3050,7 @@ window.addEventListener('keydown', e => {
     }
     if (e.key === 'ArrowRight' || e.key === 'd') {
         if (['TITLE', 'STATUS'].includes(gameState)) e.preventDefault();
-        if (gameState === 'TITLE' && titleSelection === 2) { testFloor = Math.min(99, testFloor + 1); SOUNDS.SELECT(); return; }
+        if (gameState === 'TITLE' && titleSelection === 2) { testFloor = Math.min(100, testFloor + 1); SOUNDS.SELECT(); return; }
         if (gameState === 'STATUS') { statusPage = (statusPage + 1) % 2; SOUNDS.SELECT(); return; }
     }
     if (e.key === 'Enter') {
