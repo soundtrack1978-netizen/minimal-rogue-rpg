@@ -419,29 +419,24 @@ function initMap() {
         addLog("THE BOTTOM OF THE WORLD");
         addLog("The Dungeon Core awaits...");
 
-        // 周囲以外を溶岩にする
+        // 壁以外の空間をすべて床にする
         for (let y = 0; y < ROWS; y++) {
             for (let x = 0; x < COLS; x++) {
                 if (y < 3 || y >= ROWS - 3 || x < 3 || x >= COLS - 3) {
                     map[y][x] = SYMBOLS.WALL;
                 } else {
-                    map[y][x] = SYMBOLS.LAVA;
+                    map[y][x] = SYMBOLS.FLOOR;
                 }
             }
         }
 
-        // スタート地点を床にする
-        const startX = Math.floor(COLS / 2);
-        const startY = ROWS - 5;
-        player.x = startX;
-        player.y = startY;
-        map[startY][startX] = SYMBOLS.FLOOR;
+        player.x = Math.floor(COLS / 2);
+        player.y = ROWS - 5;
 
-        // ダンジョンコアの配置とその周囲を床にする
+        // ダンジョンコアの配置
         const coreX = Math.floor(COLS / 2);
         const coreY = 6;
         map[coreY][coreX] = SYMBOLS.CORE;
-        map[coreY + 1][coreX] = SYMBOLS.FLOOR; // 足場
         dungeonCore = { x: coreX, y: coreY, hp: 5 };
         return;
     }
@@ -2180,18 +2175,6 @@ async function handleAction(dx, dy) {
         player.flashUntil = performance.now() + 200;
         spawnDamageText(player.x, player.y, 1, '#a855f7');
         SOUNDS.DAMAGE();
-        if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
-    }
-
-    // 溶岩ダメージ
-    if (map[player.y][player.x] === SYMBOLS.LAVA) {
-        const damage = 10;
-        player.hp -= damage;
-        player.flashUntil = performance.now() + 300;
-        spawnDamageText(player.x, player.y, damage, '#ef4444');
-        SOUNDS.FATAL();
-        setScreenShake(10, 200);
-        addLog("OUCH! The LAVA is burning!");
         if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
     }
 
