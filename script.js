@@ -246,8 +246,9 @@ let isPlayerVisible = true;
 let isSpacePressed = false;
 let spaceUsedForBlock = false; // 今回のスペース押下でブロックを置いたかフラグ
 let gameOverAlpha = 0;
-let storyMessage = null; // { lines: [], alpha: 0 }
-let isWandTutorialActive = false; // チュートリアル入力待ちフラグ
+let storyMessage = null; // { lines: [], alpha: 0, showNext: false }
+let isTutorialInputActive = false; // チュートリアル入力待ちフラグ
+let hasShownStage1Tut = false; // 1階スタミナチュートリアル済みフラグ
 
 let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [] };
 let screenShake = { x: 0, y: 0, until: 0 };
@@ -1009,41 +1010,77 @@ async function animateEnemyFall(e) {
     setScreenShake(8, 150);
 }
 
+async function showStoryPages(pages) {
+    for (let i = 0; i < pages.length; i++) {
+        const isLastPage = (i === pages.length - 1);
+        storyMessage = {
+            lines: pages[i],
+            alpha: 0,
+            showNext: !isLastPage
+        };
+        isTutorialInputActive = true;
+
+        // フェードイン
+        for (let a = 0; a <= 1; a += 0.05) {
+            storyMessage.alpha = a;
+            await new Promise(r => setTimeout(r, 20));
+        }
+
+        while (isTutorialInputActive) {
+            await new Promise(r => requestAnimationFrame(r));
+        }
+
+        // フェードアウト
+        for (let a = 1; a >= 0; a -= 0.05) {
+            storyMessage.alpha = a;
+            await new Promise(r => setTimeout(r, 20));
+        }
+        storyMessage = null;
+        if (!isLastPage) await new Promise(r => setTimeout(r, 150));
+    }
+}
+
+async function triggerStage1StaminaTutorial() {
+    isProcessing = true;
+    hasShownStage1Tut = true;
+    await showStoryPages([
+        [
+            "Consecutive attacks cause fatigue,",
+            "reducing your damage output.",
+            "",
+            "連続して攻撃すると",
+            "腕が疲労して攻撃力が下がる。"
+        ],
+        [
+            "It is wise to mix in movement or",
+            "defense between your strikes.",
+            "",
+            "移動や防御をはさみながら",
+            "攻撃したほうが良さそうだ。"
+        ],
+        [
+            "Protect yourself with [Space].",
+            "",
+            "【スペースキー】で防御だ。"
+        ]
+    ]);
+    isProcessing = false;
+}
+
 async function triggerWandEvent() {
     isProcessing = true;
     await new Promise(r => setTimeout(r, 600)); // 杖を取った後の余韻
 
-    // チュートリアルメッセージの表示
-    storyMessage = {
-        lines: [
+    await showStoryPages([
+        [
             "Obtained the Magic Wand.",
             "Use [Space] + [Arrows] to place blocks.",
             "",
             "魔法の杖を拾った。",
             "【スペースキー】＋【矢印キー】でブロックが置けるようだ。"
-        ],
-        alpha: 0
-    };
+        ]
+    ]);
 
-    isWandTutorialActive = true;
-
-    // フェードイン
-    for (let a = 0; a <= 1; a += 0.05) {
-        storyMessage.alpha = a;
-        await new Promise(r => setTimeout(r, 20));
-    }
-
-    // キー入力があるまで待機
-    while (isWandTutorialActive) {
-        await new Promise(r => requestAnimationFrame(r));
-    }
-
-    // フェードアウト
-    for (let a = 1; a >= 0; a -= 0.05) {
-        storyMessage.alpha = a;
-        await new Promise(r => setTimeout(r, 20));
-    }
-    storyMessage = null;
 
     addLog("!!!? Something's falling from above!");
 
@@ -1659,6 +1696,11 @@ function draw(now) {
             ctx.fillText(line, canvas.width / 2, y + i * lineHeight);
         });
 
+        // 「次へ」の記号を表示
+        if (storyMessage.showNext) {
+            ctx.font = "bold 16px 'Courier New'";
+            ctx.fillText("▼", canvas.width / 2, y + lines.length * lineHeight + 10);
+        }
 
         ctx.restore();
     }
@@ -1939,6 +1981,11 @@ async function handleAction(dx, dy) {
         spawnDamageText(player.x, player.y, 1, '#a855f7');
         SOUNDS.DAMAGE();
         if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+    }
+
+    // ステージ1の中央部屋進入チェック
+    if (floorLevel === 1 && !hasShownStage1Tut && player.x >= 18 && player.x <= 25 && player.y >= 10 && player.y <= 14) {
+        await triggerStage1StaminaTutorial();
     }
 
     if (!transition.active) {
@@ -2769,8 +2816,8 @@ async function continueGame() {
 }
 
 window.addEventListener('keydown', e => {
-    if (isWandTutorialActive) {
-        isWandTutorialActive = false;
+    if (isTutorialInputActive) {
+        isTutorialInputActive = false;
         e.preventDefault();
         return;
     }
