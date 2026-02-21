@@ -35,7 +35,8 @@ const SYMBOLS = {
     WAND: '/',
     ORC: 'O',
     ICE: '▢',
-    TURRET: 'T'
+    TURRET: 'T',
+    CORE: '❂'
 };
 
 // サウンドシステム
@@ -270,6 +271,7 @@ let gameOverAlpha = 0;
 let storyMessage = null; // { lines: [], alpha: 0, showNext: false }
 let isTutorialInputActive = false; // チュートリアル入力待ちフラグ
 let hasShownStage1Tut = false; // 1階スタミナチュートリアル済みフラグ
+let dungeonCore = null; // {x, y, hp}
 
 let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [] };
 let screenShake = { x: 0, y: 0, until: 0 };
@@ -378,7 +380,11 @@ function updateUI() {
 
     lvElement.innerText = player.level;
     lvElement.style.color = '#ffffff';
-    floorElement.innerText = `${floorLevel}/100`;
+    if (floorLevel === 100) {
+        floorElement.innerText = "LAST FLOOR";
+    } else {
+        floorElement.innerText = `${floorLevel}/100`;
+    }
 
     // スタイル定義 (記号用)
     const symbolStyle = 'style="color: #38bdf8; font-weight: bold;"';
@@ -405,6 +411,37 @@ function initMap() {
     wisps = []; // ウィルをリセット
     player.hasKey = false;
     player.isStealth = false; // フロア移動で解除
+    dungeonCore = null;
+
+    // --- LAST FLOOR (Floor 100) ---
+    if (floorLevel === 100) {
+        addLog("THE BOTTOM OF THE WORLD");
+        addLog("The Dungeon Core awaits...");
+
+        // 広い空間を作成
+        for (let y = 3; y < ROWS - 3; y++) {
+            for (let x = 3; x < COLS - 3; x++) {
+                map[y][x] = SYMBOLS.FLOOR;
+            }
+        }
+
+        // 柱の列を追加
+        for (let y = 6; y < ROWS - 6; y += 4) {
+            for (let x = 6; x < COLS - 6; x += 6) {
+                map[y][x] = SYMBOLS.WALL;
+            }
+        }
+
+        player.x = Math.floor(COLS / 2);
+        player.y = ROWS - 5;
+
+        // ダンジョンコアの配置
+        const coreX = Math.floor(COLS / 2);
+        const coreY = 6;
+        map[coreY][coreX] = SYMBOLS.CORE;
+        dungeonCore = { x: coreX, y: coreY, hp: 5 }; // 5回攻撃で破壊
+        return;
+    }
 
     // --- TUTORIAL STAGES (Floor 1-3) ---
     if (floorLevel === 1) {
@@ -1451,6 +1488,15 @@ function draw(now) {
                 // 右
                 if (x === COLS - 1 || map[y][x + 1] !== SYMBOLS.WALL) { ctx.moveTo(px + TILE_SIZE - 1, py); ctx.lineTo(px + TILE_SIZE - 1, py + TILE_SIZE); }
                 ctx.stroke();
+            } else if (char === SYMBOLS.CORE) {
+                // ダンジョンコア：光るオーブ
+                ctx.save();
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 15 + Math.sin(now / 100) * 5;
+                ctx.font = `bold ${TILE_SIZE * 1.2}px 'Courier New'`;
+                ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                ctx.restore();
             } else if (char === SYMBOLS.STAIRS || char === SYMBOLS.DOOR) {
                 if (char === SYMBOLS.STAIRS) {
                     ctx.fillStyle = '#fff';
@@ -1737,6 +1783,33 @@ function draw(now) {
 
         ctx.restore();
     }
+
+    // エンディング画面の描画
+    if (gameState === 'ENDING') {
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = "italic 24px 'Courier New'";
+        ctx.fillText("--- THE QUEST IS OVER ---", cx, cy - 60);
+
+        ctx.font = "16px 'Courier New'";
+        ctx.fillText("The core is silenced, the dungeon sleeps.", cx, cy - 20);
+        ctx.fillText("You are the master of these depths.", cx, cy + 10);
+
+        ctx.font = "bold 14px 'Courier New'";
+        ctx.fillStyle = '#60a5fa';
+        ctx.fillText("[ Placeholder Ending ]", cx, cy + 60);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = "12px 'Courier New'";
+        ctx.fillText("Press [Enter] to return to Title", cx, cy + 100);
+    }
 }
 
 function addLog(msg) {
@@ -1816,6 +1889,29 @@ async function slidePlayer(dx, dy) {
     }
 }
 
+// エンディングへの遷移
+async function triggerEnding() {
+    isProcessing = true;
+    gameState = 'ENDING_SEQ';
+    SOUNDS.EXPLODE();
+    setScreenShake(30, 2000);
+
+    // コアが砕ける演出
+    if (dungeonCore) map[dungeonCore.y][dungeonCore.x] = SYMBOLS.FLOOR;
+
+    // ホワイトアウト
+    transition.active = true;
+    transition.mode = 'FADE';
+    transition.text = "THE CORE IS DESTROYED";
+    for (let a = 0; a <= 1; a += 0.05) {
+        transition.alpha = a;
+        await new Promise(r => setTimeout(r, 50));
+    }
+
+    gameState = 'ENDING';
+    isProcessing = false;
+}
+
 async function handleAction(dx, dy) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     if (isProcessing) return;
@@ -1840,6 +1936,32 @@ async function handleAction(dx, dy) {
 
     const nx = player.x + dx; const ny = player.y + dy;
     if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) { isProcessing = false; return; }
+
+    // ダンジョンコアへの攻撃チェック
+    if (map[ny][nx] === SYMBOLS.CORE) {
+        player.offsetX = dx * 10; player.offsetY = dy * 10;
+        spawnSlash(nx, ny);
+        SOUNDS.HIT();
+        addLog("You struck the Dungeon Core!");
+
+        dungeonCore.hp--;
+        if (dungeonCore.hp <= 0) {
+            await triggerEnding();
+            return;
+        }
+
+        player.stamina = Math.max(0, player.stamina - 20);
+        await new Promise(r => setTimeout(r, 200));
+        player.offsetX = 0; player.offsetY = 0;
+
+        if (!transition.active) {
+            turnCount++;
+            updateUI();
+            await enemyTurn();
+            isProcessing = false;
+        }
+        return;
+    }
 
     const victim = enemies.find(e => {
         if (e.x === nx && e.y === ny) return true;
@@ -2869,7 +2991,7 @@ window.addEventListener('keydown', e => {
         return;
     }
 
-    if (gameState === 'GAMEOVER') {
+    if (gameState === 'GAMEOVER' || gameState === 'ENDING') {
         if (e.key === 'Enter' || e.key === ' ') {
             gameState = 'TITLE';
             SOUNDS.SELECT();
