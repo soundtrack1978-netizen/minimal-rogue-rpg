@@ -1016,9 +1016,11 @@ async function triggerWandEvent() {
     // チュートリアルメッセージの表示
     storyMessage = {
         lines: [
-            "魔法の杖を拾った",
-            "【スペースキー】＋【矢印キー】で",
-            "ブロックが置けるようになった"
+            "Obtained the Magic Wand.",
+            "Use [Space] + [Arrows] to place blocks.",
+            "",
+            "魔法の杖を拾った。",
+            "【スペースキー】＋【矢印キー】でブロックが置けるようだ。"
         ],
         alpha: 0
     };
