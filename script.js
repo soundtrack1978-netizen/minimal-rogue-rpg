@@ -419,10 +419,10 @@ function initMap() {
         addLog("THE BOTTOM OF THE WORLD");
         addLog("The Dungeon Core awaits...");
 
-        // 壁以外の空間をすべて床にする
+        // 周囲の壁を薄くし、空間を広げる
         for (let y = 0; y < ROWS; y++) {
             for (let x = 0; x < COLS; x++) {
-                if (y < 3 || y >= ROWS - 3 || x < 3 || x >= COLS - 3) {
+                if (y < 1 || y >= ROWS - 1 || x < 1 || x >= COLS - 1) {
                     map[y][x] = SYMBOLS.WALL;
                 } else {
                     map[y][x] = SYMBOLS.FLOOR;
@@ -1499,13 +1499,27 @@ function draw(now) {
                 if (x === COLS - 1 || map[y][x + 1] !== SYMBOLS.WALL) { ctx.moveTo(px + TILE_SIZE - 1, py); ctx.lineTo(px + TILE_SIZE - 1, py + TILE_SIZE); }
                 ctx.stroke();
             } else if (char === SYMBOLS.CORE) {
-                // ダンジョンコア：光るオーブ
+                // ダンジョンコア：輝くボール（白〜薄黄色に変化）
                 ctx.save();
+                const pulse = Math.sin(now / 300) * 0.5 + 0.5; // 0 to 1
+                const r = 255;
+                const g = 255;
+                const b = 255 - Math.round(pulse * 55); // 255(白) to 200(薄黄色)
+                const color = `rgb(${r},${g},${b})`;
+
+                ctx.fillStyle = color;
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 15 + Math.sin(now / 100) * 8;
+
+                ctx.beginPath();
+                ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, TILE_SIZE * 0.45, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 中心をさらに白く
                 ctx.fillStyle = '#fff';
-                ctx.shadowColor = '#fff';
-                ctx.shadowBlur = 15 + Math.sin(now / 100) * 5;
-                ctx.font = `bold ${TILE_SIZE * 1.2}px 'Courier New'`;
-                ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                ctx.beginPath();
+                ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, TILE_SIZE * 0.2, 0, Math.PI * 2);
+                ctx.fill();
                 ctx.restore();
             } else if (char === SYMBOLS.STAIRS || char === SYMBOLS.DOOR) {
                 if (char === SYMBOLS.STAIRS) {
