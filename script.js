@@ -1017,8 +1017,7 @@ async function triggerWandEvent() {
     storyMessage = {
         lines: [
             "With this Wand, you can shape the world.",
-            "Hold [Space] and press [Arrow Keys]",
-            "to construct a magic block."
+            "Hold [Space] and press [Arrow Keys]"
         ],
         alpha: 0
     };
@@ -1656,11 +1655,6 @@ function draw(now) {
             ctx.fillText(line, canvas.width / 2, y + i * 25);
         });
 
-        // 継続プロンプト
-        if (isWandTutorialActive) {
-            ctx.font = "12px 'Courier New'";
-            ctx.fillText("[ Press any key to continue ]", canvas.width / 2, y + lines.length * 25 + 15);
-        }
 
         ctx.restore();
     }
