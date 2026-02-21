@@ -37,7 +37,8 @@ const SYMBOLS = {
     ICE: '▢',
     TURRET: 'T',
     CORE: '❂',
-    LAVA: '~'
+    LAVA: '~',
+    DRAGON: 'D'
 };
 
 // サウンドシステム
@@ -273,6 +274,7 @@ let storyMessage = null; // { lines: [], alpha: 0, showNext: false }
 let isTutorialInputActive = false; // チュートリアル入力待ちフラグ
 let hasShownStage1Tut = false; // 1階スタミナチュートリアル済みフラグ
 let dungeonCore = null; // {x, y, hp}
+let hasSpawnedDragon = false; // ドラゴンが出現したか
 
 let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [] };
 let screenShake = { x: 0, y: 0, until: 0 };
@@ -413,6 +415,7 @@ function initMap() {
     player.hasKey = false;
     player.isStealth = false; // フロア移動で解除
     dungeonCore = null;
+    hasSpawnedDragon = false;
 
     // --- LAST FLOOR (Floor 100) ---
     if (floorLevel === 100) {
@@ -1075,6 +1078,55 @@ async function processPickedItems(items) {
 async function animateEnemyFall(e) {
     const fallHeight = 400;
     e.offsetY = -fallHeight;
+    const fallDuration = 600;
+    const startTime = performance.now();
+
+    while (performance.now() - startTime < fallDuration) {
+        const elapsed = performance.now() - startTime;
+        const progress = elapsed / fallDuration;
+        e.offsetY = -fallHeight * (1 - progress);
+        draw();
+        await new Promise(r => requestAnimationFrame(r));
+    }
+    e.offsetY = 0;
+}
+
+async function triggerDragonSpawn() {
+    isProcessing = true;
+    hasSpawnedDragon = true;
+
+    addLog("!!!!!");
+    setScreenShake(20, 1000);
+    SOUNDS.EXPLODE();
+
+    await new Promise(r => setTimeout(r, 800));
+
+    const dragonX = Math.floor(COLS / 2);
+    const dragonY = dungeonCore.y + 3;
+
+    const dragon = {
+        type: 'DRAGON', x: dragonX, y: dragonY,
+        hp: 999, maxHp: 999,
+        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5000,
+        isFalling: true
+    };
+    enemies.push(dragon);
+
+    await animateEnemyFall(dragon);
+    dragon.isFalling = false;
+
+    setScreenShake(40, 500);
+    SOUNDS.FATAL();
+
+    addLog("An ancient DRAGON descended from the heavens!");
+    addLog("DRAGON: 'None shall touch the Core...'");
+
+    isProcessing = false;
+}
+
+async function animateEnemyFallOld(e) {
+    const fallHeight = 400;
+    e.offsetY = -fallHeight;
     const fallDuration = 400;
     const startFall = performance.now();
 
@@ -1696,6 +1748,13 @@ function draw(now) {
                 ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
                 ctx.restore();
             }
+        } else if (e.type === 'DRAGON') {
+            if (!e.isAlly) ctx.fillStyle = isFlashing ? '#fff' : '#f59e0b';
+            ctx.font = `bold ${TILE_SIZE * 2.5}px 'Courier New'`;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = 'red';
+            ctx.fillText(SYMBOLS.DRAGON, e.x * TILE_SIZE + TILE_SIZE / 2 + e.offsetX, e.y * TILE_SIZE + TILE_SIZE / 2 + e.offsetY);
+            ctx.shadowBlur = 0;
         } else {
             ctx.fillText(SYMBOLS.ENEMY, e.x * TILE_SIZE + TILE_SIZE / 2 + e.offsetX, e.y * TILE_SIZE + TILE_SIZE / 2 + e.offsetY);
         }
@@ -1837,15 +1896,15 @@ function draw(now) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.font = "italic 24px 'Courier New'";
-        ctx.fillText("--- THE QUEST IS OVER ---", cx, cy - 60);
+        ctx.fillText("--- THE LONG NIGHT HAS ENDED ---", cx, cy - 60);
 
         ctx.font = "16px 'Courier New'";
-        ctx.fillText("The core is silenced, the dungeon sleeps.", cx, cy - 20);
-        ctx.fillText("You are the master of these depths.", cx, cy + 10);
+        ctx.fillText("You returned to the sunlit world.", cx, cy - 20);
+        ctx.fillText("The legend of the rogue survives.", cx, cy + 10);
 
         ctx.font = "bold 14px 'Courier New'";
-        ctx.fillStyle = '#60a5fa';
-        ctx.fillText("[ Placeholder Ending ]", cx, cy + 60);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText("[ Congratulation! You Win! ]", cx, cy + 60);
 
         ctx.fillStyle = '#fff';
         ctx.font = "12px 'Courier New'";
@@ -1944,19 +2003,45 @@ async function slidePlayer(dx, dy) {
 async function triggerEnding() {
     isProcessing = true;
     gameState = 'ENDING_SEQ';
-    SOUNDS.EXPLODE();
-    setScreenShake(30, 2000);
 
-    // コアが砕ける演出
+    // ドラゴンをスタン（崩壊で動揺）
+    enemies.forEach(e => { if (e.type === 'DRAGON') e.stunTurns = 99; });
+
+    SOUNDS.EXPLODE();
+    setScreenShake(50, 4000);
+    addLog("THE CORE IS SHATTERED!");
+    addLog("The dungeon starts to collapse!");
+
     if (dungeonCore) map[dungeonCore.y][dungeonCore.x] = SYMBOLS.FLOOR;
 
-    // ホワイトアウト
+    await new Promise(r => setTimeout(r, 1000));
+
+    const dragon = enemies.find(e => e.type === 'DRAGON');
+    if (dragon) {
+        addLog("The Dragon is swallowed by the abyss!");
+        for (let i = 0; i < 50; i++) {
+            dragon.offsetY += 12;
+            dragon.offsetX += (Math.random() - 0.5) * 10;
+            setScreenShake(10, 50);
+            draw();
+            await new Promise(r => setTimeout(r, 30));
+        }
+        enemies = enemies.filter(e => e !== dragon);
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+
+    addLog("A brilliant light envelopes you...");
+    SOUNDS.HEAL();
+
+    // 上昇演出（ホワイトアウト）
     transition.active = true;
     transition.mode = 'FADE';
-    transition.text = "THE CORE IS DESTROYED";
-    for (let a = 0; a <= 1; a += 0.05) {
+    transition.text = "LEVEL UP TO THE SURFACE...";
+    for (let a = 0; a <= 1; a += 0.01) {
         transition.alpha = a;
-        await new Promise(r => setTimeout(r, 50));
+        draw();
+        await new Promise(r => setTimeout(r, 30));
     }
 
     gameState = 'ENDING';
@@ -1984,6 +2069,16 @@ async function handleAction(dx, dy) {
 
     isProcessing = true;
     player.isDefending = false; // アクション開始時に防御状態を解除
+
+    // ドラゴン出現チェック
+    if (floorLevel === 100 && !hasSpawnedDragon && dungeonCore) {
+        const dist = Math.abs(player.x - dungeonCore.x) + Math.abs(player.y - dungeonCore.y);
+        if (dist <= 8) {
+            await triggerDragonSpawn();
+            isProcessing = false;
+            return;
+        }
+    }
 
     const nx = player.x + dx; const ny = player.y + dy;
     if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) { isProcessing = false; return; }
