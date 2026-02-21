@@ -357,7 +357,7 @@ function updateUI() {
 
     lvElement.innerText = player.level;
     lvElement.style.color = '#ffffff';
-    floorElement.innerText = floorLevel;
+    floorElement.innerText = `${floorLevel}/100`;
 
     // スタイル定義 (記号用)
     const symbolStyle = 'style="color: #38bdf8; font-weight: bold;"';
