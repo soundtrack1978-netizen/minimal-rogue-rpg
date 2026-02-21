@@ -1016,13 +1016,9 @@ async function triggerWandEvent() {
     // チュートリアルメッセージの表示
     storyMessage = {
         lines: [
-            "With this Wand, you can shape the world.",
-            "Hold [Space] and press [Arrow Keys]",
-            "to construct a magic block.",
-            "",
-            "この杖は世界を形作る。",
-            "[Space]キーと[矢印キー]で",
-            "魔法のブロックを構築せよ。"
+            "魔法の杖を拾った",
+            "【スペースキー】＋【矢印キー】で",
+            "ブロックが置けるようになった"
         ],
         alpha: 0
     };
@@ -1647,7 +1643,7 @@ function draw(now) {
         const lines = storyMessage.lines;
         const lineHeight = 20;
         const totalHeight = lines.length * lineHeight;
-        const y = canvas.height - totalHeight - 40;
+        const y = canvas.height - totalHeight - 25;
 
         ctx.save();
         ctx.globalAlpha = storyMessage.alpha;
