@@ -102,3 +102,21 @@ body {
     background-color: #38bdf8;
     transition: width 0.2s ease-out;
 }
+
+@keyframes stamina-glow {
+    0% {
+        box-shadow: 0 0 2px #fbbf24;
+        filter: brightness(1);
+    }
+
+    100% {
+        box-shadow: 0 0 10px #fbbf24, 0 0 15px #fbbf24;
+        filter: brightness(1.5);
+    }
+}
+
+.stamina-glow-active {
+    animation: stamina-glow 0.8s infinite alternate !important;
+    border: 1px solid #fff;
+    box-sizing: border-box;
+}
