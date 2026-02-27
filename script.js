@@ -31,7 +31,7 @@ const SYMBOLS = {
     CHARM: '☷', // 内部的な識別値としての文字
     STEALTH: '☵', // 隠身の魔導書
     SPEED: '▤',
-    TOME: '▤', // 描画用の統一文字
+    TOME: '📖', // 描画用の統一文字（地面の魔導書はすべてこのアイコンで表示）
     WAND: '/',
     SNAKE: 'E',
     ORC: 'O',
@@ -356,6 +356,73 @@ const SOUNDS = {
             }
         };
     },
+    ICE_SLIDE: () => {
+        // ぴゅっという短い滑り音（高音サイン波の下降スウィープ）
+        const t = audioCtx.currentTime;
+        const duration = 0.12;
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(2400, t);
+        osc.frequency.exponentialRampToValueAtTime(1000, t + duration);
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.07, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(t); osc.stop(t + duration);
+    },
+    LAVA_BURN: () => {
+        // 低音で燃え上がる音
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(40, t);
+        osc.frequency.exponentialRampToValueAtTime(150, t + 0.1);
+        osc.frequency.exponentialRampToValueAtTime(50, t + 0.25);
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(120, t);
+        lp.frequency.linearRampToValueAtTime(400, t + 0.1);
+        lp.frequency.linearRampToValueAtTime(150, t + 0.25);
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.35, t);
+        g.gain.linearRampToValueAtTime(0.45, t + 0.08);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+        osc.connect(lp); lp.connect(g); g.connect(audioCtx.destination);
+        osc.start(t); osc.stop(t + 0.25);
+        // 低域ノイズでゴッという空気感
+        const bufferSize = audioCtx.sampleRate * 0.25;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const nf = audioCtx.createBiquadFilter();
+        nf.type = 'lowpass'; nf.frequency.value = 250;
+        const ng = audioCtx.createGain();
+        ng.gain.setValueAtTime(0.15, t);
+        ng.gain.linearRampToValueAtTime(0.2, t + 0.08);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+        noise.connect(nf); nf.connect(ng); ng.connect(audioCtx.destination);
+        noise.start(t); noise.stop(t + 0.25);
+    },
+    ENEMY_ATTACK: () => {
+        // 短い鋭い攻撃音（低めのsquare波）
+        playSound(300, 'square', 0.08, 0.15);
+    },
+    CHARM: () => {
+        // キラキラした上昇音（高音メロディ）
+        playMelody([{ f: 1047, d: 0.08 }, { f: 1319, d: 0.08 }, { f: 1568, d: 0.08 }, { f: 2093, d: 0.15 }]);
+    },
+    FREEZE: () => {
+        // パキッという氷結音（高音短い）
+        playSound(2000, 'square', 0.03, 0.1);
+        setTimeout(() => playSound(2500, 'square', 0.02, 0.05), 30);
+    },
+    IGNITE: () => {
+        // ボッという着火音（低音短い）
+        playSound(80, 'sawtooth', 0.1, 0.2);
+        setTimeout(() => playSound(120, 'sawtooth', 0.05, 0.1), 20);
+    },
     START_INTENSE_RUMBLE: () => {
         const bufferSize = audioCtx.sampleRate * 2;
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -392,7 +459,7 @@ let isIceFloor = false; // 現在のフロアが氷のフロアかどうか
 let testFloor = 1; // テストプレイ用の開始階層
 let map = [];
 let player = {
-    x: 0, y: 0, hp: 20, maxHp: 20, level: 1, exp: 0, nextExp: 10,
+    x: 0, y: 0, hp: 30, maxHp: 30, level: 1, exp: 0, nextExp: 7,
     stamina: 100,
     hasKey: false,
     swordCount: 0,
@@ -419,6 +486,7 @@ let damageTexts = [];
 let attackLines = [];
 let tempWalls = []; // {x, y, hp}
 let isProcessing = false;
+let bufferedInput = null; // { dx, dy } 次のターンの入力バッファ
 let turnCount = 0;
 let isPlayerVisible = true;
 let tomeAuraParams = { active: false, x: 0, y: 0, radius: 0, alpha: 0, particles: [] };
@@ -462,10 +530,10 @@ function loadGame() {
     if (saved) {
         const data = JSON.parse(saved);
         player.level = data.level || 1;
-        player.maxHp = data.maxHp || (10 + (player.level * 10));
+        player.maxHp = data.maxHp || (20 + (player.level * 10));
         player.hp = data.hp !== undefined ? data.hp : player.maxHp;
         player.exp = data.exp || 0;
-        player.nextExp = data.nextExp || (player.level * 10);
+        player.nextExp = data.nextExp || (player.level <= 5 ? player.level * 7 : player.level * 10);
         player.stamina = data.stamina !== undefined ? data.stamina : 100;
         player.hasKey = data.hasKey || false;
         player.hasSword = data.hasSword || false;
@@ -1502,8 +1570,8 @@ function initMap() {
 
     // --- 魔導書の出現設定 ---
 
-    // 1. 各階層に最低1つは魔導書を配置 (3F〜99Fのランダム生成階層)
-    if (floorLevel > 3 && floorLevel < 100 && rooms.length > 1) {
+    // 1. 各階層に最低1つは魔導書を配置 (4F〜99Fのランダム生成階層)
+    if (floorLevel >= 4 && floorLevel < 100 && rooms.length > 1) {
         const possibleTomes = [SYMBOLS.SPEED, SYMBOLS.CHARM];
         if (floorLevel >= 8) possibleTomes.push(SYMBOLS.STEALTH);
         if (floorLevel >= 10) possibleTomes.push(SYMBOLS.ESCAPE);
@@ -1747,12 +1815,12 @@ function initMap() {
                                 flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
                                 dir: bestDir, stunTurns: 0
                             });
-                        } else if (floorLevel >= 5 && enemyRoll < 0.25) {
+                        } else if (floorLevel >= 8 && enemyRoll < 0.25) {
                             const orcCount = enemies.filter(e => e.type === 'ORC').length;
                             if (floorLevel < 8 && orcCount >= 1) {
                                 enemies.push({
                                     type: 'NORMAL', x: ex, y: ey,
-                                    hp: 5 + floorLevel, maxHp: 5 + floorLevel,
+                                    hp: 3 + floorLevel, maxHp: 3 + floorLevel,
                                     flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
                                     stunTurns: 0
                                 });
@@ -1767,7 +1835,7 @@ function initMap() {
                         } else {
                             enemies.push({
                                 type: 'NORMAL', x: ex, y: ey,
-                                hp: 5 + floorLevel, maxHp: 5 + floorLevel,
+                                hp: 3 + floorLevel, maxHp: 3 + floorLevel,
                                 flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
                                 stunTurns: 0
                             });
@@ -1776,7 +1844,7 @@ function initMap() {
                         // 毒沼などの上
                         enemies.push({
                             type: 'NORMAL', x: ex, y: ey,
-                            hp: 5 + floorLevel, maxHp: 5 + floorLevel,
+                            hp: 3 + floorLevel, maxHp: 3 + floorLevel,
                             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
                             stunTurns: 0
                         });
@@ -1913,7 +1981,9 @@ async function startFloorTransition() {
     }
 
     initMap();
-    player.hp = player.maxHp;
+    // 階段降下時にmaxHpの20%を回復（上限はmaxHp）
+    const healAmount = Math.floor(player.maxHp * 0.2);
+    player.hp = Math.min(player.hp + healAmount, player.maxHp);
     player.isSpeeding = false;
     player.isExtraTurn = false;
     player.isShielded = false;
@@ -3023,7 +3093,7 @@ function draw(now) {
 
     ctx.save();
     ctx.shadowBlur = 0;
-    ctx.translate(Math.round(screenShake.x), Math.round(screenShake.y));
+    ctx.translate(Math.round(screenShake.x), Math.round(screenShake.y) + 2);
     ctx.font = `${TILE_SIZE - 2}px 'Courier New'`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -3091,7 +3161,10 @@ function draw(now) {
                     }
                     ctx.restore();
                 } else if ([SYMBOLS.WAND, SYMBOLS.KEY, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE].includes(char)) {
-                    ctx.fillStyle = '#fbbf24'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                    // 魔導書系アイテムはすべて統一アイコンで表示（拾うまで種類不明）
+                    const isTome = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE].includes(char);
+                    const displayChar = isTome ? SYMBOLS.TOME : char;
+                    ctx.fillStyle = '#fbbf24'; ctx.fillText(displayChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                 } else {
                     ctx.fillStyle = '#444'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                 }
@@ -3143,12 +3216,14 @@ function draw(now) {
             } else {
                 let eColor = '#f87171';
                 let eChar = SYMBOLS.ENEMY;
-                if (e.type === 'ORC') { eColor = '#f87171'; eChar = SYMBOLS.ORC; }
+                if (e.type === 'GOLD') { eColor = '#fbbf24'; }
+                else if (e.type === 'ORC') { eColor = '#f87171'; eChar = SYMBOLS.ORC; }
                 else if (e.type === 'SNAKE') { eColor = '#4ade80'; eChar = SYMBOLS.SNAKE; }
                 else if (e.type === 'WISP_ENEMY') { eColor = '#818cf8'; eChar = SYMBOLS.WISP; }
                 else if (e.type === 'TURRET') { eColor = '#ef4444'; eChar = SYMBOLS.TURRET; }
                 else if (e.type === 'BLAZE') { eColor = '#fb923c'; eChar = 'F'; }
                 else if (e.type === 'FROST') { eColor = '#38bdf8'; eChar = 'I'; }
+                if (e.isAlly) eColor = '#60a5fa';
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
             }
@@ -3165,7 +3240,12 @@ function draw(now) {
             const startY = e.y * TILE_SIZE + TILE_SIZE / 2;
             let endX = startX, endY = startY;
             while (lx >= 0 && lx < COLS && ly >= 0 && ly < ROWS) {
-                if (isWallAt(lx, ly)) break;
+                if (isWallAt(lx, ly)) {
+                    // 壁にぶつかるまで描画（壁の手前の端まで伸ばす）
+                    endX = lx * TILE_SIZE + TILE_SIZE / 2 - dx * TILE_SIZE / 2;
+                    endY = ly * TILE_SIZE + TILE_SIZE / 2 - dy * TILE_SIZE / 2;
+                    break;
+                }
                 endX = lx * TILE_SIZE + TILE_SIZE / 2;
                 endY = ly * TILE_SIZE + TILE_SIZE / 2;
                 lx += dx; ly += dy;
@@ -3278,8 +3358,8 @@ function draw(now) {
             } else { totalH += 20; }
         });
 
-        // 以前より少し高い位置（canvas.height - totalH - 150）から開始
-        let currentY = canvas.height - totalH - 150;
+        // ▼マークが画面下端の少し上に来るよう配置
+        let currentY = canvas.height - totalH - 45;
         if (storyMessage.useMiddlePos && dungeonCore) {
             currentY = (player.y * TILE_SIZE + dungeonCore.y * TILE_SIZE) / 2 - totalH / 2;
         }
@@ -3357,6 +3437,7 @@ async function slidePlayer(dx, dy) {
     let pickedDuringSlide = [];
     while (map[player.y][player.x] === SYMBOLS.ICE) {
         nextSlideAction = null;
+        SOUNDS.ICE_SLIDE();
         await new Promise(r => setTimeout(r, 60)); // スライド速度
 
         // 滑り中のアクションがあれば実行（ブロック設置）
@@ -3404,7 +3485,9 @@ async function slidePlayer(dx, dy) {
 
         // 毒沼チェック
         if (map[player.y][player.x] === SYMBOLS.POISON) {
-            player.hp -= 1; player.flashUntil = performance.now() + 200;
+            player.hp -= 1;
+            if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 5);
+            player.flashUntil = performance.now() + 200;
             if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
             spawnDamageText(player.x, player.y, 1, '#a855f7');
             SOUNDS.DAMAGE();
@@ -3584,6 +3667,7 @@ async function handleAction(dx, dy) {
             turnCount++;
             await enemyTurn();
             isProcessing = false;
+            if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
     }
@@ -3640,6 +3724,7 @@ async function handleAction(dx, dy) {
             updateUI();
             await enemyTurn();
             isProcessing = false;
+            if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
     }
@@ -3679,6 +3764,7 @@ async function handleAction(dx, dy) {
             await applyLaserDamage();
             await enemyTurn();
             isProcessing = false;
+            if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
     }
@@ -3699,7 +3785,7 @@ async function handleAction(dx, dy) {
 
         if (isBlockedByWall || isBlockedByTempWall) {
             player.offsetX = dx * 5; player.offsetY = dy * 5;
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 50));
             player.offsetX = 0; player.offsetY = 0;
         } else {
             const nextTile = map[ny][nx];
@@ -3714,14 +3800,14 @@ async function handleAction(dx, dy) {
                     await new Promise(r => setTimeout(r, 200));
                     player.offsetX = 0; player.offsetY = 0;
                     // 以降の処理（player.x = nx など）をスキップして、敵のターンへ
-                    if (!transition.active) { turnCount++; updateUI(); await enemyTurn(); await moveWisps(); isProcessing = false; }
+                    if (!transition.active) { turnCount++; updateUI(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 } else {
                     addLog("The door is locked.");
                     player.offsetX = dx * 5; player.offsetY = dy * 5;
-                    await new Promise(r => setTimeout(r, 100));
+                    await new Promise(r => setTimeout(r, 50));
                     player.offsetX = 0; player.offsetY = 0;
-                    if (!transition.active) { turnCount++; updateUI(); await enemyTurn(); await moveWisps(); isProcessing = false; }
+                    if (!transition.active) { turnCount++; updateUI(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 }
             } else if (nextTile === SYMBOLS.SWORD) {
@@ -3729,6 +3815,7 @@ async function handleAction(dx, dy) {
                 player.x = nx; player.y = ny;
                 updateUI();
                 await animateItemGet(SYMBOLS.SWORD);
+                SOUNDS.GET_ITEM();
                 player.swordCount++;
                 if (!hasShownEquipTut) {
                     await triggerEquipEvent();
@@ -3741,6 +3828,7 @@ async function handleAction(dx, dy) {
                 player.x = nx; player.y = ny;
                 updateUI();
                 await animateItemGet(SYMBOLS.ARMOR);
+                SOUNDS.GET_ITEM();
                 player.armorCount++;
                 if (!hasShownEquipTut) {
                     await triggerEquipEvent();
@@ -3761,6 +3849,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.WAND);
+                    SOUNDS.GET_ITEM();
                     player.hasWand = true;
                     if (floorLevel === 2) {
                         await triggerWandEvent();
@@ -3773,6 +3862,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.KEY);
+                    SOUNDS.GET_ITEM();
                     player.hasKey = true;
                     if (floorLevel === 3) {
                         await triggerKeyLogStory();
@@ -3785,6 +3875,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.TOME);
+                    SOUNDS.GET_ITEM();
                     player.hasteTomes++;
                     if (!hasShownTomeTut) {
                         await triggerTomeEvent();
@@ -3797,6 +3888,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.TOME);
+                    SOUNDS.GET_ITEM();
                     player.charmTomes++;
                     if (!hasShownTomeTut) {
                         await triggerTomeEvent();
@@ -3809,6 +3901,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.TOME);
+                    SOUNDS.GET_ITEM();
                     player.stealthTomes++;
                     if (!hasShownTomeTut) {
                         await triggerTomeEvent();
@@ -3821,6 +3914,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.TOME);
+                    SOUNDS.GET_ITEM();
                     player.explosionTomes++;
                     if (!hasShownTomeTut) {
                         await triggerTomeEvent();
@@ -3833,6 +3927,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.TOME);
+                    SOUNDS.GET_ITEM();
                     player.guardianTomes++;
                     if (!hasShownTomeTut) {
                         await triggerTomeEvent();
@@ -3845,6 +3940,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.TOME);
+                    SOUNDS.GET_ITEM();
                     player.escapeTomes++;
                     if (!hasShownTomeTut) {
                         await triggerTomeEvent();
@@ -3857,6 +3953,7 @@ async function handleAction(dx, dy) {
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.FAIRY);
+                    SOUNDS.GET_ITEM();
                     player.fairyCount++;
                     player.fairyRemainingCharms++;
                     if (!hasShownFairyTut) {
@@ -3896,6 +3993,7 @@ async function handleAction(dx, dy) {
     // 毒沼ダメージ（プレイヤー）
     if (map[player.y][player.x] === SYMBOLS.POISON && !player.isShielded) {
         player.hp -= 1;
+        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 5);
         player.flashUntil = performance.now() + 200;
         if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
         spawnDamageText(player.x, player.y, 1, '#a855f7');
@@ -3909,7 +4007,7 @@ async function handleAction(dx, dy) {
         player.flashUntil = performance.now() + 200;
         if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
         spawnDamageText(player.x, player.y, 5, '#ef4444');
-        SOUNDS.DAMAGE();
+        SOUNDS.LAVA_BURN();
         if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
     }
 
@@ -3938,6 +4036,8 @@ async function handleAction(dx, dy) {
             updateUI();
             addLog("Time accelerates! (Extra Action)");
             isProcessing = false;
+            // バッファされた入力があれば即座に実行
+            if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             return; // 敵のターンを呼ばずに終了（次の入力を待つ）
         }
         player.isExtraTurn = false; // 2回行動終了または通常時
@@ -3949,6 +4049,8 @@ async function handleAction(dx, dy) {
         // enemyTurnの最後で呼ぶのも良いが、ここでは個別の処理を完結させる
         await moveWisps();
         isProcessing = false;
+        // バッファされた入力があれば即座に次のターンを実行
+        if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
     }
 }
 
@@ -4053,6 +4155,14 @@ async function checkWispDamage(w) {
             }
         }
     }
+}
+
+// 敵の落下処理を非同期で実行（ターン進行をブロックしない）
+function scheduleEnemyFall(enemy, msg, killedByPlayer = false) {
+    enemy.isFalling = true;
+    addLog(msg);
+    SOUNDS.FALL_WHIZ();
+    setTimeout(() => { handleEnemyDeath(enemy, killedByPlayer); }, 400);
 }
 
 async function handleEnemyDeath(enemy, killedByPlayer = false) {
@@ -4173,15 +4283,12 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
                 if (!canEnemyMove(sx, sy, enemy)) break;
                 enemy.x = sx;
                 enemy.y = sy;
+                SOUNDS.ICE_SLIDE();
                 draw();
                 await applyLaserDamage(); // 滑っている最中もレーザーダメージを更新
 
                 if (map[enemy.y][enemy.x] === SYMBOLS.STAIRS) {
-                    enemy.isFalling = true;
-                    addLog("The Turret slid into the HOLE!");
-                    SOUNDS.FALL_WHIZ();
-                    await new Promise(r => setTimeout(r, 600));
-                    await handleEnemyDeath(enemy, false); // Environmental/Pitfall
+                    scheduleEnemyFall(enemy, "The Turret slid into the HOLE!");
                     break;
                 }
                 await new Promise(r => setTimeout(r, 40));
@@ -4189,17 +4296,13 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
 
             // 移動後の落下チェック
             if (!enemy._dead && map[enemy.y][enemy.x] === SYMBOLS.STAIRS) {
-                enemy.isFalling = true;
-                addLog("The Turret fell into the HOLE!");
-                SOUNDS.FALL_WHIZ();
-                await new Promise(r => setTimeout(r, 600));
-                await handleEnemyDeath(enemy, false); // Environmental/Pitfall
+                scheduleEnemyFall(enemy, "The Turret fell into the HOLE!");
             }
         }
     }
 
     setTimeout(() => { animateBounce(enemy); }, 50);
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 100));
     player.offsetX = 0; player.offsetY = 0;
     if (enemy.hp <= 0) {
         await handleEnemyDeath(enemy, true); // DIRECT PROTAGONIST ATTACK
@@ -4476,7 +4579,7 @@ async function summonDragonTraps(e, count = 1, stage = 'CIRCLE') {
 
 async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
     let damage = Math.max(1, baseDamage - player.armorCount);
-    if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.7));
+    if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.4));
 
     player.hp -= damage;
     player.flashUntil = performance.now() + 200;
@@ -4580,6 +4683,15 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
 // 敵用の吹き飛ばし処理
 async function knockbackEnemy(e, kx, ky, damage) {
     if (!e || e.hp <= 0) return;
+    if (e.type === 'DRAGON') {
+        // ドラゴンはダメージのみ受け、吹き飛ばされない
+        e.hp -= damage;
+        e.flashUntil = performance.now() + 200;
+        spawnDamageText(e.x, e.y, damage, '#ef4444');
+        SOUNDS.DAMAGE();
+        if (e.hp <= 0) handleEnemyDeath(e);
+        return;
+    }
     e.hp -= damage;
     e.flashUntil = performance.now() + 200;
     spawnDamageText(e.x, e.y, damage, '#ef4444');
@@ -4603,11 +4715,7 @@ async function knockbackEnemy(e, kx, ky, damage) {
 
         // 穴チェック
         if (map[e.y][e.x] === SYMBOLS.STAIRS) {
-            e.isFalling = true;
-            addLog("The enemy was knocked into the HOLE!");
-            SOUNDS.FALL_WHIZ();
-            await new Promise(r => setTimeout(r, 600));
-            handleEnemyDeath(e);
+            scheduleEnemyFall(e, "The enemy was knocked into the HOLE!");
             return;
         }
 
@@ -4640,7 +4748,7 @@ async function enemyTurn() {
                 player.fairyRemainingCharms--;
                 addLog(`✨ The Fairy's blessing charmed an adjacent enemy! (Remaining: ${player.fairyRemainingCharms}) ✨`);
                 spawnFloatingText(adjacentEnemy.x, adjacentEnemy.y, "CHARMED!!", "#f472b6");
-                SOUNDS.GET_WAND();
+                SOUNDS.CHARM();
                 updateUI();
                 if (player.fairyRemainingCharms === 0) {
                     addLog("The Fairy is exhausted for this floor...");
@@ -4668,12 +4776,14 @@ async function enemyTurn() {
                     const damage = (e.type === 'ORC') ? 2 : 10;
                     e.hp -= damage; e.flashUntil = performance.now() + 100;
                     spawnDamageText(e.x, e.y, damage, '#f97316');
+                    SOUNDS.LAVA_BURN();
                     if (e.hp <= 0) { handleEnemyDeath(e); continue; }
                 }
             } else if (tile === SYMBOLS.POISON) {
                 const damage = 1;
                 e.hp -= damage; e.flashUntil = performance.now() + 100;
                 spawnDamageText(e.x, e.y, damage, '#a855f7');
+                SOUNDS.DAMAGE();
                 if (e.hp <= 0) { handleEnemyDeath(e); continue; }
             }
         }
@@ -4765,7 +4875,7 @@ async function enemyTurn() {
                 spawnSlash(player.x, player.y);
 
                 let damage = Math.max(5, 20 - player.armorCount);
-                if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.7));
+                if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.4));
                 player.hp -= damage;
                 player.flashUntil = performance.now() + 200;
                 if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
@@ -4830,11 +4940,12 @@ async function enemyTurn() {
                     allyBestTarget.hp -= dmg;
                     allyBestTarget.flashUntil = performance.now() + 100;
                     spawnDamageText(allyBestTarget.x, allyBestTarget.y, dmg, '#fff');
+                    SOUNDS.HIT();
                     attackOccurred = true;
 
                     if (allyBestTarget.hp <= 0) handleEnemyDeath(allyBestTarget);
-                    else if (e.type === 'ORC') {
-                        // 味方オークによる突き飛ばし
+                    else if (e.type === 'ORC' && allyBestTarget.type !== 'DRAGON') {
+                        // 味方オークによる突き飛ばし（ドラゴンは吹き飛ばせない）
                         addLog("Ally Orc's mighty blow sends the enemy flying!");
                         SOUNDS.FATAL();
                         let kx = allyBestTarget.x - e.x, ky = allyBestTarget.y - e.y;
@@ -4920,17 +5031,14 @@ async function enemyTurn() {
                             if (!canEnemyMove(nx, ny, e)) break;
                             const oldEPos = { x: e.x, y: e.y };
                             e.x = nx; e.y = ny;
+                            SOUNDS.ICE_SLIDE();
                             if (e.type === 'SNAKE') {
                                 for (let i = e.body.length - 1; i > 0; i--) e.body[i] = { ...e.body[i - 1] };
                                 e.body[0] = oldEPos;
                             }
                             draw();
                             if (map[e.y][e.x] === SYMBOLS.STAIRS) {
-                                e.isFalling = true;
-                                addLog("An ally slid into the HOLE!");
-                                SOUNDS.FALL_WHIZ();
-                                await new Promise(r => setTimeout(r, 600));
-                                handleEnemyDeath(e);
+                                scheduleEnemyFall(e, "An ally slid into the HOLE!");
                                 break;
                             }
                             await new Promise(r => setTimeout(r, 40));
@@ -4940,10 +5048,12 @@ async function enemyTurn() {
                             if (e.type === 'FROST') {
                                 if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.LAVA) {
                                     map[e.y][e.x] = SYMBOLS.ICE;
+                                    SOUNDS.FREEZE();
                                 }
                             } else if (e.type === 'BLAZE') {
                                 if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.ICE) {
                                     map[e.y][e.x] = SYMBOLS.LAVA;
+                                    SOUNDS.IGNITE();
                                 }
                             }
                         }
@@ -4991,17 +5101,14 @@ async function enemyTurn() {
                             if (!canEnemyMove(nx, ny, e)) break;
                             const oldEPos = { x: e.x, y: e.y };
                             e.x = nx; e.y = ny;
+                            SOUNDS.ICE_SLIDE();
                             if (e.type === 'SNAKE') {
                                 for (let i = e.body.length - 1; i > 0; i--) e.body[i] = { ...e.body[i - 1] };
                                 e.body[0] = oldEPos;
                             }
                             draw();
                             if (map[e.y][e.x] === SYMBOLS.STAIRS) {
-                                e.isFalling = true;
-                                addLog("An ally slid into the HOLE!");
-                                SOUNDS.FALL_WHIZ();
-                                await new Promise(r => setTimeout(r, 600));
-                                handleEnemyDeath(e);
+                                scheduleEnemyFall(e, "An ally slid into the HOLE!");
                                 break;
                             }
                             await new Promise(r => setTimeout(r, 40));
@@ -5011,10 +5118,12 @@ async function enemyTurn() {
                             if (e.type === 'FROST') {
                                 if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.LAVA) {
                                     map[e.y][e.x] = SYMBOLS.ICE;
+                                    SOUNDS.FREEZE();
                                 }
                             } else if (e.type === 'BLAZE') {
                                 if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.ICE) {
                                     map[e.y][e.x] = SYMBOLS.LAVA;
+                                    SOUNDS.IGNITE();
                                 }
                             }
                         }
@@ -5024,11 +5133,7 @@ async function enemyTurn() {
 
             // 穴チェック
             if (map[e.y][e.x] === SYMBOLS.STAIRS) {
-                e.isFalling = true;
-                addLog("An ally fell into the HOLE!");
-                SOUNDS.FALL_WHIZ();
-                await new Promise(r => setTimeout(r, 600));
-                handleEnemyDeath(e);
+                scheduleEnemyFall(e, "An ally fell into the HOLE!");
             }
             continue;
         }
@@ -5098,6 +5203,7 @@ async function enemyTurn() {
             }
 
             spawnSlash(bestTarget.x, bestTarget.y);
+            SOUNDS.ENEMY_ATTACK();
 
             if (bestTarget.isPlayer) {
 
@@ -5105,7 +5211,7 @@ async function enemyTurn() {
                 let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : 1))) - player.armorCount);
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
-                    else damage = Math.max(1, Math.floor(damage * 0.7));
+                    else damage = Math.max(1, Math.floor(damage * 0.4));
                 }
                 if (damage > 0) {
                     if (e.type === 'ORC') {
@@ -5164,6 +5270,7 @@ async function enemyTurn() {
                     if (!canEnemyMove(nx, ny, e)) break;
                     const oldEPos = { x: e.x, y: e.y };
                     e.x = nx; e.y = ny;
+                    SOUNDS.ICE_SLIDE();
                     if (e.type === 'SNAKE') {
                         for (let i = e.body.length - 1; i > 0; i--) e.body[i] = { ...e.body[i - 1] };
                         e.body[0] = oldEPos;
@@ -5171,11 +5278,7 @@ async function enemyTurn() {
                     draw();
                     // 穴に落ちるなどのチェック
                     if (map[e.y][e.x] === SYMBOLS.STAIRS) {
-                        e.isFalling = true;
-                        addLog("An enemy slid into the HOLE!");
-                        SOUNDS.FALL_WHIZ();
-                        await new Promise(r => setTimeout(r, 600));
-                        handleEnemyDeath(e);
+                        scheduleEnemyFall(e, "An enemy slid into the HOLE!");
                         break;
                     }
                     await new Promise(r => setTimeout(r, 40));
@@ -5185,21 +5288,19 @@ async function enemyTurn() {
                     if (e.type === 'FROST') {
                         if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.LAVA) {
                             map[e.y][e.x] = SYMBOLS.ICE;
+                            SOUNDS.FREEZE();
                         }
                     } else if (e.type === 'BLAZE') {
                         if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.ICE) {
                             map[e.y][e.x] = SYMBOLS.LAVA;
+                            SOUNDS.IGNITE();
                         }
                     }
                 }
 
                 // 通常移動後の穴チェック (氷以外でも)
                 if (!e._dead && map[e.y][e.x] === SYMBOLS.STAIRS) {
-                    e.isFalling = true;
-                    addLog("An enemy fell into the HOLE!");
-                    SOUNDS.FALL_WHIZ();
-                    await new Promise(r => setTimeout(r, 600));
-                    handleEnemyDeath(e);
+                    scheduleEnemyFall(e, "An enemy fell into the HOLE!");
                 }
             }
         }
@@ -5286,10 +5387,12 @@ async function applyLaserDamage() {
                         if (oe.x === lx && oe.y === ly) {
                             oe.hp -= enemyLaserDmg; oe.flashUntil = performance.now() + 100;
                             spawnDamageText(oe.x, oe.y, enemyLaserDmg, '#f87171');
+                            SOUNDS.DAMAGE();
                             if (oe.hp <= 0) handleEnemyDeath(oe);
                         } else if (oe.type === 'SNAKE' && oe.body.some(s => s.x === lx && s.y === ly)) {
                             oe.hp -= enemyLaserDmg; oe.flashUntil = performance.now() + 100;
                             spawnDamageText(lx, ly, enemyLaserDmg, '#f87171');
+                            SOUNDS.DAMAGE();
                             if (oe.hp <= 0) handleEnemyDeath(oe);
                         }
                     }
@@ -5337,7 +5440,7 @@ window.debugWin = triggerEnding; // コンソールからデバッグ可能に
 function gainExp(amount) {
     player.exp += amount;
     if (player.exp >= player.nextExp) {
-        player.level++; player.exp = 0; player.nextExp = player.level * 10;
+        player.level++; player.exp = 0; player.nextExp = player.level <= 5 ? player.level * 7 : player.level * 10;
         player.maxHp += 10; player.hp = player.maxHp;
         SOUNDS.LEVEL_UP(); addLog(`LEVEL UP! (Lv ${player.level})`);
         spawnFloatingText(player.x, player.y, `LV UP! ${player.level}`, "#fbbf24");
@@ -5419,7 +5522,7 @@ async function startGame(startFloor = 1) {
     // レベルに合わせてステータスを補正
     player.maxHp = 20 + (player.level * 10);
     player.hp = player.maxHp;
-    player.nextExp = player.level * 10;
+    player.nextExp = player.level <= 5 ? player.level * 7 : player.level * 10;
 
     // テストプレイ(Floor 100)用のデバッグバフ
     if (startFloor === 100) {
@@ -5698,12 +5801,22 @@ window.addEventListener('keydown', async e => {
                 case 'ArrowRight': case 'd': handleAction(1, 0); break;
             }
         }
-    } else if (gameState === 'PLAYING' && isProcessing && isSpacePressed) {
-        // 滑っている最中のブロック設置予約
-        if (['ArrowUp', 'w'].includes(e.key)) nextSlideAction = { dx: 0, dy: -1 };
-        if (['ArrowDown', 's'].includes(e.key)) nextSlideAction = { dx: 0, dy: 1 };
-        if (['ArrowLeft', 'a'].includes(e.key)) nextSlideAction = { dx: -1, dy: 0 };
-        if (['ArrowRight', 'd'].includes(e.key)) nextSlideAction = { dx: 1, dy: 0 };
+    } else if (gameState === 'PLAYING' && isProcessing) {
+        if (isSpacePressed) {
+            // 滑っている最中のブロック設置予約
+            if (['ArrowUp', 'w'].includes(e.key)) nextSlideAction = { dx: 0, dy: -1 };
+            if (['ArrowDown', 's'].includes(e.key)) nextSlideAction = { dx: 0, dy: 1 };
+            if (['ArrowLeft', 'a'].includes(e.key)) nextSlideAction = { dx: -1, dy: 0 };
+            if (['ArrowRight', 'd'].includes(e.key)) nextSlideAction = { dx: 1, dy: 0 };
+        } else {
+            // 処理中の入力をバッファリング（次のターンへ即座に反映）
+            switch (e.key) {
+                case 'ArrowUp': case 'w': bufferedInput = { dx: 0, dy: -1 }; break;
+                case 'ArrowDown': case 's': bufferedInput = { dx: 0, dy: 1 }; break;
+                case 'ArrowLeft': case 'a': bufferedInput = { dx: -1, dy: 0 }; break;
+                case 'ArrowRight': case 'd': bufferedInput = { dx: 1, dy: 0 }; break;
+            }
+        }
     }
 });
 
@@ -5760,7 +5873,7 @@ async function tryCharmEnemy() {
             charmedCount++;
         });
         addLog(`📜 Charmed ${charmedCount} enemies! They joined you!`);
-        SOUNDS.GET_WAND();
+        SOUNDS.CHARM();
         updateUI();
         return true;
     }
