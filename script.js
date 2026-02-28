@@ -498,6 +498,7 @@ let player = {
     facing: 'LEFT',
     flashUntil: 0, offsetX: 0, offsetY: 0,
     totalKills: 0,
+    hasSword: false,
     hasWand: false,
     itemInHand: null,
     fairyCount: 0,
@@ -529,7 +530,7 @@ let hasShownEquipTut = false; // はじめての装備品（剣・盾）入手�
 let dungeonCore = null; // {x, y, hp}
 let hasSpawnedDragon = false; // ドラゴンが出現したか
 
-let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [] };
+let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [], flashAlpha: 0 };
 let screenShake = { x: 0, y: 0, until: 0 };
 
 // マルチスクリーンマップ（90-99F ゼルダ式画面切替）
@@ -1442,7 +1443,7 @@ function initMap() {
                 ox = Math.floor(Math.random() * (COLS - 6)) + 3;
                 oy = Math.floor(Math.random() * (ROWS - 6)) + 3;
                 tries++;
-            } while (map[oy][ox] !== SYMBOLS.FLOOR || Math.abs(ox - player.x) < 5 || tries < 100);
+            } while ((map[oy][ox] !== SYMBOLS.FLOOR || Math.abs(ox - player.x) < 5) && tries < 100);
 
             enemies.push({
                 type: 'ORC', x: ox, y: oy, hp: 40 + floorLevel * 2, maxHp: 40 + floorLevel * 2,
@@ -2281,22 +2282,12 @@ function initMap() {
                                 dir: bestDir, stunTurns: 0
                             });
                         } else if (floorLevel >= 8 && enemyRoll < 0.25) {
-                            const orcCount = enemies.filter(e => e.type === 'ORC').length;
-                            if (floorLevel < 8 && orcCount >= 1) {
-                                enemies.push({
-                                    type: 'NORMAL', x: ex, y: ey,
-                                    hp: 3 + floorLevel, maxHp: 3 + floorLevel,
-                                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
-                                    stunTurns: 0
-                                });
-                            } else {
-                                enemies.push({
-                                    type: 'ORC', x: ex, y: ey,
-                                    hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
-                                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
-                                    stunTurns: 0
-                                });
-                            }
+                            enemies.push({
+                                type: 'ORC', x: ex, y: ey,
+                                hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
+                                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                                stunTurns: 0
+                            });
                         } else {
                             enemies.push({
                                 type: 'NORMAL', x: ex, y: ey,
@@ -3196,6 +3187,8 @@ function gameLoop(now) {
         drawGameOver();
     } else if (gameState === 'OPENING') {
         drawOpening(now);
+    } else if (gameState === 'ENDING_SEQ') {
+        draw(now);
     } else {
         draw(now);
         damageTexts = damageTexts.filter(d => now - d.startTime < 1000);
@@ -3598,10 +3591,15 @@ function draw(now) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // エンディング演出中（ENDING_SEQ）は、通常のゲーム画面（マップ、敵、プレイヤー）を描画しない
-    if (gameState === 'ENDING_SEQ') {
-        const isWhite = transition.active && (transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT');
-        ctx.fillStyle = isWhite ? '#fff' : '#000';
+    // エンディング演出中（ENDING_SEQ）: transition.activeが有効ならオーバーレイ画面、無効なら通常画面を描画
+    if (gameState === 'ENDING_SEQ' && transition.active) {
+        const isWhite = (transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT');
+        if (isWhite && transition.darken) {
+            const v = Math.round(255 * (1 - transition.darken));
+            ctx.fillStyle = `rgb(${v},${v},${v})`;
+        } else {
+            ctx.fillStyle = isWhite ? '#fff' : transition.mode === 'RED_OUT' ? '#b00' : '#000';
+        }
         ctx.fillRect(-screenShake.x, -screenShake.y, canvas.width, canvas.height);
     } else {
         // --- 通常のゲーム画面描画 ---
@@ -3823,7 +3821,13 @@ function draw(now) {
     // トランジション（ホワイトアウト、暗転、星空、落下）
     if (transition.active) {
         ctx.save(); ctx.globalAlpha = transition.alpha;
-        ctx.fillStyle = (transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT') ? '#fff' : '#000';
+        const isWhiteTr = (transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT');
+        if (isWhiteTr && transition.darken) {
+            const v = Math.round(255 * (1 - transition.darken));
+            ctx.fillStyle = `rgb(${v},${v},${v})`;
+        } else {
+            ctx.fillStyle = isWhiteTr ? '#fff' : transition.mode === 'RED_OUT' ? '#b00' : '#000';
+        }
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         if (transition.mode === 'FALLING') {
@@ -3841,9 +3845,18 @@ function draw(now) {
         // トランジションテキスト（FLOOR 100 等）
         if (transition.text) {
             ctx.fillStyle = transition.textColor || ((transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT') ? '#000' : '#fff');
-            ctx.font = (transition.mode === 'BLACK_OUT' || transition.mode === 'STARS') ? "bold 48px 'Courier New', Courier, monospace" : "bold 32px 'Courier New', Courier, monospace";
+            ctx.font = (transition.mode === 'BLACK_OUT' || transition.mode === 'STARS' || transition.mode === 'RED_OUT') ? "bold 48px 'Courier New', Courier, monospace" : "bold 32px 'Courier New', Courier, monospace";
             ctx.fillText(transition.text, canvas.width / 2, canvas.height / 2);
         }
+        ctx.restore();
+    }
+
+    // エンディング中のフラッシュオーバーレイ
+    if (transition.flashAlpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = transition.flashAlpha;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
     }
 
@@ -3921,7 +3934,7 @@ function tryPlaceBlock(dx, dy) {
 
     if (isPlaceable && !enemies.some(e => {
         if (e.x === bx && e.y === by) return true;
-        if (e.type === 'SNAKE') return e.body.some(seg => seg.x === bx && seg.y === by);
+        if (e.type === 'SNAKE' && e.body) return e.body.some(seg => seg.x === bx && seg.y === by);
         return false;
     }) && !wisps.some(w => w.x === bx && w.y === by) && !tempWalls.some(w => w.x === bx && w.y === by)) {
         tempWalls.push({ x: bx, y: by, hp: 2, type: 'BLOCK' });
@@ -4002,46 +4015,207 @@ async function triggerEnding() {
     isProcessing = true;
     gameState = 'ENDING_SEQ';
     transition.text = ""; // 階層テキストなどを消去
+    attackLines = [];     // 攻撃線を即座にクリア
+    damageTexts = [];     // ダメージテキストもクリア
 
     // ドラゴンをスタン（崩壊で動揺）
     enemies.forEach(e => { if (e.type === 'DRAGON') e.stunTurns = 99; });
 
-    SOUNDS.EXPLODE();
-    setScreenShake(50, 4000);
     addLog("THE CORE IS SHATTERED!");
-    addLog("The dungeon starts to collapse!");
+    player.offsetX = 0; player.offsetY = 0;
 
+    // コアの位置を記録
+    const coreX = dungeonCore ? dungeonCore.x : Math.floor(COLS / 2);
+    const coreY = dungeonCore ? dungeonCore.y : 6;
+    const corePxX = coreX * TILE_SIZE + TILE_SIZE / 2;
+    const corePxY = coreY * TILE_SIZE + TILE_SIZE / 2;
+
+    // ガラスが砕けるような音
+    const playShattering = () => {
+        const duration = 1.5;
+        const bufferSize = audioCtx.sampleRate * duration;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.setValueAtTime(3000, audioCtx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + duration);
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+        noise.start();
+        // 高音のキラキラ成分
+        for (let i = 0; i < 5; i++) {
+            const t = audioCtx.currentTime + i * 0.05;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(2000 + Math.random() * 4000, t);
+            g.gain.setValueAtTime(0.15, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(t); osc.stop(t + 0.3);
+        }
+    };
+
+    // --- フェーズ0a: 破壊の瞬間の長めのフラッシュ (0.5秒白 → 0.3秒戻り) ---
+    SOUNDS.EXPLODE();
+    transition.flashAlpha = 1.0;
+    await new Promise(r => setTimeout(r, 500)); // 0.5秒間 真っ白
+    // フラッシュから戻る（フェードアウト）
+    for (let i = 0; i < 20; i++) {
+        transition.flashAlpha = 1 - i / 20;
+        await new Promise(r => setTimeout(r, 16));
+    }
+    transition.flashAlpha = 0;
+
+    // --- フェーズ0b: 時間停止（コア表示のまま） + 1.5秒 ---
+    draw(performance.now());
+    await new Promise(r => setTimeout(r, 1500));
+
+    // --- フェーズ0b2: 点滅前のフラッシュ（3回） ---
+    for (let f = 0; f < 3; f++) {
+        transition.flashAlpha = 1.0;
+        await new Promise(r => setTimeout(r, 130)); // 白フラッシュ
+        // フェードアウト
+        for (let i = 0; i < 12; i++) {
+            transition.flashAlpha = 1 - i / 12;
+            await new Promise(r => setTimeout(r, 16));
+        }
+        transition.flashAlpha = 0;
+        await new Promise(r => setTimeout(r, 200));
+    }
+
+    // --- フェーズ0c: コアが点滅して消えていく (4秒) ---
+    const blinkStart = performance.now();
+    const blinkDuration = 4000;
+    let coreVisible = true;
+    let blinkInterval = 300;
+    let lastBlinkTime = 0;
+
+    while (performance.now() - blinkStart < blinkDuration) {
+        const elapsed = performance.now() - blinkStart;
+        const p = elapsed / blinkDuration; // 0→1
+
+        // 点滅速度が徐々に速くなる
+        blinkInterval = Math.max(40, 300 - p * 280);
+        if (elapsed - lastBlinkTime > blinkInterval) {
+            coreVisible = !coreVisible;
+            lastBlinkTime = elapsed;
+        }
+
+        // 微かな揺れ（徐々に強く）
+        const shakeI = p * 5;
+        screenShake.x = (Math.random() - 0.5) * shakeI * 2;
+        screenShake.y = (Math.random() - 0.5) * shakeI * 2;
+        screenShake.until = performance.now() + 50;
+
+        // コアの表示/非表示をマップで切り替え
+        if (dungeonCore) {
+            map[dungeonCore.y][dungeonCore.x] = coreVisible ? SYMBOLS.CORE : SYMBOLS.FLOOR;
+        }
+
+        // 通常描画
+        draw(performance.now());
+
+        await new Promise(r => setTimeout(r, 16));
+    }
+
+    // コアを完全に消す
     if (dungeonCore) map[dungeonCore.y][dungeonCore.x] = SYMBOLS.FLOOR;
+    playShattering();
 
-    await new Promise(r => setTimeout(r, 1000));
+    // 消えた直後のフラッシュ
+    transition.flashAlpha = 0.9;
+    for (let fi = 0; fi < 10; fi++) {
+        transition.flashAlpha = 0.9 - fi * 0.09;
+        await new Promise(r => setTimeout(r, 16));
+    }
+    transition.flashAlpha = 0;
+
+    // --- 連続フラッシュ + 地響き + 震動 (5秒) ---
+    // 重低音の開始
+    const deepRumbleOsc1 = audioCtx.createOscillator();
+    const deepRumbleOsc2 = audioCtx.createOscillator();
+    const deepRumbleGain = audioCtx.createGain();
+    deepRumbleOsc1.type = 'sawtooth';
+    deepRumbleOsc1.frequency.value = 25;
+    deepRumbleOsc2.type = 'sine';
+    deepRumbleOsc2.frequency.value = 18;
+    deepRumbleGain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    deepRumbleGain.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 5);
+    deepRumbleOsc1.connect(deepRumbleGain);
+    deepRumbleOsc2.connect(deepRumbleGain);
+    deepRumbleGain.connect(audioCtx.destination);
+    deepRumbleOsc1.start();
+    deepRumbleOsc2.start();
+
+    const flashStart = performance.now();
+    const flashDuration = 5000;
+    let nextFlashTime = 0;
+    let flashAlpha = 0;
+    let whiteOverlay = 0; // 徐々にホワイトアウトへ
+
+    while (performance.now() - flashStart < flashDuration) {
+        const elapsed = performance.now() - flashStart;
+        const p = elapsed / flashDuration;
+
+        // 画面揺れ: 徐々に強く
+        const shakeIntensity = 5 + p * 25;
+        screenShake.x = (Math.random() - 0.5) * shakeIntensity * 2;
+        screenShake.y = (Math.random() - 0.5) * shakeIntensity * 2;
+        screenShake.until = performance.now() + 50;
+
+        // フラッシュ（頻度が徐々に上がる）
+        if (elapsed > nextFlashTime) {
+            flashAlpha = 0.7 + Math.random() * 0.3;
+            nextFlashTime = elapsed + 300 - p * 200 + Math.random() * 200;
+            SOUNDS.RUMBLE();
+            if (Math.random() < 0.3) playShattering();
+        }
+        flashAlpha *= 0.92; // フラッシュ減衰
+
+        // 白いオーバーレイが徐々に濃く
+        whiteOverlay = p * p * 0.8; // 二次曲線で後半急上昇
+
+        // フラッシュ + ホワイトアウトオーバーレイ（draw()経由で描画）
+        transition.flashAlpha = Math.min(1, flashAlpha + whiteOverlay);
+
+        await new Promise(r => setTimeout(r, 16));
+    }
+
+    // 重低音を止める
+    deepRumbleGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+    setTimeout(() => { deepRumbleOsc1.stop(); deepRumbleOsc2.stop(); }, 600);
+
+    // --- フェーズ1: 完全ホワイトアウト ---
+    SOUNDS.EXPLODE();
+    setScreenShake(50, 2000);
+    addLog("The dungeon starts to collapse!");
 
     const dragon = enemies.find(e => e.type === 'DRAGON');
     if (dragon) {
         addLog("The Dragonlord roars in agony...");
-        dragon.alpha = 1.0;
-        for (let i = 0; i < 70; i++) {
-            const ox = (Math.random() - 0.5) * 8;
-            const oy = (Math.random() - 0.5) * 8;
-            dragon.offsetX = ox; dragon.offsetY = oy;
-            dragon.alpha -= 1 / 70;
-            if (i % 4 === 0) SOUNDS.RUMBLE();
-            if (i % 10 === 0) setScreenShake(12, 200);
-            draw(performance.now());
-            await new Promise(r => setTimeout(r, 40));
-        }
-        enemies = enemies.filter(e => e !== dragon);
-        addLog("The ancient DRAGONLORD has vanished...");
     }
 
-    await new Promise(r => setTimeout(r, 500));
-
-    // --- エンディング演出フェーズ ---
-
-    // 1. ホワイトアウト + 激しい地鳴り (5秒間, 粒子なし)
+    // 即座に真っ白に
     transition.active = true;
     transition.mode = 'WHITE_OUT';
     transition.alpha = 1.0;
     transition.particles = [];
+    transition.flashAlpha = 0;
+
+    // ドラゴン消滅（ホワイトアウト中に処理）
+    if (dragon) {
+        enemies = enemies.filter(e => e !== dragon);
+        addLog("The ancient DRAGONLORD has vanished...");
+    }
+
+    await new Promise(r => setTimeout(r, 1500));
 
     const intenseRumble = SOUNDS.START_INTENSE_RUMBLE();
     for (let i = 0; i < 300; i++) { // 約5秒間
@@ -4051,7 +4225,7 @@ async function triggerEnding() {
     }
     if (intenseRumble) intenseRumble.stop(0.5);
 
-    // 2. 静かなドローンへの切り替え & 上昇開始 (20秒 + 5秒)
+    // 静かなドローンへの切り替え & 上昇開始 (20秒 + 5秒)
     transition.mode = 'WHITE_ASCENT';
     transition.accel = 0;
     transition.particles = [];
@@ -4078,26 +4252,40 @@ async function triggerEnding() {
         await new Promise(r => setTimeout(r, 16));
     }
 
-    // さらに5秒間維持
-    for (let i = 0; i < 300; i++) {
+    // さらに5秒間維持（最初2秒は白のまま、最後3秒で徐々に暗くなる）
+    transition.darken = 0;
+    const holdFrames = 125;  // 約2秒間は白のまま
+    const darkenFrames = 188; // 約3秒間で暗転
+    for (let i = 0; i < holdFrames + darkenFrames; i++) {
+        if (i >= holdFrames) {
+            transition.darken = (i - holdFrames) / darkenFrames; // 0→1
+        }
         draw(performance.now());
         await new Promise(r => setTimeout(r, 16));
     }
 
-    // 黒い点が消え去る
+    // 黒い点が消え去る（もう背景は暗い）
     for (let i = 0; i < 60; i++) {
         transition.accel += 0.5;
         draw(performance.now());
         await new Promise(r => setTimeout(r, 16));
     }
     transition.particles = [];
+    transition.darken = 1; // 完全に暗転
 
-    // さらに5秒経過 (真っ白なまま)
-    await new Promise(r => setTimeout(r, 5000));
+    // さらに2秒経過 (真っ暗なまま)
+    await new Promise(r => setTimeout(r, 2000));
 
     // 音が消える
     if (drone) drone.stop(2);
     await new Promise(r => setTimeout(r, 2000)); // 無音の間
+
+    // 暗転完了 → BLACK_OUTモードに切り替え
+    transition.mode = 'BLACK_OUT';
+    transition.darken = 0;
+
+    // 真っ暗な画面を3秒間見せる
+    await new Promise(r => setTimeout(r, 3000));
 
     // 3. テキスト表示 (目覚め - 日英)
     await showStoryPages([
@@ -4138,9 +4326,9 @@ async function triggerEnding() {
 
     // 6. 衝撃音と共に Congratulations!
     SOUNDS.BANG();
-    transition.mode = 'BLACK_OUT';
+    transition.mode = 'RED_OUT';
     transition.text = "Congratulations!";
-    transition.textColor = "#f00"; // 真っ赤な色
+    transition.textColor = "#000"; // 黒文字
     draw(performance.now());
     await new Promise(r => setTimeout(r, 5000));
     transition.text = "";
@@ -4650,29 +4838,6 @@ async function handleAction(dx, dy) {
         }
     }
 
-    // 味方が主人公の隣にいたら反対方向に退避する（タレットは固定）
-    enemies.filter(e => e.isAlly && e.hp > 0 && e.type !== 'TURRET').forEach(e => {
-        const dist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
-        if (dist !== 1) return;
-        // プレイヤーの反対方向に移動を試みる
-        const awayDx = e.x - player.x;
-        const awayDy = e.y - player.y;
-        const moves = [
-            { x: e.x + awayDx, y: e.y + awayDy },           // 真反対
-            { x: e.x + awayDx, y: e.y + (awayDy === 0 ? 1 : 0) },  // 斜め候補1
-            { x: e.x + awayDx, y: e.y + (awayDy === 0 ? -1 : 0) }, // 斜め候補2
-            { x: e.x + (awayDx === 0 ? 1 : 0), y: e.y + awayDy },
-            { x: e.x + (awayDx === 0 ? -1 : 0), y: e.y + awayDy },
-        ];
-        for (const m of moves) {
-            const dToP = Math.abs(m.x - player.x) + Math.abs(m.y - player.y);
-            if (dToP >= 2 && canEnemyMove(m.x, m.y, e)) {
-                e.x = m.x; e.y = m.y;
-                break;
-            }
-        }
-    });
-
     if (!transition.active) {
         if (player.isSpeeding && !player.isExtraTurn) {
             // 加速時は、1回目の行動の後は敵のターンを無視する
@@ -4786,7 +4951,7 @@ async function checkWispDamage(w) {
     // 敵との接触
     for (const e of enemies) {
         let hit = (e.x === w.x && e.y === w.y);
-        if (!hit && e.type === 'SNAKE') {
+        if (!hit && e.type === 'SNAKE' && e.body) {
             hit = e.body.some(b => b.x === w.x && b.y === w.y);
         }
         if (hit) {
@@ -5299,7 +5464,7 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
         player.y = ny;
         slideSteps++;
 
-        const hitEnemies = enemies.filter(targetE => (targetE.x === nx && targetE.y === ny) || (targetE.type === 'SNAKE' && targetE.body.some(b => b.x === nx && b.y === ny)));
+        const hitEnemies = enemies.filter(targetE => (targetE.x === nx && targetE.y === ny) || (targetE.type === 'SNAKE' && targetE.body && targetE.body.some(b => b.x === nx && b.y === ny)));
         for (const targetE of hitEnemies) {
             const colDmg = 10 + Math.floor(floorLevel / 2);
             targetE.hp -= colDmg;
@@ -5654,20 +5819,13 @@ async function enemyTurn() {
                     const dx = allyBestTarget.x - e.x, dy = allyBestTarget.y - e.y;
                     let sx = dx === 0 ? 0 : dx / Math.abs(dx), sy = dy === 0 ? 0 : dy / Math.abs(dy);
 
-                    // 味方が敵に近づくとき、プレイヤーの隣をブロックしないようにする
-                    const canAllyMoveTo = (nx, ny) => {
-                        if (!canEnemyMove(nx, ny, e)) return false;
-                        const distToPlayer = Math.abs(player.x - nx) + Math.abs(player.y - ny);
-                        if (distToPlayer < 2) return false; // プレイヤーとの距離1マス以上を保つ
-                        return true;
-                    };
                     let moved = false;
                     if (Math.abs(dx) > Math.abs(dy)) {
-                        if (canAllyMoveTo(e.x + sx, e.y)) { e.x += sx; moved = true; }
-                        else if (canAllyMoveTo(e.x, e.y + sy)) { e.y += sy; moved = true; }
+                        if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
+                        else if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
                     } else {
-                        if (canAllyMoveTo(e.x, e.y + sy)) { e.y += sy; moved = true; }
-                        else if (canAllyMoveTo(e.x + sx, e.y)) { e.x += sx; moved = true; }
+                        if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
+                        else if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
                     }
                     if (moved) {
                         if (e.type === 'SNAKE') {
@@ -5715,28 +5873,20 @@ async function enemyTurn() {
                     }
                 }
             } else {
-                // 敵がいないのでプレイヤーを追いかける (移動を阻害しないよう距離1マスを保つ)
+                // 敵がいないのでプレイヤーを追いかける
                 const dP = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
-                if (dP > 2) { // 距離が2より大きい場合のみ近づく
+                if (dP > 1) { // 隣接していなければ近づく
                     const oldPos = { x: e.x, y: e.y };
                     const dx = player.x - e.x, dy = player.y - e.y;
                     let sx = dx === 0 ? 0 : dx / Math.abs(dx), sy = dy === 0 ? 0 : dy / Math.abs(dy);
                     let moved = false;
 
-                    const tryMoveAlly = (nx, ny) => {
-                        if (canEnemyMove(nx, ny, e)) {
-                            const newDist = Math.abs(player.x - nx) + Math.abs(player.y - ny);
-                            if (newDist >= 2) { e.x = nx; e.y = ny; return true; }
-                        }
-                        return false;
-                    };
-
                     if (Math.abs(dx) > Math.abs(dy)) {
-                        if (tryMoveAlly(e.x + sx, e.y)) moved = true;
-                        else if (tryMoveAlly(e.x, e.y + sy)) moved = true;
+                        if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
+                        else if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
                     } else {
-                        if (tryMoveAlly(e.x, e.y + sy)) moved = true;
-                        else if (tryMoveAlly(e.x + sx, e.y)) moved = true;
+                        if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
+                        else if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
                     }
 
                     if (moved) {
@@ -6044,7 +6194,7 @@ async function applyLaserDamage() {
                             spawnDamageText(oe.x, oe.y, enemyLaserDmg, '#f87171');
                             SOUNDS.DAMAGE();
                             if (oe.hp <= 0) handleEnemyDeath(oe);
-                        } else if (oe.type === 'SNAKE' && oe.body.some(s => s.x === lx && s.y === ly)) {
+                        } else if (oe.type === 'SNAKE' && oe.body && oe.body.some(s => s.x === lx && s.y === ly)) {
                             oe.hp -= enemyLaserDmg; oe.flashUntil = performance.now() + 100;
                             spawnDamageText(lx, ly, enemyLaserDmg, '#f87171');
                             SOUNDS.DAMAGE();
