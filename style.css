@@ -44,6 +44,11 @@ body {
     gap: 4px;
 }
 
+.equip-row {
+    display: inline-flex;
+    gap: 10px;
+}
+
 #lv {
     color: #fbbf24;
 }
@@ -66,6 +71,8 @@ body {
     border-top: 1px solid var(--border-color);
     padding-top: 10px;
     color: #888;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 20%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%);
 }
 
 .game-log div:last-child {

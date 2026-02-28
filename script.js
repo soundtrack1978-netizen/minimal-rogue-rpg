@@ -11,7 +11,7 @@ const TILE_SIZE = 20;
 const ROWS = 25;
 const COLS = 40;
 canvas.width = COLS * TILE_SIZE;
-canvas.height = ROWS * TILE_SIZE;
+canvas.height = ROWS * TILE_SIZE + 2; // +2: 描画オフセット分を確保
 
 const SYMBOLS = {
     WALL: '█',
@@ -30,8 +30,8 @@ const SYMBOLS = {
     WISP: '※',
     CHARM: '☷', // 内部的な識別値としての文字
     STEALTH: '☵', // 隠身の魔導書
-    SPEED: '▤',
-    TOME: '📖', // 描画用の統一文字（地面の魔導書はすべてこのアイコンで表示）
+    SPEED: '»',
+    TOME: '▤', // 描画用の統一文字（地面の魔導書はすべてこのアイコンで表示）
     WAND: '/',
     SNAKE: 'E',
     ORC: 'O',
@@ -47,7 +47,8 @@ const SYMBOLS = {
     GUARDIAN: '☲',
     ESCAPE: '🌀',
     TREE: '♣',
-    GRASS: ','
+    GRASS: ',',
+    HEAL_TOME: '☤'
 };
 
 // オープニング演出用データ
@@ -149,6 +150,29 @@ const SOUNDS = {
     SELECT: () => playSound(800, 'square', 0.05, 0.05),
     GET_ITEM: () => playMelody([{ f: 880, d: 0.1 }, { f: 1760, d: 0.1 }]),
     UNLOCK: () => playSound(300, 'square', 0.4),
+    SCREEN_TRANSITION: () => {
+        // 「ざっざっざっ」という3連足音
+        const now = audioCtx.currentTime;
+        for (let i = 0; i < 3; i++) {
+            const t = now + i * 0.1;
+            const bufferSize = Math.floor(audioCtx.sampleRate * 0.08);
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let j = 0; j < bufferSize; j++) data[j] = Math.random() * 2 - 1;
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 500 + i * 100;
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.08, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            noise.start(t);
+        }
+    },
     SNAKE_MOVE: () => playSound(100, 'sine', 0.1, 0.05),
     GOLD_FLIGHT: () => playSound(900, 'sine', 0.05, 0.05),
     MOVE: () => {
@@ -466,7 +490,8 @@ let player = {
     armorCount: 0,
     hasteTomes: 0,
     charmTomes: 0,
-    stealthTomes: 0, // 新アイテム
+    stealthTomes: 0,
+    healTomes: 0,
     isSpeeding: false,
     isStealth: false, // 姿を消しているか
     isExtraTurn: false,
@@ -507,6 +532,12 @@ let hasSpawnedDragon = false; // ドラゴンが出現したか
 let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [] };
 let screenShake = { x: 0, y: 0, until: 0 };
 
+// マルチスクリーンマップ（90-99F ゼルダ式画面切替）
+let multiScreenMode = false;
+let screenGrid = null;               // { maps: [4][4], enemies: [4][4], wisps: [4][4] }
+let currentScreen = { x: 0, y: 0 };
+const SCREEN_GRID_SIZE = 2;
+
 function setScreenShake(intensity, duration) {
     const end = performance.now() + duration;
     screenShake.until = end; // 現在の揺れの終了時間を記録
@@ -542,6 +573,7 @@ function loadGame() {
         player.hasteTomes = data.hasteTomes || 0;
         player.charmTomes = data.charmTomes || 0;
         player.stealthTomes = data.stealthTomes || 0;
+        player.healTomes = data.healTomes || 0;
         player.explosionTomes = data.explosionTomes || 0;
         player.guardianTomes = data.guardianTomes || 0;
         player.escapeTomes = data.escapeTomes || 0;
@@ -561,6 +593,11 @@ function loadGame() {
         if (data.enemies) enemies = data.enemies;
         if (data.wisps) wisps = data.wisps;
         if (data.tempWalls) tempWalls = data.tempWalls;
+
+        // マルチスクリーン状態の復元
+        multiScreenMode = data.multiScreenMode || false;
+        if (data.currentScreen) currentScreen = data.currentScreen;
+        if (data.screenGrid) screenGrid = data.screenGrid;
 
         updateUI();
         return true;
@@ -653,6 +690,12 @@ async function tryEscape() {
 }
 
 function saveGame() {
+    // マルチスクリーンモード時、現在の画面データをグリッドに書き戻す
+    if (multiScreenMode && screenGrid) {
+        screenGrid.maps[currentScreen.y][currentScreen.x] = map;
+        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies;
+        screenGrid.wisps[currentScreen.y][currentScreen.x] = wisps;
+    }
     const data = {
         // プレイヤーの基本ステータス
         level: player.level,
@@ -672,6 +715,7 @@ function saveGame() {
         hasteTomes: player.hasteTomes,
         charmTomes: player.charmTomes,
         stealthTomes: player.stealthTomes,
+        healTomes: player.healTomes,
         explosionTomes: player.explosionTomes,
         guardianTomes: player.guardianTomes,
         escapeTomes: player.escapeTomes,
@@ -687,7 +731,12 @@ function saveGame() {
         map: map,
         enemies: enemies,
         wisps: wisps,
-        tempWalls: tempWalls
+        tempWalls: tempWalls,
+
+        // マルチスクリーン情報
+        multiScreenMode: multiScreenMode,
+        currentScreen: multiScreenMode ? currentScreen : null,
+        screenGrid: multiScreenMode ? screenGrid : null
     };
     localStorage.setItem('minimal_rogue_save', JSON.stringify(data));
     SOUNDS.SAVE();
@@ -722,6 +771,8 @@ function updateUI() {
     lvElement.style.color = '#ffffff';
     if (floorLevel === 100) {
         floorElement.innerText = "LAST FLOOR";
+    } else if (multiScreenMode) {
+        floorElement.innerText = `${floorLevel} [${currentScreen.x},${currentScreen.y}]`;
     } else {
         floorElement.innerText = `${floorLevel}/100`;
     }
@@ -765,6 +816,313 @@ function initMap() {
     player.fairyRemainingCharms = player.fairyCount;
     dungeonCore = null;
     hasSpawnedDragon = false;
+    multiScreenMode = false;
+    screenGrid = null;
+
+    // --- MULTI-SCREEN FLOOR (Floor 99) ---
+    if (floorLevel === 99) {
+        multiScreenMode = true;
+        addLog("⚠️ DANGER ZONE: Multi-screen labyrinth!");
+        addLog("Explore 2x2 screens to find the KEY and EXIT.");
+
+        // 4画面分のマップ・敵・ウィスプを格納するグリッドを初期化
+        screenGrid = {
+            maps: Array.from({ length: SCREEN_GRID_SIZE }, () =>
+                Array.from({ length: SCREEN_GRID_SIZE }, () => null)),
+            enemies: Array.from({ length: SCREEN_GRID_SIZE }, () =>
+                Array.from({ length: SCREEN_GRID_SIZE }, () => [])),
+            wisps: Array.from({ length: SCREEN_GRID_SIZE }, () =>
+                Array.from({ length: SCREEN_GRID_SIZE }, () => []))
+        };
+
+        // ヘルパー: 1画面分のダンジョンを既存ロジックとほぼ同じ方法で生成
+        function generateOneScreen(sx, sy) {
+            const sMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
+            const sEnemies = [];
+            const sWisps = [];
+
+            // --- まず全面を床にする（77階方式：壁の外枠だけ残す） ---
+            for (let y = 1; y < ROWS - 1; y++) {
+                for (let x = 1; x < COLS - 1; x++) {
+                    sMap[y][x] = SYMBOLS.FLOOR;
+                }
+            }
+
+            // --- 部屋の生成（迷路の中の開けた空間として） ---
+            const roomCount = Math.floor(Math.random() * 3) + 5;
+            const rooms = [];
+            for (let i = 0; i < roomCount; i++) {
+                const w = Math.floor(Math.random() * 5) + 4;
+                const h = Math.floor(Math.random() * 3) + 4;
+                const rx = Math.floor(Math.random() * (COLS - w - 4)) + 2;
+                const ry = Math.floor(Math.random() * (ROWS - h - 4)) + 2;
+                rooms.push({ x: rx, y: ry, w, h, cx: Math.floor(rx + w / 2), cy: Math.floor(ry + h / 2) });
+            }
+
+            // --- 棒倒し法で迷路を生成（77階と同じロジック） ---
+            for (let y = 3; y < ROWS - 3; y += 2) {
+                for (let x = 3; x < COLS - 3; x += 2) {
+                    // 部屋の内部には壁を立てない
+                    const inAnyRoom = rooms.some(r =>
+                        x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+                    );
+                    if (inAnyRoom) continue;
+
+                    // 画面遷移通路の周辺には壁を立てない
+                    // 横通路(y=10〜14)の端、縦通路(x=17〜22)の端
+                    const nearHPassage = (y >= 10 && y <= 14) && (x <= 4 || x >= COLS - 5);
+                    const nearVPassage = (x >= 17 && x <= 22) && (y <= 4 || y >= ROWS - 5);
+                    if (nearHPassage || nearVPassage) continue;
+
+                    // 15%の確率でスキップ（密度を少し下げる）
+                    if (Math.random() < 0.15) continue;
+
+                    // 柱を立てる
+                    sMap[y][x] = SYMBOLS.WALL;
+                    // 棒を倒す
+                    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                    const d = dirs[Math.floor(Math.random() * (y === 3 ? 4 : 3))];
+                    const ny = y + d[1], nx = x + d[0];
+                    if (ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
+                        // 倒す先も部屋内なら避ける
+                        const destInRoom = rooms.some(r =>
+                            nx >= r.x && nx < r.x + r.w && ny >= r.y && ny < r.y + r.h
+                        );
+                        if (!destInRoom) {
+                            sMap[ny][nx] = SYMBOLS.WALL;
+                        }
+                    }
+                }
+            }
+
+            // --- 地形の生成（毒沼・氷・溶岩） ---
+            // 毒沼 (15%)
+            if (Math.random() < 0.15) {
+                const startRoom = rooms[Math.floor(Math.random() * rooms.length)];
+                let px = startRoom.cx, py = startRoom.cy;
+                for (let i = 0; i < 20; i++) {
+                    if (py >= 1 && py < ROWS - 1 && px >= 1 && px < COLS - 1) {
+                        if (sMap[py][px] === SYMBOLS.FLOOR) sMap[py][px] = SYMBOLS.POISON;
+                    }
+                    px += Math.floor(Math.random() * 3) - 1;
+                    py += Math.floor(Math.random() * 3) - 1;
+                }
+            }
+            // 氷 (50%)
+            if (Math.random() < 0.50) {
+                const numPatches = Math.floor(Math.random() * 2) + 2;
+                for (let p = 0; p < numPatches; p++) {
+                    const startRoom = rooms[Math.floor(Math.random() * rooms.length)];
+                    let px = startRoom.cx, py = startRoom.cy;
+                    for (let i = 0; i < 150; i++) {
+                        if (py >= 1 && py < ROWS - 1 && px >= 1 && px < COLS - 1) {
+                            if (sMap[py][px] === SYMBOLS.FLOOR) sMap[py][px] = SYMBOLS.ICE;
+                        }
+                        px += Math.floor(Math.random() * 3) - 1;
+                        py += Math.floor(Math.random() * 3) - 1;
+                    }
+                }
+            }
+            // 溶岩 (80%)
+            if (Math.random() < 0.80) {
+                const numLava = Math.floor(Math.random() * 3) + 2;
+                for (let s = 0; s < numLava; s++) {
+                    const startRoom = rooms[Math.floor(Math.random() * rooms.length)];
+                    let px = startRoom.cx, py = startRoom.cy;
+                    for (let i = 0; i < 60; i++) {
+                        if (py >= 1 && py < ROWS - 1 && px >= 1 && px < COLS - 1) {
+                            if (sMap[py][px] === SYMBOLS.FLOOR || sMap[py][px] === SYMBOLS.ICE) {
+                                sMap[py][px] = SYMBOLS.LAVA;
+                            }
+                        }
+                        px += Math.floor(Math.random() * 3) - 1;
+                        py += Math.floor(Math.random() * 3) - 1;
+                    }
+                }
+            }
+
+            // --- 隣接画面への通路を開ける（外壁に穴を開ける） ---
+            // 右方向 (x=COLS-1, y=11〜13)
+            if (sx < SCREEN_GRID_SIZE - 1) {
+                for (let py = 10; py <= 14; py++) {
+                    sMap[py][COLS - 1] = SYMBOLS.FLOOR;
+                    sMap[py][COLS - 2] = SYMBOLS.FLOOR;
+                }
+            }
+            // 左方向 (x=0, y=11〜13)
+            if (sx > 0) {
+                for (let py = 10; py <= 14; py++) {
+                    sMap[py][0] = SYMBOLS.FLOOR;
+                    sMap[py][1] = SYMBOLS.FLOOR;
+                }
+            }
+            // 下方向 (y=ROWS-1, x=18〜21)
+            if (sy < SCREEN_GRID_SIZE - 1) {
+                for (let px = 17; px <= 22; px++) {
+                    sMap[ROWS - 1][px] = SYMBOLS.FLOOR;
+                    sMap[ROWS - 2][px] = SYMBOLS.FLOOR;
+                }
+            }
+            // 上方向 (y=0, x=18〜21)
+            if (sy > 0) {
+                for (let px = 17; px <= 22; px++) {
+                    sMap[0][px] = SYMBOLS.FLOOR;
+                    sMap[1][px] = SYMBOLS.FLOOR;
+                }
+            }
+
+            // --- 敵の配置（通常階と同じ敵種抽選ロジック） ---
+            const findWalkableInScreen = (maxTries = 30) => {
+                for (let t = 0; t < maxTries; t++) {
+                    const tx = Math.floor(Math.random() * (COLS - 4)) + 2;
+                    const ty = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                    const tile = sMap[ty][tx];
+                    if (tile === SYMBOLS.FLOOR || tile === SYMBOLS.ICE || tile === SYMBOLS.LAVA || tile === SYMBOLS.POISON) {
+                        if (!sEnemies.some(e => e.x === tx && e.y === ty)) return { x: tx, y: ty, tile };
+                    }
+                }
+                return null;
+            };
+
+            for (let i = 1; i < rooms.length; i++) {
+                if (Math.random() < 0.2) continue; // 一部の部屋はスキップ
+                const numEnemies = Math.floor(Math.random() * 2) + 1;
+                for (let j = 0; j < numEnemies; j++) {
+                    const pos = findWalkableInScreen();
+                    if (!pos) continue;
+                    const { x: ex, y: ey, tile: tileAtPos } = pos;
+
+                    if (tileAtPos === SYMBOLS.ICE) {
+                        sEnemies.push({ type: 'FROST', x: ex, y: ey, hp: 15 + floorLevel * 2, maxHp: 15 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15, stunTurns: 0 });
+                    } else if (tileAtPos === SYMBOLS.LAVA) {
+                        sEnemies.push({ type: 'BLAZE', x: ex, y: ey, hp: 15 + floorLevel * 2, maxHp: 15 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15, stunTurns: 0 });
+                    } else {
+                        const enemyRoll = Math.random();
+                        if (enemyRoll < 0.12) {
+                            sEnemies.push({ type: 'TURRET', x: ex, y: ey, dir: Math.floor(Math.random() * 4), hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
+                        } else if (enemyRoll < 0.25) {
+                            sEnemies.push({ type: 'ORC', x: ex, y: ey, hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
+                        } else {
+                            sEnemies.push({ type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 });
+                        }
+                    }
+                }
+            }
+
+            // --- ウィスプの配置 ---
+            const numWisps = Math.min(8, Math.max(1, Math.floor(floorLevel / 6)));
+            for (let i = 0; i < numWisps; i++) {
+                for (let retry = 0; retry < 200; retry++) {
+                    const rx = Math.floor(Math.random() * (COLS - 2)) + 1;
+                    const ry = Math.floor(Math.random() * (ROWS - 2)) + 1;
+                    const tile = sMap[ry][rx];
+                    if (tile === SYMBOLS.FLOOR || tile === SYMBOLS.POISON) {
+                        sWisps.push({ x: rx, y: ry, dir: Math.floor(Math.random() * 4), mode: 'STRAIGHT' });
+                        break;
+                    }
+                }
+            }
+
+            // --- アイテムの配置（通常階と同じ種類） ---
+            // 魔導書を1つ配置
+            const possibleTomes = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.ESCAPE, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.HEAL_TOME];
+            const chosenTome = possibleTomes[Math.floor(Math.random() * possibleTomes.length)];
+            for (let tries = 0; tries < 50; tries++) {
+                const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
+                const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (sMap[iy][ix] === SYMBOLS.FLOOR) { sMap[iy][ix] = chosenTome; break; }
+            }
+            // 剣または防具をランダム配置
+            if (Math.random() < 0.3) {
+                const item = Math.random() < 0.5 ? SYMBOLS.SWORD : SYMBOLS.ARMOR;
+                for (let tries = 0; tries < 50; tries++) {
+                    const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
+                    const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                    if (sMap[iy][ix] === SYMBOLS.FLOOR) { sMap[iy][ix] = item; break; }
+                }
+            }
+
+            // 1部屋あたりの魔導書を最大2個に制限
+            const tomeSyms = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE];
+            rooms.forEach(room => {
+                let tomeCount = 0;
+                for (let y = room.y; y < room.y + room.h; y++) {
+                    for (let x = room.x; x < room.x + room.w; x++) {
+                        if (tomeSyms.includes(sMap[y][x])) {
+                            tomeCount++;
+                            if (tomeCount > 2) sMap[y][x] = SYMBOLS.FLOOR;
+                        }
+                    }
+                }
+            });
+
+            return { sMap, sEnemies, sWisps, rooms };
+        }
+
+        // 各画面を生成
+        const allRooms = {}; // 各画面の部屋情報を保持
+        for (let sy = 0; sy < SCREEN_GRID_SIZE; sy++) {
+            for (let sx = 0; sx < SCREEN_GRID_SIZE; sx++) {
+                const result = generateOneScreen(sx, sy);
+                screenGrid.maps[sy][sx] = result.sMap;
+                screenGrid.enemies[sy][sx] = result.sEnemies;
+                screenGrid.wisps[sy][sx] = result.sWisps;
+                allRooms[`${sx},${sy}`] = result.rooms;
+            }
+        }
+
+        // プレイヤーのスタート位置: 画面(0,0)の最初の部屋
+        const startRooms = allRooms['0,0'];
+        player.x = startRooms[0].cx;
+        player.y = startRooms[0].cy;
+        screenGrid.maps[0][0][player.y][player.x] = SYMBOLS.FLOOR;
+        // スタート地点付近の敵を除去
+        screenGrid.enemies[0][0] = screenGrid.enemies[0][0].filter(
+            e => !(Math.abs(e.x - player.x) <= 3 && Math.abs(e.y - player.y) <= 3)
+        );
+
+        // カギ: 対角の画面(1,1)に配置
+        const keyMap = screenGrid.maps[1][1];
+        for (let y = ROWS - 3; y >= 2; y--) {
+            let placed = false;
+            for (let x = COLS - 3; x >= 2; x--) {
+                if (keyMap[y][x] === SYMBOLS.FLOOR) { keyMap[y][x] = SYMBOLS.KEY; placed = true; break; }
+            }
+            if (placed) break;
+        }
+
+        // 階段(DOOR): 画面(1,0)に配置（カギとは別の画面）
+        const doorMap = screenGrid.maps[0][1];
+        const doorRooms = allRooms['1,0'];
+        const doorRoom = doorRooms[doorRooms.length - 1];
+        // 出口周辺を安全な床にしてからDOOR配置
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const ty = doorRoom.cy + dy, tx = doorRoom.cx + dx;
+                if (ty >= 1 && ty < ROWS - 1 && tx >= 1 && tx < COLS - 1) {
+                    const t = doorMap[ty][tx];
+                    if (t === SYMBOLS.ICE || t === SYMBOLS.POISON || t === SYMBOLS.LAVA || t === SYMBOLS.WALL) doorMap[ty][tx] = SYMBOLS.FLOOR;
+                }
+            }
+        }
+        doorMap[doorRoom.cy][doorRoom.cx] = SYMBOLS.DOOR;
+
+        // セーブポイント: 画面(0,1)に配置
+        const saveMap = screenGrid.maps[1][0];
+        for (let tries = 0; tries < 50; tries++) {
+            const sx2 = Math.floor(Math.random() * (COLS - 4)) + 2;
+            const sy2 = Math.floor(Math.random() * (ROWS - 4)) + 2;
+            if (saveMap[sy2][sx2] === SYMBOLS.FLOOR) { saveMap[sy2][sx2] = SYMBOLS.SAVE; break; }
+        }
+
+        // 現在の画面をグローバルにロード
+        currentScreen = { x: 0, y: 0 };
+        map = screenGrid.maps[0][0];
+        enemies = screenGrid.enemies[0][0];
+        wisps = screenGrid.wisps[0][0];
+
+        return;
+    }
 
     // --- LAST FLOOR (Floor 100) ---
     if (floorLevel === 100) {
@@ -1577,6 +1935,7 @@ function initMap() {
         if (floorLevel >= 10) possibleTomes.push(SYMBOLS.ESCAPE);
         if (floorLevel >= 12) possibleTomes.push(SYMBOLS.EXPLOSION);
         if (floorLevel >= 15) possibleTomes.push(SYMBOLS.GUARDIAN);
+        if (floorLevel >= 20) possibleTomes.push(SYMBOLS.HEAL_TOME);
 
         const chosenTome = possibleTomes[Math.floor(Math.random() * possibleTomes.length)];
         // スタート地点以外の部屋から選ぶ
@@ -1706,12 +2065,56 @@ function initMap() {
         addLog("This floor is locked. Find the KEY (k)!");
     }
 
+    // --- 序盤ボーナス: 4-10Fにはアイテムを確定配置（チュートリアル補助） ---
+    if (floorLevel >= 4 && floorLevel <= 10 && rooms.length > 1) {
+        const bonusItems = [];
+        // 毎階: 回復の魔導書
+        bonusItems.push(SYMBOLS.HEAL_TOME);
+        // 剣または防具を1つ
+        bonusItems.push(Math.random() < 0.5 ? SYMBOLS.SWORD : SYMBOLS.ARMOR);
+        // 階に応じて追加アイテム
+        if (floorLevel >= 5) bonusItems.push(SYMBOLS.SPEED); // 加速
+        if (floorLevel >= 6) bonusItems.push(SYMBOLS.EXPLOSION); // 爆発
+        if (floorLevel >= 7) bonusItems.push(SYMBOLS.CHARM); // 魅了
+        if (floorLevel >= 8) bonusItems.push(SYMBOLS.STEALTH); // 隠身
+        if (floorLevel >= 9) bonusItems.push(SYMBOLS.GUARDIAN); // 守護
+
+        const availableRooms = rooms.slice(1);
+        const tomeSymsBonus = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE];
+        // 部屋ごとの魔導書配置数を記録
+        const roomTomeCounts = new Map();
+        bonusItems.forEach(item => {
+            const isTomeItem = tomeSymsBonus.includes(item);
+            // 魔導書なら、まだ2個未満の部屋を優先的に選ぶ
+            let candidates = availableRooms;
+            if (isTomeItem) {
+                const under2 = availableRooms.filter(r => (roomTomeCounts.get(r) || 0) < 2);
+                if (under2.length > 0) candidates = under2;
+            }
+            const room = candidates[Math.floor(Math.random() * candidates.length)];
+            for (let tries = 0; tries < 30; tries++) {
+                const ix = room.x + Math.floor(Math.random() * room.w);
+                const iy = room.y + Math.floor(Math.random() * room.h);
+                if (map[iy][ix] === SYMBOLS.FLOOR) {
+                    map[iy][ix] = item;
+                    if (isTomeItem) roomTomeCounts.set(room, (roomTomeCounts.get(room) || 0) + 1);
+                    break;
+                }
+            }
+        });
+    }
+
     // Spawn enemies
+    // 序盤(4-10F)は敵の総数を制限
+    const earlyFloorEnemyLimit = (floorLevel <= 10) ? Math.min(floorLevel, 6) : Infinity;
     for (let i = 1; i < rooms.length; i++) {
         const room = rooms[i];
 
-        // 最初の10階までは敵の出現をスキップすることがあるが、確率は抑える
-        if (floorLevel <= 10 && Math.random() < 0.3) continue;
+        // 序盤は敵数上限に達したらスキップ
+        if (enemies.length >= earlyFloorEnemyLimit) break;
+
+        // 最初の10階までは敵の出現をスキップする確率を上げる
+        if (floorLevel <= 10 && Math.random() < 0.5) continue;
 
         // 部屋の中の空き地(FLOOR)を探すヘルパー
         const findFloorInRoom = (r, maxTries = 20) => {
@@ -1730,6 +2133,8 @@ function initMap() {
                 const ty = r.y + Math.floor(Math.random() * r.h);
                 const tile = map[ty][tx];
                 if (tile === SYMBOLS.FLOOR || tile === SYMBOLS.ICE || tile === SYMBOLS.LAVA || tile === SYMBOLS.POISON) {
+                    // 既に敵がいる座標には配置しない
+                    if (enemies.some(e => e.x === tx && e.y === ty)) continue;
                     return { x: tx, y: ty, tile };
                 }
             }
@@ -1854,6 +2259,27 @@ function initMap() {
         }
     }
 
+    // --- 最低敵数保証：敵ゼロの階をなくす ---
+    const minEnemies = floorLevel <= 10 ? 2 : 3;
+    if (enemies.length < minEnemies) {
+        const availRooms = rooms.slice(1);
+        for (let attempt = 0; enemies.length < minEnemies && attempt < 100; attempt++) {
+            const room = availRooms[Math.floor(Math.random() * availRooms.length)];
+            const tx = room.x + Math.floor(Math.random() * room.w);
+            const ty = room.y + Math.floor(Math.random() * room.h);
+            const tile = map[ty][tx];
+            if ((tile === SYMBOLS.FLOOR || tile === SYMBOLS.ICE || tile === SYMBOLS.POISON) &&
+                !(tx === player.x && ty === player.y) &&
+                !enemies.some(e => e.x === tx && e.y === ty)) {
+                enemies.push({
+                    type: 'NORMAL', x: tx, y: ty,
+                    hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0
+                });
+            }
+        }
+    }
+
     // --- タレット周辺に「滑る射線」パズルを生成 (敵配置後に行う) ---
     if (floorLevel >= 3) {
         enemies.filter(e => e.type === 'TURRET').forEach(turret => {
@@ -1872,6 +2298,20 @@ function initMap() {
             }
         });
     }
+
+    // --- 1部屋あたりの魔導書を最大2個に制限 ---
+    const tomeSymbols = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE];
+    rooms.forEach(room => {
+        let tomeCount = 0;
+        for (let y = room.y; y < room.y + room.h; y++) {
+            for (let x = room.x; x < room.x + room.w; x++) {
+                if (tomeSymbols.includes(map[y][x])) {
+                    tomeCount++;
+                    if (tomeCount > 2) map[y][x] = SYMBOLS.FLOOR;
+                }
+            }
+        }
+    });
 
     // --- 最終セーフティ：出口が消えていないかチェック ---
     let hasExit = false;
@@ -1981,9 +2421,8 @@ async function startFloorTransition() {
     }
 
     initMap();
-    // 階段降下時にmaxHpの20%を回復（上限はmaxHp）
-    const healAmount = Math.floor(player.maxHp * 0.2);
-    player.hp = Math.min(player.hp + healAmount, player.maxHp);
+    // 階段降下時にHP全回復
+    player.hp = player.maxHp;
     player.isSpeeding = false;
     player.isExtraTurn = false;
     player.isShielded = false;
@@ -2710,7 +3149,7 @@ function drawTitle() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 40px Courier New';
+    ctx.font = "bold 40px 'Courier New', Courier, monospace";
     ctx.fillText('MINIMAL ROGUE', canvas.width / 2, canvas.height / 3);
 
     const menuY = canvas.height / 2 + 30;
@@ -2745,8 +3184,8 @@ function drawGameOver() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.textAlign = 'center';
 
-    ctx.fillStyle = '#f87171';
-    ctx.font = 'bold 48px Courier New';
+    ctx.fillStyle = '#ff0000';
+    ctx.font = "bold 48px 'Courier New', Courier, monospace";
     ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
 
     ctx.fillStyle = '#666';
@@ -2888,7 +3327,8 @@ function drawInventoryScreen() {
         { name: `${SYMBOLS.STEALTH} Stealth Tome`, count: player.stealthTomes, desc: "Recite to vanish from sight." },
         { name: `${SYMBOLS.EXPLOSION} Explosion Tome`, count: player.explosionTomes, desc: "Release a powerful blast around you." },
         { name: `${SYMBOLS.GUARDIAN} Guardian Tome`, count: player.guardianTomes, desc: "Nullify terrain & laser dmg for this floor." },
-        { name: `${SYMBOLS.ESCAPE} Escape Tome`, count: player.escapeTomes, desc: "Warp to a random floor (3F-99F)." }
+        { name: `${SYMBOLS.ESCAPE} Escape Tome`, count: player.escapeTomes, desc: "Warp to a random floor (3F-99F)." },
+        { name: `${SYMBOLS.HEAL_TOME} Heal Tome`, count: player.healTomes, desc: "Fully restore HP." }
     ];
     const items = fullItems.filter(it => it.count > 0);
 
@@ -3160,9 +3600,9 @@ function draw(now) {
                         ctx.beginPath(); ctx.moveTo(px + s, py); ctx.lineTo(px + s + TILE_SIZE, py + TILE_SIZE); ctx.stroke();
                     }
                     ctx.restore();
-                } else if ([SYMBOLS.WAND, SYMBOLS.KEY, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE].includes(char)) {
+                } else if ([SYMBOLS.WAND, SYMBOLS.KEY, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE].includes(char)) {
                     // 魔導書系アイテムはすべて統一アイコンで表示（拾うまで種類不明）
-                    const isTome = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE].includes(char);
+                    const isTome = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE].includes(char);
                     const displayChar = isTome ? SYMBOLS.TOME : char;
                     ctx.fillStyle = '#fbbf24'; ctx.fillText(displayChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                 } else {
@@ -3256,12 +3696,12 @@ function draw(now) {
                 ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
                 ctx.lineWidth = 6;
                 ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 15;
-                ctx.beginPath(); ctx.moveTo(startX + dx * TILE_SIZE / 2, startY + dy * TILE_SIZE / 2); ctx.lineTo(endX, endY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
                 // コア（細い明るい線）
                 ctx.strokeStyle = '#fff';
                 ctx.lineWidth = 1;
                 ctx.shadowColor = '#fff'; ctx.shadowBlur = 8;
-                ctx.beginPath(); ctx.moveTo(startX + dx * TILE_SIZE / 2, startY + dy * TILE_SIZE / 2); ctx.lineTo(endX, endY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
                 ctx.restore();
             }
         });
@@ -3341,7 +3781,7 @@ function draw(now) {
         // トランジションテキスト（FLOOR 100 等）
         if (transition.text) {
             ctx.fillStyle = transition.textColor || ((transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT') ? '#000' : '#fff');
-            ctx.font = (transition.mode === 'BLACK_OUT' || transition.mode === 'STARS') ? 'bold 48px Courier New' : 'bold 32px Courier New';
+            ctx.font = (transition.mode === 'BLACK_OUT' || transition.mode === 'STARS') ? "bold 48px 'Courier New', Courier, monospace" : "bold 32px 'Courier New', Courier, monospace";
             ctx.fillText(transition.text, canvas.width / 2, canvas.height / 2);
         }
         ctx.restore();
@@ -3686,7 +4126,99 @@ async function handleAction(dx, dy) {
     }
 
     const nx = player.x + dx; const ny = player.y + dy;
-    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) { isProcessing = false; return; }
+    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) {
+        // マルチスクリーンモード: 画面端の通路判定
+        if (multiScreenMode) {
+            let newScreenX = currentScreen.x;
+            let newScreenY = currentScreen.y;
+            let newPlayerX = player.x;
+            let newPlayerY = player.y;
+            let canTransition = false;
+
+            if (nx < 0 && currentScreen.x > 0 && player.y >= 11 && player.y <= 13) {
+                // 左端 → 左の画面へ
+                newScreenX = currentScreen.x - 1;
+                newPlayerX = COLS - 2;
+                newPlayerY = player.y;
+                canTransition = true;
+            } else if (nx >= COLS && currentScreen.x < SCREEN_GRID_SIZE - 1 && player.y >= 11 && player.y <= 13) {
+                // 右端 → 右の画面へ
+                newScreenX = currentScreen.x + 1;
+                newPlayerX = 1;
+                newPlayerY = player.y;
+                canTransition = true;
+            } else if (ny < 0 && currentScreen.y > 0 && player.x >= 18 && player.x <= 21) {
+                // 上端 → 上の画面へ
+                newScreenY = currentScreen.y - 1;
+                newPlayerY = ROWS - 2;
+                newPlayerX = player.x;
+                canTransition = true;
+            } else if (ny >= ROWS && currentScreen.y < SCREEN_GRID_SIZE - 1 && player.x >= 18 && player.x <= 21) {
+                // 下端 → 下の画面へ
+                newScreenY = currentScreen.y + 1;
+                newPlayerY = 1;
+                newPlayerX = player.x;
+                canTransition = true;
+            }
+
+            if (canTransition) {
+                // 現在の画面データを保存
+                screenGrid.maps[currentScreen.y][currentScreen.x] = map;
+                screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies;
+                screenGrid.wisps[currentScreen.y][currentScreen.x] = wisps;
+
+                // フェード演出
+                transition.active = true;
+                transition.mode = 'FADE';
+                transition.text = "";
+                for (let a = 0; a <= 1; a += 0.25) {
+                    transition.alpha = a;
+                    draw();
+                    await new Promise(r => setTimeout(r, 40));
+                }
+
+                // 隣の画面データをロード
+                currentScreen.x = newScreenX;
+                currentScreen.y = newScreenY;
+                map = screenGrid.maps[newScreenY][newScreenX];
+                enemies = screenGrid.enemies[newScreenY][newScreenX];
+                wisps = screenGrid.wisps[newScreenY][newScreenX];
+                tempWalls = [];
+
+                player.x = newPlayerX;
+                player.y = newPlayerY;
+
+                // 出現位置周辺の敵・ウィスプを排除
+                enemies = enemies.filter(e => !(Math.abs(e.x - newPlayerX) <= 1 && Math.abs(e.y - newPlayerY) <= 1));
+                wisps = wisps.filter(w => !(Math.abs(w.x - newPlayerX) <= 1 && Math.abs(w.y - newPlayerY) <= 1));
+                screenGrid.enemies[newScreenY][newScreenX] = enemies;
+                screenGrid.wisps[newScreenY][newScreenX] = wisps;
+
+                // 出現位置が壁や障害物なら床にする
+                if (map[newPlayerY][newPlayerX] !== SYMBOLS.FLOOR) {
+                    map[newPlayerY][newPlayerX] = SYMBOLS.FLOOR;
+                }
+
+                // フェードイン
+                for (let a = 1; a >= 0; a -= 0.25) {
+                    transition.alpha = a;
+                    draw();
+                    await new Promise(r => setTimeout(r, 40));
+                }
+                transition.active = false;
+                transition.alpha = 0;
+
+                updateUI();
+                SOUNDS.SCREEN_TRANSITION();
+                addLog(`Screen [${newScreenX},${newScreenY}]`);
+
+                // 遷移直後は敵ターンをスキップ
+                isProcessing = false;
+                return;
+            }
+        }
+        isProcessing = false; return;
+    }
 
     // ダンジョンコアへの攻撃チェック
     if (map[ny][nx] === SYMBOLS.CORE) {
@@ -3948,6 +4480,19 @@ async function handleAction(dx, dy) {
                         addLog("📜 YOU DECIPHERED: 'Escape Tome'! (Key [5] to teleport)");
                     }
                     spawnFloatingText(nx, ny, "ESCAPE TOME IDENTIFIED", "#c084fc");
+                } else if (nextTile === SYMBOLS.HEAL_TOME) {
+                    map[ny][nx] = SYMBOLS.FLOOR;
+                    player.x = nx; player.y = ny;
+                    updateUI();
+                    await animateItemGet(SYMBOLS.TOME);
+                    SOUNDS.GET_ITEM();
+                    player.healTomes++;
+                    if (!hasShownTomeTut) {
+                        await triggerTomeEvent();
+                    } else {
+                        addLog("📜 YOU DECIPHERED: 'Heal Tome'! (Key [6] to heal)");
+                    }
+                    spawnFloatingText(nx, ny, "HEAL TOME IDENTIFIED", "#4ade80");
                 } else if (nextTile === SYMBOLS.FAIRY) {
                     map[ny][nx] = SYMBOLS.FLOOR;
                     player.x = nx; player.y = ny;
@@ -5507,7 +6052,7 @@ async function startGame(startFloor = 1) {
     player = {
         x: 0, y: 0, hp: 30, maxHp: 30, level: startFloor, exp: 0, nextExp: 10,
         stamina: 100, swordCount: 0, armorCount: 0,
-        hasteTomes: 0, charmTomes: 0, stealthTomes: 0, explosionTomes: 0, guardianTomes: 0, escapeTomes: 0,
+        hasteTomes: 0, charmTomes: 0, stealthTomes: 0, healTomes: 0, explosionTomes: 0, guardianTomes: 0, escapeTomes: 0,
         isSpeeding: false, isStealth: false, isExtraTurn: false, isShielded: false,
         facing: 'LEFT',
         totalKills: 0, offsetX: 0, offsetY: 0, flashUntil: 0,
@@ -5557,6 +6102,7 @@ async function startGame(startFloor = 1) {
         player.hasteTomes = 5;
         player.charmTomes = 5;
         player.stealthTomes = 5;
+        player.healTomes = 5;
         player.explosionTomes = 5;
         player.guardianTomes = 5;
         player.escapeTomes = 5;
@@ -5619,7 +6165,7 @@ window.addEventListener('keydown', async e => {
         if (gameState === 'TITLE') { titleSelection = (titleSelection + 2) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 2; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
-            const items = [player.hasteTomes, player.charmTomes, player.stealthTomes, player.explosionTomes, player.guardianTomes, player.escapeTomes].filter(c => c > 0);
+            const items = [player.hasteTomes, player.charmTomes, player.stealthTomes, player.healTomes, player.explosionTomes, player.guardianTomes, player.escapeTomes].filter(c => c > 0);
             const count = Math.max(1, items.length);
             inventorySelection = (inventorySelection + count - 1) % count;
             SOUNDS.SELECT(); return;
@@ -5630,7 +6176,7 @@ window.addEventListener('keydown', async e => {
         if (gameState === 'TITLE') { titleSelection = (titleSelection + 1) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 2; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
-            const items = [player.hasteTomes, player.charmTomes, player.stealthTomes, player.explosionTomes, player.guardianTomes, player.escapeTomes].filter(c => c > 0);
+            const items = [player.hasteTomes, player.charmTomes, player.stealthTomes, player.healTomes, player.explosionTomes, player.guardianTomes, player.escapeTomes].filter(c => c > 0);
             const count = Math.max(1, items.length);
             inventorySelection = (inventorySelection + 1) % count;
             SOUNDS.SELECT(); return;
@@ -5654,17 +6200,13 @@ window.addEventListener('keydown', async e => {
     }
 
     // 数値直接入力 (STAGE SELECT時)
+    // 数字を入力するたびに左にシフト（例: 1→12→23→34）、2桁を維持
     if (gameState === 'TITLE' && titleSelection === 2 && /^\d$/.test(e.key)) {
         e.preventDefault();
         const num = parseInt(e.key);
-        // 新しい入力を追加（最大3桁、かつ100以下を目指す）
-        let newFloor = testFloor * 10 + num;
-        if (newFloor > 100) {
-            // 100を超えたら新しく入力された数字にする（1桁目として扱う）
-            newFloor = num === 0 ? 1 : num;
-        } else if (newFloor === 0) {
-            newFloor = 1;
-        }
+        let newFloor = (testFloor % 10) * 10 + num; // 1の位を10の位にシフトし、新しい数字を1の位に
+        if (newFloor > 100) newFloor = 100;
+        if (newFloor < 1) newFloor = 1;
         testFloor = newFloor;
         SOUNDS.SELECT();
         return;
@@ -5716,7 +6258,8 @@ window.addEventListener('keydown', async e => {
                 { id: 'STEALTH', count: player.stealthTomes },
                 { id: 'EXPLOSION', count: player.explosionTomes },
                 { id: 'GUARDIAN', count: player.guardianTomes },
-                { id: 'ESCAPE', count: player.escapeTomes }
+                { id: 'ESCAPE', count: player.escapeTomes },
+                { id: 'HEAL', count: player.healTomes }
             ];
             const items = fullItems.filter(it => it.count > 0);
             const selectedItem = items[inventorySelection];
@@ -5741,6 +6284,9 @@ window.addEventListener('keydown', async e => {
                     gameState = 'CONFIRM_ESCAPE';
                     menuSelection = 1; // デフォルトはNO
                     SOUNDS.SELECT();
+                } else if (selectedItem.id === 'HEAL') {
+                    gameState = 'PLAYING';
+                    useHealTome();
                 }
             }
             return;
@@ -5761,6 +6307,13 @@ window.addEventListener('keydown', async e => {
             gameState = 'CONFIRM_ESCAPE';
             menuSelection = 1;
             SOUNDS.SELECT();
+        }
+        return;
+    }
+
+    if (e.key === '6' || e.key.toLowerCase() === 'h') {
+        if (gameState === 'PLAYING' && !isProcessing && player.healTomes > 0) {
+            useHealTome();
         }
         return;
     }
@@ -6011,6 +6564,16 @@ async function useGuardianTome() {
     await animateTomeRead();
     player.guardianTomes--;
     tryActivateShield();
+}
+
+async function useHealTome() {
+    await animateTomeRead();
+    player.healTomes--;
+    player.hp = player.maxHp;
+    SOUNDS.HEAL();
+    addLog("Recited the Heal Tome! HP fully restored!");
+    spawnFloatingText(player.x, player.y, "FULL HEAL!!", "#4ade80");
+    updateUI();
 }
 
 async function useEscapeTome() {
