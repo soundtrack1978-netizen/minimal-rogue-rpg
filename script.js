@@ -34,7 +34,7 @@ const SYMBOLS = {
     TOME: '▤', // 描画用の統一文字（地面の魔導書はすべてこのアイコンで表示）
     WAND: '/',
     SNAKE: 'E',
-    ORC: 'O',
+    ORC: 'G',
     ICE: '▢',
     TURRET: 'T',
     CORE: '❂',
@@ -819,8 +819,8 @@ function initMap() {
     multiScreenMode = false;
     screenGrid = null;
 
-    // --- MULTI-SCREEN FLOOR (Floor 99) ---
-    if (floorLevel === 99) {
+    // --- MULTI-SCREEN FLOOR (Floor 90+: 99Fは確定、90-98Fは50%の確率) ---
+    if (floorLevel >= 90 && floorLevel < 100 && (floorLevel === 99 || Math.random() < 0.5)) {
         multiScreenMode = true;
         addLog("⚠️ DANGER ZONE: Multi-screen labyrinth!");
         addLog("Explore 2x2 screens to find the KEY and EXIT.");
@@ -835,61 +835,100 @@ function initMap() {
                 Array.from({ length: SCREEN_GRID_SIZE }, () => []))
         };
 
-        // ヘルパー: 1画面分のダンジョンを既存ロジックとほぼ同じ方法で生成
-        function generateOneScreen(sx, sy) {
+        // ヘルパー: 1画面分のダンジョンを生成（isMaze: true=迷路型, false=通常ダンジョン型）
+        function generateOneScreen(sx, sy, isMaze) {
             const sMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
             const sEnemies = [];
             const sWisps = [];
-
-            // --- まず全面を床にする（77階方式：壁の外枠だけ残す） ---
-            for (let y = 1; y < ROWS - 1; y++) {
-                for (let x = 1; x < COLS - 1; x++) {
-                    sMap[y][x] = SYMBOLS.FLOOR;
-                }
-            }
-
-            // --- 部屋の生成（迷路の中の開けた空間として） ---
-            const roomCount = Math.floor(Math.random() * 3) + 5;
             const rooms = [];
-            for (let i = 0; i < roomCount; i++) {
-                const w = Math.floor(Math.random() * 5) + 4;
-                const h = Math.floor(Math.random() * 3) + 4;
-                const rx = Math.floor(Math.random() * (COLS - w - 4)) + 2;
-                const ry = Math.floor(Math.random() * (ROWS - h - 4)) + 2;
-                rooms.push({ x: rx, y: ry, w, h, cx: Math.floor(rx + w / 2), cy: Math.floor(ry + h / 2) });
-            }
 
-            // --- 棒倒し法で迷路を生成（77階と同じロジック） ---
-            for (let y = 3; y < ROWS - 3; y += 2) {
-                for (let x = 3; x < COLS - 3; x += 2) {
-                    // 部屋の内部には壁を立てない
-                    const inAnyRoom = rooms.some(r =>
-                        x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
-                    );
-                    if (inAnyRoom) continue;
-
-                    // 画面遷移通路の周辺には壁を立てない
-                    // 横通路(y=10〜14)の端、縦通路(x=17〜22)の端
-                    const nearHPassage = (y >= 10 && y <= 14) && (x <= 4 || x >= COLS - 5);
-                    const nearVPassage = (x >= 17 && x <= 22) && (y <= 4 || y >= ROWS - 5);
-                    if (nearHPassage || nearVPassage) continue;
-
-                    // 15%の確率でスキップ（密度を少し下げる）
-                    if (Math.random() < 0.15) continue;
-
-                    // 柱を立てる
-                    sMap[y][x] = SYMBOLS.WALL;
-                    // 棒を倒す
-                    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-                    const d = dirs[Math.floor(Math.random() * (y === 3 ? 4 : 3))];
-                    const ny = y + d[1], nx = x + d[0];
-                    if (ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
-                        // 倒す先も部屋内なら避ける
-                        const destInRoom = rooms.some(r =>
-                            nx >= r.x && nx < r.x + r.w && ny >= r.y && ny < r.y + r.h
+            if (isMaze) {
+                // === 迷路型（77階方式） ===
+                // 全面を床にする
+                for (let y = 1; y < ROWS - 1; y++) {
+                    for (let x = 1; x < COLS - 1; x++) {
+                        sMap[y][x] = SYMBOLS.FLOOR;
+                    }
+                }
+                // 部屋の生成（迷路の中の開けた空間）
+                const roomCount = Math.floor(Math.random() * 3) + 5;
+                for (let i = 0; i < roomCount; i++) {
+                    const w = Math.floor(Math.random() * 5) + 4;
+                    const h = Math.floor(Math.random() * 3) + 4;
+                    const rx = Math.floor(Math.random() * (COLS - w - 4)) + 2;
+                    const ry = Math.floor(Math.random() * (ROWS - h - 4)) + 2;
+                    rooms.push({ x: rx, y: ry, w, h, cx: Math.floor(rx + w / 2), cy: Math.floor(ry + h / 2) });
+                }
+                // 棒倒し法で迷路を生成
+                for (let y = 3; y < ROWS - 3; y += 2) {
+                    for (let x = 3; x < COLS - 3; x += 2) {
+                        const inAnyRoom = rooms.some(r =>
+                            x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
                         );
-                        if (!destInRoom) {
-                            sMap[ny][nx] = SYMBOLS.WALL;
+                        if (inAnyRoom) continue;
+                        const nearHPassage = (y >= 11 && y <= 13) && (x <= 4 || x >= COLS - 5);
+                        const nearVPassage = (x >= 18 && x <= 21) && (y <= 4 || y >= ROWS - 5);
+                        if (nearHPassage || nearVPassage) continue;
+                        if (Math.random() < 0.15) continue;
+                        sMap[y][x] = SYMBOLS.WALL;
+                        const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                        const d = dirs[Math.floor(Math.random() * (y === 3 ? 4 : 3))];
+                        const ny = y + d[1], nx = x + d[0];
+                        if (ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
+                            const destInRoom = rooms.some(r =>
+                                nx >= r.x && nx < r.x + r.w && ny >= r.y && ny < r.y + r.h
+                            );
+                            if (!destInRoom) sMap[ny][nx] = SYMBOLS.WALL;
+                        }
+                    }
+                }
+            } else {
+                // === 通常ダンジョン型（部屋+通路） ===
+                const roomCount = Math.floor(Math.random() * 4) + 8;
+                for (let i = 0; i < roomCount; i++) {
+                    const w = Math.floor(Math.random() * 6) + 4;
+                    const h = Math.floor(Math.random() * 4) + 4;
+                    const rx = Math.floor(Math.random() * (COLS - w - 2)) + 1;
+                    const ry = Math.floor(Math.random() * (ROWS - h - 2)) + 1;
+                    for (let y = ry; y < ry + h; y++) {
+                        for (let x = rx; x < rx + w; x++) { sMap[y][x] = SYMBOLS.FLOOR; }
+                    }
+                    if (w >= 5 && h >= 5) {
+                        const pattern = Math.random();
+                        const pcx = Math.floor(rx + w / 2);
+                        const pcy = Math.floor(ry + h / 2);
+                        if (pattern < 0.3) {
+                            sMap[pcy][pcx] = SYMBOLS.WALL;
+                        } else if (pattern < 0.5) {
+                            sMap[ry + 1][rx + 1] = SYMBOLS.WALL;
+                            sMap[ry + 1][rx + w - 2] = SYMBOLS.WALL;
+                            sMap[ry + h - 2][rx + 1] = SYMBOLS.WALL;
+                            sMap[ry + h - 2][rx + w - 2] = SYMBOLS.WALL;
+                        }
+                    }
+                    rooms.push({ x: rx, y: ry, w, h, cx: Math.floor(rx + w / 2), cy: Math.floor(ry + h / 2) });
+                }
+                // 部屋同士を通路で接続
+                for (let i = 0; i < rooms.length - 1; i++) {
+                    let cx = rooms[i].cx, cy = rooms[i].cy;
+                    const tx = rooms[i + 1].cx, ty = rooms[i + 1].cy;
+                    while (cx !== tx || cy !== ty) {
+                        if (cx !== tx && (cy === ty || Math.random() < 0.5)) cx += (tx > cx ? 1 : -1);
+                        else cy += (ty > cy ? 1 : -1);
+                        if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) sMap[cy][cx] = SYMBOLS.FLOOR;
+                    }
+                }
+                // ランダムな追加接続
+                for (let k = 0; k < 3; k++) {
+                    const r1 = rooms[Math.floor(Math.random() * rooms.length)];
+                    const r2 = rooms[Math.floor(Math.random() * rooms.length)];
+                    if (r1 !== r2) {
+                        let cx = r1.cx, cy = r1.cy;
+                        for (let step = 0; step < 15; step++) {
+                            if (cx === r2.cx && cy === r2.cy) break;
+                            if (cx !== r2.cx && (cy === r2.cy || Math.random() < 0.5)) cx += (r2.cx > cx ? 1 : -1);
+                            else cy += (r2.cy > cy ? 1 : -1);
+                            if (cy >= 1 && cy < ROWS - 1 && cx >= 1 && cx < COLS - 1) sMap[cy][cx] = SYMBOLS.FLOOR;
                         }
                     }
                 }
@@ -942,33 +981,53 @@ function initMap() {
             }
 
             // --- 隣接画面への通路を開ける（外壁に穴を開ける） ---
+            // 通路接続用ヘルパー: 指定座標から最寄りの部屋中心へ床を掘る
+            const digPathToNearestRoom = (startX, startY) => {
+                if (rooms.length === 0) return;
+                let nearest = rooms[0];
+                let minDist = Math.abs(rooms[0].cx - startX) + Math.abs(rooms[0].cy - startY);
+                for (let i = 1; i < rooms.length; i++) {
+                    const d = Math.abs(rooms[i].cx - startX) + Math.abs(rooms[i].cy - startY);
+                    if (d < minDist) { minDist = d; nearest = rooms[i]; }
+                }
+                let cx = startX, cy = startY;
+                while (cx !== nearest.cx || cy !== nearest.cy) {
+                    if (cx !== nearest.cx && (cy === nearest.cy || Math.random() < 0.5)) cx += (nearest.cx > cx ? 1 : -1);
+                    else cy += (nearest.cy > cy ? 1 : -1);
+                    if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) sMap[cy][cx] = SYMBOLS.FLOOR;
+                }
+            };
             // 右方向 (x=COLS-1, y=11〜13)
             if (sx < SCREEN_GRID_SIZE - 1) {
-                for (let py = 10; py <= 14; py++) {
+                for (let py = 11; py <= 13; py++) {
                     sMap[py][COLS - 1] = SYMBOLS.FLOOR;
                     sMap[py][COLS - 2] = SYMBOLS.FLOOR;
                 }
+                if (!isMaze) digPathToNearestRoom(COLS - 3, 12);
             }
             // 左方向 (x=0, y=11〜13)
             if (sx > 0) {
-                for (let py = 10; py <= 14; py++) {
+                for (let py = 11; py <= 13; py++) {
                     sMap[py][0] = SYMBOLS.FLOOR;
                     sMap[py][1] = SYMBOLS.FLOOR;
                 }
+                if (!isMaze) digPathToNearestRoom(2, 12);
             }
             // 下方向 (y=ROWS-1, x=18〜21)
             if (sy < SCREEN_GRID_SIZE - 1) {
-                for (let px = 17; px <= 22; px++) {
+                for (let px = 18; px <= 21; px++) {
                     sMap[ROWS - 1][px] = SYMBOLS.FLOOR;
                     sMap[ROWS - 2][px] = SYMBOLS.FLOOR;
                 }
+                if (!isMaze) digPathToNearestRoom(19, ROWS - 3);
             }
             // 上方向 (y=0, x=18〜21)
             if (sy > 0) {
-                for (let px = 17; px <= 22; px++) {
+                for (let px = 18; px <= 21; px++) {
                     sMap[0][px] = SYMBOLS.FLOOR;
                     sMap[1][px] = SYMBOLS.FLOOR;
                 }
+                if (!isMaze) digPathToNearestRoom(19, 2);
             }
 
             // --- 敵の配置（通常階と同じ敵種抽選ロジック） ---
@@ -1059,11 +1118,12 @@ function initMap() {
             return { sMap, sEnemies, sWisps, rooms };
         }
 
-        // 各画面を生成
+        // 各画面を生成（迷路型と通常ダンジョン型をランダムに混合）
         const allRooms = {}; // 各画面の部屋情報を保持
         for (let sy = 0; sy < SCREEN_GRID_SIZE; sy++) {
             for (let sx = 0; sx < SCREEN_GRID_SIZE; sx++) {
-                const result = generateOneScreen(sx, sy);
+                const useMaze = Math.random() < 0.5; // 50%で迷路型、50%で通常ダンジョン型
+                const result = generateOneScreen(sx, sy, useMaze);
                 screenGrid.maps[sy][sx] = result.sMap;
                 screenGrid.enemies[sy][sx] = result.sEnemies;
                 screenGrid.wisps[sy][sx] = result.sWisps;
@@ -3662,7 +3722,7 @@ function draw(now) {
                 else if (e.type === 'WISP_ENEMY') { eColor = '#818cf8'; eChar = SYMBOLS.WISP; }
                 else if (e.type === 'TURRET') { eColor = '#ef4444'; eChar = SYMBOLS.TURRET; }
                 else if (e.type === 'BLAZE') { eColor = '#fb923c'; eChar = 'F'; }
-                else if (e.type === 'FROST') { eColor = '#38bdf8'; eChar = 'I'; }
+                else if (e.type === 'FROST') { eColor = '#ffffff'; eChar = 'I'; }
                 if (e.isAlly) eColor = '#60a5fa';
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
@@ -4138,25 +4198,25 @@ async function handleAction(dx, dy) {
             if (nx < 0 && currentScreen.x > 0 && player.y >= 11 && player.y <= 13) {
                 // 左端 → 左の画面へ
                 newScreenX = currentScreen.x - 1;
-                newPlayerX = COLS - 2;
+                newPlayerX = COLS - 1;
                 newPlayerY = player.y;
                 canTransition = true;
             } else if (nx >= COLS && currentScreen.x < SCREEN_GRID_SIZE - 1 && player.y >= 11 && player.y <= 13) {
                 // 右端 → 右の画面へ
                 newScreenX = currentScreen.x + 1;
-                newPlayerX = 1;
+                newPlayerX = 0;
                 newPlayerY = player.y;
                 canTransition = true;
             } else if (ny < 0 && currentScreen.y > 0 && player.x >= 18 && player.x <= 21) {
                 // 上端 → 上の画面へ
                 newScreenY = currentScreen.y - 1;
-                newPlayerY = ROWS - 2;
+                newPlayerY = ROWS - 1;
                 newPlayerX = player.x;
                 canTransition = true;
             } else if (ny >= ROWS && currentScreen.y < SCREEN_GRID_SIZE - 1 && player.x >= 18 && player.x <= 21) {
                 // 下端 → 下の画面へ
                 newScreenY = currentScreen.y + 1;
-                newPlayerY = 1;
+                newPlayerY = 0;
                 newPlayerX = player.x;
                 canTransition = true;
             }
@@ -4301,7 +4361,23 @@ async function handleAction(dx, dy) {
         return;
     }
 
-    if (victim) {
+    if (victim && victim.isAlly && victim.type !== 'TURRET') {
+        // 味方とは攻撃せず位置を入れ替える（タレットは固定なので除外）
+        const oldX = player.x, oldY = player.y;
+        player.x = victim.x; player.y = victim.y;
+        victim.x = oldX; victim.y = oldY;
+        if (victim.type === 'SNAKE' && victim.body) {
+            victim.body.unshift({ x: oldX, y: oldY });
+            victim.body.pop();
+        }
+        SOUNDS.MOVE();
+        player.stamina = Math.min(100, player.stamina + 20);
+    } else if (victim && victim.isAlly && victim.type === 'TURRET') {
+        // 味方タレットには何もしない（攻撃も入れ替わりもしない）
+        player.offsetX = dx * 5; player.offsetY = dy * 5;
+        await new Promise(r => setTimeout(r, 50));
+        player.offsetX = 0; player.offsetY = 0;
+    } else if (victim) {
         if (player.isStealth) {
             player.isStealth = false;
             addLog("Stealth broken by attack!");
@@ -4573,6 +4649,29 @@ async function handleAction(dx, dy) {
             if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
         }
     }
+
+    // 味方が主人公の隣にいたら反対方向に退避する（タレットは固定）
+    enemies.filter(e => e.isAlly && e.hp > 0 && e.type !== 'TURRET').forEach(e => {
+        const dist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
+        if (dist !== 1) return;
+        // プレイヤーの反対方向に移動を試みる
+        const awayDx = e.x - player.x;
+        const awayDy = e.y - player.y;
+        const moves = [
+            { x: e.x + awayDx, y: e.y + awayDy },           // 真反対
+            { x: e.x + awayDx, y: e.y + (awayDy === 0 ? 1 : 0) },  // 斜め候補1
+            { x: e.x + awayDx, y: e.y + (awayDy === 0 ? -1 : 0) }, // 斜め候補2
+            { x: e.x + (awayDx === 0 ? 1 : 0), y: e.y + awayDy },
+            { x: e.x + (awayDx === 0 ? -1 : 0), y: e.y + awayDy },
+        ];
+        for (const m of moves) {
+            const dToP = Math.abs(m.x - player.x) + Math.abs(m.y - player.y);
+            if (dToP >= 2 && canEnemyMove(m.x, m.y, e)) {
+                e.x = m.x; e.y = m.y;
+                break;
+            }
+        }
+    });
 
     if (!transition.active) {
         if (player.isSpeeding && !player.isExtraTurn) {
@@ -5462,6 +5561,10 @@ async function enemyTurn() {
             continue;
         }
 
+        if (e.isAlly && e.type === 'TURRET') {
+            // 味方タレット：移動しない、レーザーで自動攻撃（通常のタレットAIに任せる）
+            continue;
+        }
         if (e.isAlly) {
             // 味方：近くに敵がいれば攻撃・追従、いなければプレイヤーを追いかける
             const allyTargets = enemies.filter(target => !target.isAlly && target.hp > 0);
@@ -5551,13 +5654,20 @@ async function enemyTurn() {
                     const dx = allyBestTarget.x - e.x, dy = allyBestTarget.y - e.y;
                     let sx = dx === 0 ? 0 : dx / Math.abs(dx), sy = dy === 0 ? 0 : dy / Math.abs(dy);
 
+                    // 味方が敵に近づくとき、プレイヤーの隣をブロックしないようにする
+                    const canAllyMoveTo = (nx, ny) => {
+                        if (!canEnemyMove(nx, ny, e)) return false;
+                        const distToPlayer = Math.abs(player.x - nx) + Math.abs(player.y - ny);
+                        if (distToPlayer < 2) return false; // プレイヤーとの距離1マス以上を保つ
+                        return true;
+                    };
                     let moved = false;
                     if (Math.abs(dx) > Math.abs(dy)) {
-                        if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
-                        else if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
+                        if (canAllyMoveTo(e.x + sx, e.y)) { e.x += sx; moved = true; }
+                        else if (canAllyMoveTo(e.x, e.y + sy)) { e.y += sy; moved = true; }
                     } else {
-                        if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
-                        else if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
+                        if (canAllyMoveTo(e.x, e.y + sy)) { e.y += sy; moved = true; }
+                        else if (canAllyMoveTo(e.x + sx, e.y)) { e.x += sx; moved = true; }
                     }
                     if (moved) {
                         if (e.type === 'SNAKE') {
