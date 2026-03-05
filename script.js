@@ -429,6 +429,37 @@ const SOUNDS = {
         noise.connect(nf); nf.connect(ng); ng.connect(audioCtx.destination);
         noise.start(t); noise.stop(t + 0.25);
     },
+    MIMIC_REVEAL: () => {
+        // 不気味な正体暴露音（低音→高音の不協和スウィープ）
+        const t = audioCtx.currentTime;
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(150, t);
+        osc1.frequency.exponentialRampToValueAtTime(800, t + 0.3);
+        osc2.type = 'square';
+        osc2.frequency.setValueAtTime(200, t);
+        osc2.frequency.exponentialRampToValueAtTime(600, t + 0.3);
+        g.gain.setValueAtTime(0.15, t);
+        g.gain.linearRampToValueAtTime(0, t + 0.3);
+        osc1.connect(g); osc2.connect(g); g.connect(audioCtx.destination);
+        osc1.start(t); osc1.stop(t + 0.3);
+        osc2.start(t); osc2.stop(t + 0.3);
+    },
+    MIMIC_DISGUISE: () => {
+        // 擬態復帰音（高音→低音のフェードアウト、ぬるっと消える感じ）
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, t);
+        osc.frequency.exponentialRampToValueAtTime(100, t + 0.4);
+        g.gain.setValueAtTime(0.12, t);
+        g.gain.linearRampToValueAtTime(0, t + 0.4);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(t); osc.stop(t + 0.4);
+    },
     ENEMY_ATTACK: () => {
         // 短い鋭い攻撃音（低めのsquare波）
         playSound(300, 'square', 0.08, 0.15);
@@ -1004,7 +1035,7 @@ function initMap() {
                     sMap[py][COLS - 1] = SYMBOLS.FLOOR;
                     sMap[py][COLS - 2] = SYMBOLS.FLOOR;
                 }
-                if (!isMaze) digPathToNearestRoom(COLS - 3, 12);
+                digPathToNearestRoom(COLS - 3, 12);
             }
             // 左方向 (x=0, y=11〜13)
             if (sx > 0) {
@@ -1012,7 +1043,7 @@ function initMap() {
                     sMap[py][0] = SYMBOLS.FLOOR;
                     sMap[py][1] = SYMBOLS.FLOOR;
                 }
-                if (!isMaze) digPathToNearestRoom(2, 12);
+                digPathToNearestRoom(2, 12);
             }
             // 下方向 (y=ROWS-1, x=18〜21)
             if (sy < SCREEN_GRID_SIZE - 1) {
@@ -1020,7 +1051,7 @@ function initMap() {
                     sMap[ROWS - 1][px] = SYMBOLS.FLOOR;
                     sMap[ROWS - 2][px] = SYMBOLS.FLOOR;
                 }
-                if (!isMaze) digPathToNearestRoom(19, ROWS - 3);
+                digPathToNearestRoom(19, ROWS - 3);
             }
             // 上方向 (y=0, x=18〜21)
             if (sy > 0) {
@@ -1028,7 +1059,7 @@ function initMap() {
                     sMap[0][px] = SYMBOLS.FLOOR;
                     sMap[1][px] = SYMBOLS.FLOOR;
                 }
-                if (!isMaze) digPathToNearestRoom(19, 2);
+                digPathToNearestRoom(19, 2);
             }
 
             // --- 敵の配置（通常階と同じ敵種抽選ロジック） ---
@@ -1059,7 +1090,15 @@ function initMap() {
                     } else {
                         const enemyRoll = Math.random();
                         if (enemyRoll < 0.12) {
-                            sEnemies.push({ type: 'TURRET', x: ex, y: ey, dir: Math.floor(Math.random() * 4), hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
+                            // 最も広い方向にビームを向ける
+                            let bestDir = 0, maxDist = -1;
+                            for (let d = 0; d < 4; d++) {
+                                const dx_c = [0, 1, 0, -1][d], dy_c = [-1, 0, 1, 0][d];
+                                let dist = 0, tx = ex + dx_c, ty = ey + dy_c;
+                                while (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS && sMap[ty][tx] !== SYMBOLS.WALL) { dist++; tx += dx_c; ty += dy_c; }
+                                if (dist > maxDist) { maxDist = dist; bestDir = d; }
+                            }
+                            sEnemies.push({ type: 'TURRET', x: ex, y: ey, dir: bestDir, hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
                         } else if (enemyRoll < 0.25) {
                             sEnemies.push({ type: 'ORC', x: ex, y: ey, hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
                         } else {
@@ -1115,6 +1154,74 @@ function initMap() {
                     }
                 }
             });
+
+            // --- 画面内の到達性チェック：1つの始点から全ポイントに到達できるか確認 ---
+            {
+                // チェック対象：画面間通路の入口 + 全部屋の中心
+                const checkTargets = [];
+                if (sx < SCREEN_GRID_SIZE - 1) checkTargets.push({ x: COLS - 2, y: 12 }); // 右通路
+                if (sx > 0) checkTargets.push({ x: 1, y: 12 }); // 左通路
+                if (sy < SCREEN_GRID_SIZE - 1) checkTargets.push({ x: 19, y: ROWS - 2 }); // 下通路
+                if (sy > 0) checkTargets.push({ x: 19, y: 1 }); // 上通路
+                for (const r of rooms) checkTargets.push({ x: r.cx, y: r.cy });
+
+                if (checkTargets.length > 0) {
+                    // BFSヘルパー：1つの始点からflood fill
+                    const bfs = (startX, startY) => {
+                        const vis = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
+                        if (sMap[startY][startX] === SYMBOLS.WALL) return vis;
+                        vis[startY][startX] = 1;
+                        const q = [{ x: startX, y: startY }];
+                        while (q.length > 0) {
+                            const { x: fx, y: fy } = q.shift();
+                            for (const [ddx, ddy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+                                const nnx = fx + ddx, nny = fy + ddy;
+                                if (nnx < 0 || nnx >= COLS || nny < 0 || nny >= ROWS) continue;
+                                if (vis[nny][nnx]) continue;
+                                if (sMap[nny][nnx] === SYMBOLS.WALL) continue;
+                                vis[nny][nnx] = 1;
+                                q.push({ x: nnx, y: nny });
+                            }
+                        }
+                        return vis;
+                    };
+
+                    // 修復ループ：到達不能なポイントが無くなるまで繰り返す
+                    for (let attempt = 0; attempt < 15; attempt++) {
+                        // 毎回最初のターゲットから新しくBFSを実行
+                        const visited = bfs(checkTargets[0].x, checkTargets[0].y);
+
+                        // 到達不能なターゲットを探す
+                        let unreachable = null;
+                        for (let i = 1; i < checkTargets.length; i++) {
+                            if (!visited[checkTargets[i].y][checkTargets[i].x]) {
+                                unreachable = checkTargets[i];
+                                break;
+                            }
+                        }
+                        if (!unreachable) break; // 全ポイント到達可能
+
+                        // 到達可能な最寄りポイントから到達不能ポイントへ通路を掘る
+                        let nearestSrc = checkTargets[0];
+                        let nearestDist = Math.abs(checkTargets[0].x - unreachable.x) + Math.abs(checkTargets[0].y - unreachable.y);
+                        for (const other of checkTargets) {
+                            if (!visited[other.y][other.x]) continue;
+                            const d = Math.abs(other.x - unreachable.x) + Math.abs(other.y - unreachable.y);
+                            if (d < nearestDist) { nearestDist = d; nearestSrc = other; }
+                        }
+
+                        // 通路を掘る（2タイル幅で確実に通行可能にする）
+                        let cx = nearestSrc.x, cy = nearestSrc.y;
+                        while (cx !== unreachable.x || cy !== unreachable.y) {
+                            if (cx !== unreachable.x && (cy === unreachable.y || Math.random() < 0.5)) cx += (unreachable.x > cx ? 1 : -1);
+                            else cy += (unreachable.y > cy ? 1 : -1);
+                            if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) {
+                                if (sMap[cy][cx] === SYMBOLS.WALL) sMap[cy][cx] = SYMBOLS.FLOOR;
+                            }
+                        }
+                    }
+                }
+            }
 
             return { sMap, sEnemies, sWisps, rooms };
         }
@@ -2103,6 +2210,90 @@ function initMap() {
     }
     map[ey][ex] = isLockedFloor ? SYMBOLS.DOOR : SYMBOLS.STAIRS;
 
+    // --- 到達性チェック：プレイヤーから全部屋に到達できるか確認し、不可なら通路を修復 ---
+    {
+        const floodFill = (startX, startY) => {
+            const visited = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
+            const queue = [{ x: startX, y: startY }];
+            visited[startY][startX] = 1;
+            while (queue.length > 0) {
+                const { x: fx, y: fy } = queue.shift();
+                for (const [ddx, ddy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+                    const nnx = fx + ddx, nny = fy + ddy;
+                    if (nnx < 0 || nnx >= COLS || nny < 0 || nny >= ROWS) continue;
+                    if (visited[nny][nnx]) continue;
+                    if (map[nny][nnx] === SYMBOLS.WALL) continue;
+                    visited[nny][nnx] = 1;
+                    queue.push({ x: nnx, y: nny });
+                }
+            }
+            return visited;
+        };
+
+        const carvePath = (x1, y1, x2, y2) => {
+            let cx = x1, cy = y1;
+            while (cx !== x2 || cy !== y2) {
+                if (cx !== x2 && (cy === y2 || Math.random() < 0.5)) {
+                    cx += (x2 > cx ? 1 : -1);
+                } else {
+                    cy += (y2 > cy ? 1 : -1);
+                }
+                if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) {
+                    if (map[cy][cx] === SYMBOLS.WALL) {
+                        map[cy][cx] = SYMBOLS.FLOOR;
+                    }
+                }
+            }
+        };
+
+        // 全部屋＋出口への到達性を確認し、到達不能なら通路を掘る（修復後に再チェック）
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const visited = floodFill(player.x, player.y);
+            let allReachable = true;
+            // 出口チェック
+            if (!visited[ey][ex]) {
+                console.log(`[ReachCheck] Exit (${ex},${ey}) unreachable from player (${player.x},${player.y}), carving path (attempt ${attempt})`);
+                carvePath(player.x, player.y, ex, ey);
+                allReachable = false;
+            }
+            // 全部屋の中心チェック
+            for (const room of rooms) {
+                if (!visited[room.cy][room.cx]) {
+                    console.log(`[ReachCheck] Room center (${room.cx},${room.cy}) unreachable, carving path (attempt ${attempt})`);
+                    carvePath(player.x, player.y, room.cx, room.cy);
+                    allReachable = false;
+                }
+            }
+            if (allReachable) break;
+        }
+        // 最終確認：まだ到達不能なら各未到達部屋へ隣接部屋経由で通路を掘る
+        {
+            const finalCheck = floodFill(player.x, player.y);
+            for (const room of rooms) {
+                if (!finalCheck[room.cy][room.cx]) {
+                    // 到達可能な最寄りの部屋を探して、そこから掘る
+                    let nearestReachable = null;
+                    let nearestDist = Infinity;
+                    for (const other of rooms) {
+                        if (other === room) continue;
+                        if (finalCheck[other.cy][other.cx]) {
+                            const d = Math.abs(other.cx - room.cx) + Math.abs(other.cy - room.cy);
+                            if (d < nearestDist) { nearestDist = d; nearestReachable = other; }
+                        }
+                    }
+                    if (nearestReachable) {
+                        carvePath(nearestReachable.cx, nearestReachable.cy, room.cx, room.cy);
+                    } else {
+                        carvePath(player.x, player.y, room.cx, room.cy);
+                    }
+                }
+            }
+            if (!finalCheck[ey][ex]) {
+                carvePath(player.x, player.y, ex, ey);
+            }
+        }
+    }
+
     if (isLockedFloor) {
         // 鍵の配置
         let keyRoomIdx = 1;
@@ -2331,6 +2522,40 @@ function initMap() {
         }
     }
 
+    // --- ミミック配置 ---
+    // 77階で確定出現（テスト用）、それ以外は5%の確率で出現
+    if (floorLevel === 77 || (floorLevel >= 20 && Math.random() < 0.05)) {
+        // 出口のある部屋（lastRoom）以外の部屋から配置場所を探す
+        const mimicRooms = rooms.filter(r => r !== lastRoom && r !== rooms[0]);
+        if (mimicRooms.length > 0) {
+            const mimicRoom = mimicRooms[Math.floor(Math.random() * mimicRooms.length)];
+            let mimicPos = null;
+            for (let t = 0; t < 30; t++) {
+                const tx = mimicRoom.x + Math.floor(Math.random() * mimicRoom.w);
+                const ty = mimicRoom.y + Math.floor(Math.random() * mimicRoom.h);
+                if (map[ty][tx] === SYMBOLS.FLOOR && !(tx === player.x && ty === player.y) &&
+                    !enemies.some(e => e.x === tx && e.y === ty) &&
+                    !(isWallAt(tx - 1, ty) && isWallAt(tx + 1, ty)) &&
+                    !(isWallAt(tx, ty - 1) && isWallAt(tx, ty + 1))) {
+                    mimicPos = { x: tx, y: ty };
+                    break;
+                }
+            }
+            if (mimicPos) {
+                const mimicHp = 50 + floorLevel * 3;
+                enemies.push({
+                    type: 'MIMIC', x: mimicPos.x, y: mimicPos.y,
+                    hp: mimicHp, maxHp: mimicHp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0,
+                    expValue: 60, stunTurns: 0,
+                    disguised: true, moveCooldown: 10
+                });
+                // 床タイルを偽の穴（STAIRS）に書き換える
+                map[mimicPos.y][mimicPos.x] = SYMBOLS.STAIRS;
+            }
+        }
+    }
+
     // --- タレット周辺に「滑る射線」パズルを生成 (敵配置後に行う) ---
     if (floorLevel >= 3) {
         enemies.filter(e => e.type === 'TURRET').forEach(turret => {
@@ -2515,8 +2740,8 @@ async function animateItemGet(itemSymbol) {
     player.itemInHand = itemSymbol;
     SOUNDS.GET_WAND();
 
-    // 演出時間 (800msに短縮：テンポ重視)
-    await new Promise(r => setTimeout(r, 800));
+    // 演出時間 (500msに短縮：テンポ重視)
+    await new Promise(r => setTimeout(r, 500));
 
     player.itemInHand = null;
     isProcessing = false;
@@ -3191,7 +3416,7 @@ function gameLoop(now) {
         draw(now);
     } else {
         draw(now);
-        damageTexts = damageTexts.filter(d => now - d.startTime < 1000);
+        damageTexts = damageTexts.filter(d => now - d.startTime < 700);
         attackLines = attackLines.filter(l => now < l.until);
     }
 
@@ -3445,7 +3670,8 @@ function drawInventoryScreen() {
                 "Stealth Tome": "隠身の魔導書。唱えると姿を消し、敵から見えなくなる。",
                 "Explosion Tome": "爆発の魔導書。自分の周囲に強力な爆発を引き起こす。",
                 "Guardian Tome": "守護の魔導書。この階の間、地形とレーザーのダメージを無効化する。",
-                "Escape Tome": "脱出の魔導書。ランダムな階層(3F-99F)へワープする。"
+                "Escape Tome": "脱出の魔導書。ランダムな階層(3F-99F)へワープする。",
+                "Heal Tome": "回復の魔導書。HPを全回復する。"
             };
             const itemName = selected.name.split(' ').slice(1).join(' ');
 
@@ -3700,6 +3926,21 @@ function draw(now) {
         // 3. エネミー
         enemies.forEach(e => {
             if (e.hp <= 0) return;
+            // 擬態中のミミックは敵として描画しない（マップのSTAIRSタイルとして見える）
+            // ただし変身演出中は点滅させる
+            if (e.type === 'MIMIC' && e.disguised) {
+                if (e.mimicTransitionEnd && now < e.mimicTransitionEnd) {
+                    // 変身演出中：穴とMが交互に点滅
+                    const phase = Math.floor(now / 80) % 2;
+                    const px = e.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0);
+                    const py = e.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0);
+                    ctx.save();
+                    ctx.fillStyle = phase === 0 ? '#ef4444' : '#c084fc';
+                    ctx.fillText(phase === 0 ? 'M' : SYMBOLS.STAIRS, px, py);
+                    ctx.restore();
+                }
+                return;
+            }
             const px = e.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0);
             const py = e.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0);
             const isFlashing = now < e.flashUntil || (e.stunTurns > 0 && Math.floor(now / 150) % 2 === 0);
@@ -3721,6 +3962,15 @@ function draw(now) {
                 else if (e.type === 'TURRET') { eColor = '#ef4444'; eChar = SYMBOLS.TURRET; }
                 else if (e.type === 'BLAZE') { eColor = '#fb923c'; eChar = 'F'; }
                 else if (e.type === 'FROST') { eColor = '#ffffff'; eChar = 'I'; }
+                else if (e.type === 'MIMIC') {
+                    eColor = '#ef4444'; eChar = 'M';
+                    // 正体暴露の変身演出中は点滅
+                    if (e.mimicTransitionEnd && now < e.mimicTransitionEnd) {
+                        const phase = Math.floor(now / 80) % 2;
+                        eColor = phase === 0 ? '#ef4444' : '#c084fc';
+                        eChar = phase === 0 ? 'M' : SYMBOLS.STAIRS;
+                    }
+                }
                 if (e.isAlly) eColor = '#60a5fa';
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
@@ -3810,7 +4060,7 @@ function draw(now) {
     // 攻撃線、ダメージテキスト
     attackLines.forEach(l => { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); });
     damageTexts.forEach(d => {
-        const elapsed = (now - d.startTime) / 1000;
+        const elapsed = (now - d.startTime) / 700;
         ctx.save(); ctx.globalAlpha = 1 - elapsed; ctx.fillStyle = d.color;
         ctx.fillText(d.text, d.x * TILE_SIZE + TILE_SIZE, d.y * TILE_SIZE - (elapsed * 30)); ctx.restore();
     });
@@ -3989,6 +4239,24 @@ async function slidePlayer(dx, dy) {
 
         // 階段チェック
         if (map[player.y][player.x] === SYMBOLS.STAIRS) {
+            const mimicSlide = enemies.find(e => e.type === 'MIMIC' && e.disguised && e.x === player.x && e.y === player.y);
+            if (mimicSlide) {
+                mimicSlide.disguised = false;
+                map[mimicSlide.y][mimicSlide.x] = SYMBOLS.FLOOR;
+                mimicSlide.mimicTransitionEnd = performance.now() + 500;
+                SOUNDS.MIMIC_REVEAL();
+                addLog("The hole suddenly attacks! It was a MIMIC!");
+                spawnFloatingText(player.x, player.y, "MIMIC!!", "#c084fc");
+                SOUNDS.ENEMY_ATTACK();
+                setScreenShake(10, 300);
+                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount);
+                player.hp -= mimicDmg;
+                player.flashUntil = performance.now() + 300;
+                spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
+                SOUNDS.DAMAGE();
+                if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                break;
+            }
             addLog("You slid into the dark hole...");
             isPlayerVisible = false;
             floorLevel++;
@@ -4791,10 +5059,31 @@ async function handleAction(dx, dy) {
             }
 
             if (nextTile === SYMBOLS.STAIRS) {
-                addLog("You fall into the dark hole...");
-                isPlayerVisible = false;
-                floorLevel++;
-                await startFloorTransition();
+                // ミミックが擬態している偽の穴かチェック
+                const mimicAtStairs = enemies.find(e => e.type === 'MIMIC' && e.disguised && e.x === nx && e.y === ny);
+                if (mimicAtStairs) {
+                    // 穴に見えたが実はミミック！擬態解除して戦闘開始
+                    mimicAtStairs.disguised = false;
+                    map[mimicAtStairs.y][mimicAtStairs.x] = SYMBOLS.FLOOR;
+                    mimicAtStairs.mimicTransitionEnd = performance.now() + 500;
+                    SOUNDS.MIMIC_REVEAL();
+                    addLog("The hole suddenly attacks! It was a MIMIC!");
+                    spawnFloatingText(nx, ny, "MIMIC!!", "#c084fc");
+                    SOUNDS.ENEMY_ATTACK();
+                    setScreenShake(10, 300);
+                    // ミミックの先制攻撃
+                    const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount);
+                    player.hp -= mimicDmg;
+                    player.flashUntil = performance.now() + 300;
+                    spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
+                    SOUNDS.DAMAGE();
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                } else {
+                    addLog("You fall into the dark hole...");
+                    isPlayerVisible = false;
+                    floorLevel++;
+                    await startFloorTransition();
+                }
             }
         }
     }
@@ -4979,6 +5268,12 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
     enemy._dead = true;
 
     SOUNDS.DEFEAT();
+
+    // ミミックが擬態中に死んだ場合、マップタイルを床に戻す
+    if (enemy.type === 'MIMIC' && enemy.disguised) {
+        map[enemy.y][enemy.x] = SYMBOLS.FLOOR;
+    }
+
     enemies = enemies.filter(e => e !== enemy);
 
     if (killedByPlayer) {
@@ -5067,6 +5362,17 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
     // 金色敵（メタルスライム風）はダメージを1に固定
     if (enemy.type === 'GOLD') damage = isCritical ? 3 : 1;
 
+    // ミミックの正体暴露
+    if (enemy.type === 'MIMIC' && enemy.disguised) {
+        enemy.disguised = false;
+        map[enemy.y][enemy.x] = SYMBOLS.FLOOR;
+        enemy.mimicTransitionEnd = performance.now() + 500;
+        SOUNDS.MIMIC_REVEAL();
+        addLog("The hole was a MIMIC!");
+        spawnFloatingText(enemy.x, enemy.y, "MIMIC!!", "#c084fc");
+        setScreenShake(8, 200);
+    }
+
     enemy.hp -= damage; enemy.flashUntil = performance.now() + 200;
     spawnDamageText(player.x + dx, player.y + dy, damage, isCritical ? '#fbbf24' : '#f87171');
     if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 20);
@@ -5096,7 +5402,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
                 draw();
                 await applyLaserDamage(); // 滑っている最中もレーザーダメージを更新
 
-                if (map[enemy.y][enemy.x] === SYMBOLS.STAIRS) {
+                if (isRealHole(enemy.x, enemy.y)) {
                     scheduleEnemyFall(enemy, "The Turret slid into the HOLE!");
                     break;
                 }
@@ -5104,7 +5410,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
             }
 
             // 移動後の落下チェック
-            if (!enemy._dead && map[enemy.y][enemy.x] === SYMBOLS.STAIRS) {
+            if (!enemy._dead && isRealHole(enemy.x, enemy.y)) {
                 scheduleEnemyFall(enemy, "The Turret fell into the HOLE!");
             }
         }
@@ -5478,12 +5784,30 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
         await new Promise(r => setTimeout(r, 40));
 
         if (map[player.y][player.x] === SYMBOLS.STAIRS) {
-            addLog("You were knocked into the dark hole!");
-            isPlayerVisible = false;
-            floorLevel++;
-            if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
-            await startFloorTransition();
-            return;
+            const mimicKnock = enemies.find(e => e.type === 'MIMIC' && e.disguised && e.x === player.x && e.y === player.y);
+            if (mimicKnock) {
+                mimicKnock.disguised = false;
+                map[mimicKnock.y][mimicKnock.x] = SYMBOLS.FLOOR;
+                mimicKnock.mimicTransitionEnd = performance.now() + 500;
+                SOUNDS.MIMIC_REVEAL();
+                addLog("The hole suddenly attacks! It was a MIMIC!");
+                spawnFloatingText(player.x, player.y, "MIMIC!!", "#c084fc");
+                SOUNDS.ENEMY_ATTACK();
+                setScreenShake(10, 300);
+                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount);
+                player.hp -= mimicDmg;
+                player.flashUntil = performance.now() + 300;
+                spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
+                SOUNDS.DAMAGE();
+                if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+            } else {
+                addLog("You were knocked into the dark hole!");
+                isPlayerVisible = false;
+                floorLevel++;
+                if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
+                await startFloorTransition();
+                return;
+            }
         }
     }
     if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
@@ -5523,7 +5847,7 @@ async function knockbackEnemy(e, kx, ky, damage) {
         draw();
 
         // 穴チェック
-        if (map[e.y][e.x] === SYMBOLS.STAIRS) {
+        if (isRealHole(e.x, e.y)) {
             scheduleEnemyFall(e, "The enemy was knocked into the HOLE!");
             return;
         }
@@ -5540,6 +5864,7 @@ async function enemyTurn() {
             const adjacentEnemy = enemies.find(e => {
                 if (e.isAlly || e.hp <= 0) return false;
                 if (e.type === 'DRAGON' || e.type === 'TURRET') return false;
+                if (e.type === 'MIMIC' && e.disguised) return false;
 
                 const dx = Math.abs(e.x - player.x);
                 const dy = Math.abs(e.y - player.y);
@@ -5554,6 +5879,13 @@ async function enemyTurn() {
 
             if (adjacentEnemy) {
                 adjacentEnemy.isAlly = true;
+                // ミミックが仲間になったら擬態を解除
+                if (adjacentEnemy.type === 'MIMIC' && adjacentEnemy.disguised) {
+                    adjacentEnemy.disguised = false;
+                    map[adjacentEnemy.y][adjacentEnemy.x] = SYMBOLS.FLOOR;
+                    adjacentEnemy.mimicTransitionEnd = performance.now() + 500;
+                    SOUNDS.MIMIC_REVEAL();
+                }
                 player.fairyRemainingCharms--;
                 addLog(`✨ The Fairy's blessing charmed an adjacent enemy! (Remaining: ${player.fairyRemainingCharms}) ✨`);
                 spawnFloatingText(adjacentEnemy.x, adjacentEnemy.y, "CHARMED!!", "#f472b6");
@@ -5600,6 +5932,108 @@ async function enemyTurn() {
         if (e.stunTurns > 0) {
             e.stunTurns--;
             addLog("Enemy is stunned...");
+            continue;
+        }
+
+        // ミミック固有AI（味方になった場合は通常の味方AIに任せる）
+        if (e.type === 'MIMIC' && !e.isAlly) {
+            const mdx = Math.abs(e.x - player.x);
+            const mdy = Math.abs(e.y - player.y);
+            const mimicDist = mdx + mdy;
+
+            if (e.disguised) {
+                // 擬態中：プレイヤーが隣接(距離1)したら擬態解除＆先制攻撃
+                if (mimicDist === 1 && !player.isStealth) {
+                    e.disguised = false;
+                    map[e.y][e.x] = SYMBOLS.FLOOR;
+                    e.mimicTransitionEnd = performance.now() + 500; // 点滅演出500ms
+                    SOUNDS.MIMIC_REVEAL();
+                    addLog("The hole suddenly attacks! It was a MIMIC!");
+                    spawnFloatingText(e.x, e.y, "MIMIC!!", "#c084fc");
+                    setScreenShake(10, 300);
+                    e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
+                    spawnSlash(player.x, player.y);
+                    SOUNDS.ENEMY_ATTACK();
+                    const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount);
+                    player.hp -= mimicAtk;
+                    player.flashUntil = performance.now() + 300;
+                    spawnDamageText(player.x, player.y, mimicAtk, '#c084fc');
+                    SOUNDS.DAMAGE();
+                    attackOccurred = true;
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                    await new Promise(r => setTimeout(r, 200));
+                    e.offsetX = 0; e.offsetY = 0;
+                } else {
+                    // 擬態中の移動（10ターンおき、通路には入らない）
+                    e.moveCooldown = (e.moveCooldown || 10) - 1;
+                    if (e.moveCooldown <= 0) {
+                        e.moveCooldown = 10;
+                        const moves = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+                        const validMoves = moves.filter(m => {
+                            const nx = e.x + m.x, ny = e.y + m.y;
+                            if (!canEnemyMove(nx, ny, e)) return false;
+                            // 通路（左右or上下が壁で挟まれた1マス幅）には移動しない
+                            const wallLR = isWallAt(nx - 1, ny) && isWallAt(nx + 1, ny);
+                            const wallUD = isWallAt(nx, ny - 1) && isWallAt(nx, ny + 1);
+                            if (wallLR || wallUD) return false;
+                            return true;
+                        });
+                        if (validMoves.length > 0) {
+                            const m = validMoves[Math.floor(Math.random() * validMoves.length)];
+                            map[e.y][e.x] = SYMBOLS.FLOOR; // 元の位置を床に戻す
+                            e.x += m.x; e.y += m.y;
+                            map[e.y][e.x] = SYMBOLS.STAIRS; // 新しい位置を偽の穴にする
+                        }
+                    }
+                }
+            } else {
+                // 正体後：プレイヤーが離れたら再擬態する（距離8以上）
+                if (mimicDist >= 8) {
+                    // 再擬態：現在地が床なら穴に戻す
+                    if (map[e.y][e.x] === SYMBOLS.FLOOR) {
+                        e.disguised = true;
+                        e.mimicTransitionEnd = performance.now() + 500; // 点滅演出500ms
+                        map[e.y][e.x] = SYMBOLS.STAIRS;
+                        e.moveCooldown = 10;
+                        SOUNDS.MIMIC_DISGUISE();
+                        addLog("The Mimic disguised itself as a hole again...");
+                        spawnFloatingText(e.x, e.y, "...!", "#c084fc");
+                    }
+                } else if (mimicDist <= 6 && !player.isStealth) {
+                    if (mimicDist === 1) {
+                        // 攻撃
+                        e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
+                        spawnSlash(player.x, player.y);
+                        SOUNDS.ENEMY_ATTACK();
+                        const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount);
+                        if (player.isDefending) {
+                            const reduced = Math.max(1, Math.floor(mimicAtk * 0.4));
+                            player.hp -= reduced;
+                            spawnDamageText(player.x, player.y, reduced, '#c084fc');
+                        } else {
+                            player.hp -= mimicAtk;
+                            spawnDamageText(player.x, player.y, mimicAtk, '#c084fc');
+                        }
+                        player.flashUntil = performance.now() + 300;
+                        SOUNDS.DAMAGE();
+                        attackOccurred = true;
+                        if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                        await new Promise(r => setTimeout(r, 200));
+                        e.offsetX = 0; e.offsetY = 0;
+                    } else {
+                        // 10ターンに1歩移動して追跡
+                        e.moveCooldown = (e.moveCooldown || 10) - 1;
+                        if (e.moveCooldown <= 0) {
+                            e.moveCooldown = 10;
+                            const sx = Math.sign(player.x - e.x);
+                            const sy = Math.sign(player.y - e.y);
+                            if (canEnemyMove(e.x + sx, e.y + sy, e)) { e.x += sx; e.y += sy; }
+                            else if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; }
+                            else if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; }
+                        }
+                    }
+                }
+            }
             continue;
         }
 
@@ -5749,7 +6183,7 @@ async function enemyTurn() {
                     e.offsetX = (allyBestTarget.x - e.x) * 10; e.offsetY = (allyBestTarget.y - e.y) * 10;
 
                     // 味方の攻撃力計算 (オークなら強い)
-                    let dmg = (e.type === 'ORC' ? 15 : (e.type === 'SNAKE' ? 10 : 5)) + Math.floor(floorLevel / 2);
+                    let dmg = (e.type === 'ORC' ? 15 : (e.type === 'SNAKE' ? 10 : (e.type === 'MIMIC' ? 12 : 5))) + Math.floor(floorLevel / 2);
                     allyBestTarget.hp -= dmg;
                     allyBestTarget.flashUntil = performance.now() + 100;
                     spawnDamageText(allyBestTarget.x, allyBestTarget.y, dmg, '#fff');
@@ -5804,7 +6238,7 @@ async function enemyTurn() {
                             slideSteps++;
                             draw();
                             await new Promise(r => setTimeout(r, 40));
-                            if (map[allyBestTarget.y][allyBestTarget.x] === SYMBOLS.STAIRS) {
+                            if (isRealHole(allyBestTarget.x, allyBestTarget.y)) {
                                 addLog("The enemy was knocked into the hole!");
                                 allyBestTarget.hp = 0; break;
                             }
@@ -5850,7 +6284,7 @@ async function enemyTurn() {
                                 e.body[0] = oldEPos;
                             }
                             draw();
-                            if (map[e.y][e.x] === SYMBOLS.STAIRS) {
+                            if (isRealHole(e.x, e.y)) {
                                 scheduleEnemyFall(e, "An ally slid into the HOLE!");
                                 break;
                             }
@@ -5912,7 +6346,7 @@ async function enemyTurn() {
                                 e.body[0] = oldEPos;
                             }
                             draw();
-                            if (map[e.y][e.x] === SYMBOLS.STAIRS) {
+                            if (isRealHole(e.x, e.y)) {
                                 scheduleEnemyFall(e, "An ally slid into the HOLE!");
                                 break;
                             }
@@ -5937,7 +6371,7 @@ async function enemyTurn() {
             }
 
             // 穴チェック
-            if (map[e.y][e.x] === SYMBOLS.STAIRS) {
+            if (isRealHole(e.x, e.y)) {
                 scheduleEnemyFall(e, "An ally fell into the HOLE!");
             }
             continue;
@@ -6082,7 +6516,7 @@ async function enemyTurn() {
                     }
                     draw();
                     // 穴に落ちるなどのチェック
-                    if (map[e.y][e.x] === SYMBOLS.STAIRS) {
+                    if (isRealHole(e.x, e.y)) {
                         scheduleEnemyFall(e, "An enemy slid into the HOLE!");
                         break;
                     }
@@ -6104,7 +6538,7 @@ async function enemyTurn() {
                 }
 
                 // 通常移動後の穴チェック (氷以外でも)
-                if (!e._dead && map[e.y][e.x] === SYMBOLS.STAIRS) {
+                if (!e._dead && isRealHole(e.x, e.y)) {
                     scheduleEnemyFall(e, "An enemy fell into the HOLE!");
                 }
             }
@@ -6208,6 +6642,12 @@ async function applyLaserDamage() {
             }
         }
     }
+}
+
+// 指定座標が本物の穴（STAIRS）かどうか（擬態中ミミックの偽穴を除外）
+function isRealHole(x, y) {
+    if (map[y][x] !== SYMBOLS.STAIRS) return false;
+    return !enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === x && e.y === y);
 }
 
 function canEnemyMove(x, y, mover = null) {
