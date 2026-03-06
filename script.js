@@ -460,6 +460,25 @@ const SOUNDS = {
         osc.connect(g); g.connect(audioCtx.destination);
         osc.start(t); osc.stop(t + 0.4);
     },
+    SUMMON: () => {
+        // 低音の広がるような不気味な召喚音
+        const t = audioCtx.currentTime;
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(80, t);
+        osc1.frequency.exponentialRampToValueAtTime(200, t + 0.5);
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(120, t);
+        osc2.frequency.exponentialRampToValueAtTime(60, t + 0.5);
+        g.gain.setValueAtTime(0.15, t);
+        g.gain.setValueAtTime(0.15, t + 0.2);
+        g.gain.linearRampToValueAtTime(0, t + 0.5);
+        osc1.connect(g); osc2.connect(g); g.connect(audioCtx.destination);
+        osc1.start(t); osc1.stop(t + 0.5);
+        osc2.start(t); osc2.stop(t + 0.5);
+    },
     ENEMY_ATTACK: () => {
         // 短い鋭い攻撃音（低めのsquare波）
         playSound(300, 'square', 0.08, 0.15);
@@ -804,7 +823,7 @@ function updateUI() {
     if (floorLevel === 100) {
         floorElement.innerText = "LAST FLOOR";
     } else if (multiScreenMode) {
-        floorElement.innerText = `${floorLevel} [${currentScreen.x},${currentScreen.y}]`;
+        floorElement.innerText = `${floorLevel}/100`;
     } else {
         floorElement.innerText = `${floorLevel}/100`;
     }
@@ -851,8 +870,8 @@ function initMap() {
     multiScreenMode = false;
     screenGrid = null;
 
-    // --- MULTI-SCREEN FLOOR (Floor 90+: 99Fは確定、90-98Fは50%の確率) ---
-    if (floorLevel >= 90 && floorLevel < 100 && (floorLevel === 99 || Math.random() < 0.5)) {
+    // --- MULTI-SCREEN FLOOR (Floor 90+: 全階確定) ---
+    if (floorLevel >= 90 && floorLevel < 100) {
         multiScreenMode = true;
         addLog("⚠️ DANGER ZONE: Multi-screen labyrinth!");
         addLog("Explore 2x2 screens to find the KEY and EXIT.");
@@ -1342,6 +1361,73 @@ function initMap() {
         const coreY = 6;
         map[coreY][coreX] = SYMBOLS.CORE;
         dungeonCore = { x: coreX, y: coreY, hp: 15 }; // 耐久力を5から15にアップ
+
+        return;
+    }
+
+    // --- SUMMONER STAGE (Floor 88) ---
+    if (floorLevel === 88) {
+        addLog("A vast, empty hall... Something lurks here.");
+
+        // 広い空間を生成（外周1マスが壁、残りは全て床）
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                if (y < 1 || y >= ROWS - 1 || x < 1 || x >= COLS - 1) {
+                    map[y][x] = SYMBOLS.WALL;
+                } else {
+                    map[y][x] = SYMBOLS.FLOOR;
+                }
+            }
+        }
+
+        // プレイヤー開始位置（下部中央）
+        player.x = Math.floor(COLS / 2);
+        player.y = ROWS - 3;
+
+        // 穴（出口）を上部に配置
+        const holeX = Math.floor(COLS / 2) - 1;
+        const holeY = 4;
+
+        // 穴の周辺に逆三角形の氷の床を配置（フロア面積の約20%）
+        // 逆三角形: 上が広く下に向かって狭くなる
+        const iceTopY = 1;       // 氷の開始行
+        const iceBottomY = 15;   // 氷の終了行
+        const iceHeight = iceBottomY - iceTopY + 1; // 15行
+        for (let y = iceTopY; y <= iceBottomY; y++) {
+            // 上ほど幅が広い逆三角形: 進行度に応じて幅を線形に狭める
+            const progress = (y - iceTopY) / iceHeight; // 0(上)→1(下)
+            const halfWidth = Math.floor((1 - progress) * 16) + 1;
+            for (let x = holeX - halfWidth; x <= holeX + halfWidth; x++) {
+                if (x >= 1 && x < COLS - 1 && map[y][x] === SYMBOLS.FLOOR) {
+                    map[y][x] = SYMBOLS.ICE;
+                }
+            }
+        }
+
+        map[holeY][holeX] = SYMBOLS.STAIRS;
+
+        // 穴の左右と下に1マスの壁を設置（滑り止め）
+        map[holeY][holeX - 1] = SYMBOLS.WALL;
+        map[holeY][holeX + 1] = SYMBOLS.WALL;
+        map[holeY + 1][holeX] = SYMBOLS.WALL;
+
+        // 召喚師を2体配置（左右に分かれて配置）
+        const sHp = 80 + floorLevel * 4;
+        const summonerWord = "ummoner";
+        [{ sx: 6, sy: 8 }, { sx: COLS - 14, sy: 8 }].forEach(pos => {
+            const body = [];
+            for (let i = 0; i < summonerWord.length; i++) {
+                body.push({ x: pos.sx + (i + 1), y: pos.sy, char: summonerWord[i] });
+            }
+            enemies.push({
+                type: 'SUMMONER', x: pos.sx, y: pos.sy,
+                hp: sHp, maxHp: sHp,
+                flashUntil: 0, offsetX: 0, offsetY: 0,
+                expValue: 80, stunTurns: 0,
+                summonCooldown: 5, summonedCount: 0,
+                body: body
+            });
+        });
 
         return;
     }
@@ -3952,6 +4038,18 @@ function draw(now) {
                 ctx.shadowColor = color; ctx.shadowBlur = 15;
                 ctx.fillText('D', px, py);
                 if (e.body) e.body.forEach(seg => ctx.fillText(seg.char || 'D', seg.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0), seg.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0)));
+            } else if (e.type === 'SUMMONER') {
+                let sColor = '#a855f7';
+                // 召喚直前（クールダウン1以下）は明滅させて予兆を出す
+                if (e.summonCooldown <= 1 && !e.isAlly) {
+                    const phase = Math.floor(now / 100) % 2;
+                    sColor = phase === 0 ? '#a855f7' : '#d8b4fe';
+                }
+                if (e.isAlly) sColor = '#60a5fa';
+                ctx.fillStyle = isFlashing ? '#fff' : sColor;
+                ctx.shadowColor = sColor; ctx.shadowBlur = 10;
+                ctx.fillText('S', px, py);
+                if (e.body) e.body.forEach(seg => ctx.fillText(seg.char, seg.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0), seg.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0)));
             } else {
                 let eColor = '#f87171';
                 let eChar = SYMBOLS.ENEMY;
@@ -4184,7 +4282,7 @@ function tryPlaceBlock(dx, dy) {
 
     if (isPlaceable && !enemies.some(e => {
         if (e.x === bx && e.y === by) return true;
-        if (e.type === 'SNAKE' && e.body) return e.body.some(seg => seg.x === bx && seg.y === by);
+        if ((e.type === 'SNAKE' || e.type === 'SUMMONER') && e.body) return e.body.some(seg => seg.x === bx && seg.y === by);
         return false;
     }) && !wisps.some(w => w.x === bx && w.y === by) && !tempWalls.some(w => w.x === bx && w.y === by)) {
         tempWalls.push({ x: bx, y: by, hp: 2, type: 'BLOCK' });
@@ -4779,7 +4877,7 @@ async function handleAction(dx, dy) {
 
     const victim = enemies.find(e => {
         if (e.x === nx && e.y === ny) return true;
-        if (e.type === 'SNAKE' || e.type === 'DRAGON') return (e.body && e.body.some(seg => seg.x === nx && seg.y === ny));
+        if (e.type === 'SNAKE' || e.type === 'DRAGON' || e.type === 'SUMMONER') return (e.body && e.body.some(seg => seg.x === nx && seg.y === ny));
         return false;
     });
 
@@ -5274,7 +5372,50 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
         map[enemy.y][enemy.x] = SYMBOLS.FLOOR;
     }
 
+    // 召喚師が死んだ場合: 召喚された敵のリファレンスを解除
+    if (enemy.type === 'SUMMONER') {
+        enemies.forEach(e => {
+            if (e.summonedBy === enemy) e.summonedBy = null;
+        });
+    }
+
     enemies = enemies.filter(e => e !== enemy);
+
+    // 88階: 全サモナー撃破で穴の周囲の壁が消滅（演出付き）
+    if (enemy.type === 'SUMMONER' && floorLevel === 88) {
+        const remainingSummoners = enemies.filter(e => e.type === 'SUMMONER' && e.hp > 0);
+        if (remainingSummoners.length === 0) {
+            const hx = Math.floor(COLS / 2) - 1;
+            const hy = 4;
+            // ぴろりろりーん（上昇メロディ）
+            playMelody([
+                { f: 659.25, d: 0.12 }, { f: 783.99, d: 0.12 },
+                { f: 987.77, d: 0.12 }, { f: 1174.66, d: 0.12 },
+                { f: 1318.51, d: 0.3 }
+            ]);
+            addLog("The seal around the hole has been broken!");
+            // ブロックを1個ずつ演出付きで消す
+            const blocks = [
+                { x: hx - 1, y: hy },  // 左
+                { x: hx + 1, y: hy },  // 右
+                { x: hx, y: hy + 1 }   // 下
+            ];
+            blocks.forEach((b, i) => {
+                setTimeout(() => {
+                    if (map[b.y][b.x] === SYMBOLS.WALL) {
+                        map[b.y][b.x] = SYMBOLS.FLOOR;
+                    }
+                    playSound(1200 + i * 200, 'square', 0.08, 0.15);
+                    spawnFloatingText(b.x, b.y, "BREAK!", "#fbbf24");
+                    setScreenShake(8, 200);
+                }, 600 + i * 400);
+            });
+            // 最後にUNSEALED!表示
+            setTimeout(() => {
+                spawnFloatingText(hx, hy, "UNSEALED!", "#fbbf24");
+            }, 600 + blocks.length * 400);
+        }
+    }
 
     if (killedByPlayer) {
         player.totalKills++;
@@ -5770,7 +5911,7 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
         player.y = ny;
         slideSteps++;
 
-        const hitEnemies = enemies.filter(targetE => (targetE.x === nx && targetE.y === ny) || (targetE.type === 'SNAKE' && targetE.body && targetE.body.some(b => b.x === nx && b.y === ny)));
+        const hitEnemies = enemies.filter(targetE => (targetE.x === nx && targetE.y === ny) || ((targetE.type === 'SNAKE' || targetE.type === 'SUMMONER') && targetE.body && targetE.body.some(b => b.x === nx && b.y === ny)));
         for (const targetE of hitEnemies) {
             const colDmg = 10 + Math.floor(floorLevel / 2);
             targetE.hp -= colDmg;
@@ -5816,8 +5957,8 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
 // 敵用の吹き飛ばし処理
 async function knockbackEnemy(e, kx, ky, damage) {
     if (!e || e.hp <= 0) return;
-    if (e.type === 'DRAGON') {
-        // ドラゴンはダメージのみ受け、吹き飛ばされない
+    if (e.type === 'DRAGON' || e.type === 'SUMMONER') {
+        // ドラゴン・サモナーはダメージのみ受け、吹き飛ばされない
         e.hp -= damage;
         e.flashUntil = performance.now() + 200;
         spawnDamageText(e.x, e.y, damage, '#ef4444');
@@ -5863,7 +6004,7 @@ async function enemyTurn() {
         if (player.fairyCount > 0 && player.fairyRemainingCharms > 0) {
             const adjacentEnemy = enemies.find(e => {
                 if (e.isAlly || e.hp <= 0) return false;
-                if (e.type === 'DRAGON' || e.type === 'TURRET') return false;
+                if (e.type === 'DRAGON' || e.type === 'TURRET' || e.type === 'SUMMONER') return false;
                 if (e.type === 'MIMIC' && e.disguised) return false;
 
                 const dx = Math.abs(e.x - player.x);
@@ -6037,6 +6178,59 @@ async function enemyTurn() {
             continue;
         }
 
+        // 召喚師AI（味方になった場合は召喚しない）
+        if (e.type === 'SUMMONER' && !e.isAlly) {
+            e.summonCooldown = (e.summonCooldown || 5) - 1;
+            if (e.summonCooldown <= 0) {
+                // 召喚上限チェック: この召喚師が出した生存中の敵を数える
+                const summonedAlive = enemies.filter(se => se.summonedBy === e && se.hp > 0).length;
+                if (summonedAlive < 10) {
+                    // ランダムな床位置を探す（プレイヤーから距離3以上）
+                    let spawnPos = null;
+                    for (let t = 0; t < 50; t++) {
+                        const sx = Math.floor(Math.random() * COLS);
+                        const sy = Math.floor(Math.random() * ROWS);
+                        if (map[sy][sx] !== SYMBOLS.FLOOR) continue;
+                        if (Math.abs(sx - player.x) + Math.abs(sy - player.y) < 3) continue;
+                        if (enemies.some(oe => oe.x === sx && oe.y === sy)) continue;
+                        if (sx === player.x && sy === player.y) continue;
+                        spawnPos = { x: sx, y: sy };
+                        break;
+                    }
+                    if (spawnPos) {
+                        // フロアレベルに応じた敵を抽選（NORMAL/ORC/BLAZE/FROST）
+                        const roll = Math.random();
+                        let sType, sHpVal, sExp;
+                        if (roll < 0.25) {
+                            sType = 'ORC'; sHpVal = 40 + floorLevel * 5; sExp = 40;
+                        } else if (roll < 0.45) {
+                            sType = 'BLAZE'; sHpVal = 15 + floorLevel * 2; sExp = 15;
+                        } else if (roll < 0.65) {
+                            sType = 'FROST'; sHpVal = 15 + floorLevel * 2; sExp = 15;
+                        } else {
+                            sType = 'NORMAL'; sHpVal = 15 + floorLevel * 2; sExp = 15;
+                        }
+                        const newEnemy = {
+                            type: sType,
+                            x: spawnPos.x, y: spawnPos.y,
+                            hp: sHpVal, maxHp: sHpVal,
+                            flashUntil: 0, offsetX: 0, offsetY: 0,
+                            expValue: sExp,
+                            stunTurns: 0,
+                            summonedBy: e
+                        };
+                        enemies.push(newEnemy);
+                        SOUNDS.SUMMON();
+                        spawnFloatingText(e.x, e.y, "SUMMON!", "#a855f7");
+                        spawnFloatingText(spawnPos.x, spawnPos.y, "!!", "#a855f7");
+                    }
+                }
+                e.summonCooldown = 5;
+            }
+            continue;
+        }
+        if (e.type === 'SUMMONER' && e.isAlly) continue; // 味方召喚師は何もしない
+
         // タレット・ドラゴンはその場を動かない
         if (e.type === 'TURRET') continue;
         if (e.type === 'DRAGON') {
@@ -6183,7 +6377,7 @@ async function enemyTurn() {
                     e.offsetX = (allyBestTarget.x - e.x) * 10; e.offsetY = (allyBestTarget.y - e.y) * 10;
 
                     // 味方の攻撃力計算 (オークなら強い)
-                    let dmg = (e.type === 'ORC' ? 15 : (e.type === 'SNAKE' ? 10 : (e.type === 'MIMIC' ? 12 : 5))) + Math.floor(floorLevel / 2);
+                    let dmg = (e.type === 'ORC' ? 15 : (e.type === 'SNAKE' ? 10 : (e.type === 'MIMIC' ? 12 : (e.type === 'SUMMONER' ? 8 : 5)))) + Math.floor(floorLevel / 2);
                     allyBestTarget.hp -= dmg;
                     allyBestTarget.flashUntil = performance.now() + 100;
                     spawnDamageText(allyBestTarget.x, allyBestTarget.y, dmg, '#fff');
@@ -6191,8 +6385,8 @@ async function enemyTurn() {
                     attackOccurred = true;
 
                     if (allyBestTarget.hp <= 0) handleEnemyDeath(allyBestTarget);
-                    else if (e.type === 'ORC' && allyBestTarget.type !== 'DRAGON') {
-                        // 味方オークによる突き飛ばし（ドラゴンは吹き飛ばせない）
+                    else if (e.type === 'ORC' && allyBestTarget.type !== 'DRAGON' && allyBestTarget.type !== 'SUMMONER') {
+                        // 味方オークによる突き飛ばし（ドラゴン・サモナーは吹き飛ばせない）
                         addLog("Ally Orc's mighty blow sends the enemy flying!");
                         SOUNDS.FATAL();
                         let kx = allyBestTarget.x - e.x, ky = allyBestTarget.y - e.y;
@@ -6237,7 +6431,7 @@ async function enemyTurn() {
                             allyBestTarget.x = nx; allyBestTarget.y = ny;
                             slideSteps++;
                             draw();
-                            await new Promise(r => setTimeout(r, 40));
+                            await new Promise(r => setTimeout(r, 15));
                             if (isRealHole(allyBestTarget.x, allyBestTarget.y)) {
                                 addLog("The enemy was knocked into the hole!");
                                 allyBestTarget.hp = 0; break;
@@ -6245,7 +6439,7 @@ async function enemyTurn() {
                         }
                         if (allyBestTarget.hp <= 0) handleEnemyDeath(allyBestTarget);
                     }
-                    await new Promise(r => setTimeout(r, 100)); // わずかに短縮
+                    await new Promise(r => setTimeout(r, 40));
                     e.offsetX = 0; e.offsetY = 0;
                 } else {
                     // 敵に接近
@@ -6288,7 +6482,7 @@ async function enemyTurn() {
                                 scheduleEnemyFall(e, "An ally slid into the HOLE!");
                                 break;
                             }
-                            await new Promise(r => setTimeout(r, 40));
+                            await new Promise(r => setTimeout(r, 15));
                         }
 
                         if (!e._dead) {
@@ -6350,7 +6544,7 @@ async function enemyTurn() {
                                 scheduleEnemyFall(e, "An ally slid into the HOLE!");
                                 break;
                             }
-                            await new Promise(r => setTimeout(r, 40));
+                            await new Promise(r => setTimeout(r, 15));
                         }
 
                         if (!e._dead) {
@@ -6421,18 +6615,18 @@ async function enemyTurn() {
                 SOUNDS.SELECT(); // 溜め開始の合図
 
                 // グッと身を引き、小刻みに震えて力を溜める
-                for (let i = 0; i < 6; i++) {
+                for (let i = 0; i < 4; i++) {
                     e.offsetX = baseOX + (Math.random() - 0.5) * 4;
                     e.offsetY = baseOY + (Math.random() - 0.5) * 4;
                     draw();
-                    await new Promise(r => setTimeout(r, 40));
+                    await new Promise(r => setTimeout(r, 20));
                 }
 
                 // 限界まで溜めて赤く光る（フラッシュ演出）
-                e.flashUntil = performance.now() + 150;
+                e.flashUntil = performance.now() + 100;
                 e.offsetX = baseOX; e.offsetY = baseOY;
                 draw();
-                await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => setTimeout(r, 50));
 
                 // 勢いよくぶつかる
                 e.offsetX = kx * 12; e.offsetY = ky * 12;
@@ -6476,7 +6670,7 @@ async function enemyTurn() {
                 if (bestTarget.obj.hp <= 0) handleEnemyDeath(bestTarget.obj);
             }
             attackOccurred = true;
-            await new Promise(r => setTimeout(r, 150));
+            await new Promise(r => setTimeout(r, 60));
             e.offsetX = 0; e.offsetY = 0;
         } else if (minDist <= detectRange) {
             // 接近
@@ -6520,7 +6714,7 @@ async function enemyTurn() {
                         scheduleEnemyFall(e, "An enemy slid into the HOLE!");
                         break;
                     }
-                    await new Promise(r => setTimeout(r, 40));
+                    await new Promise(r => setTimeout(r, 15));
                 }
 
                 if (!e._dead && moved) {
@@ -6628,7 +6822,7 @@ async function applyLaserDamage() {
                             spawnDamageText(oe.x, oe.y, enemyLaserDmg, '#f87171');
                             SOUNDS.DAMAGE();
                             if (oe.hp <= 0) handleEnemyDeath(oe);
-                        } else if (oe.type === 'SNAKE' && oe.body && oe.body.some(s => s.x === lx && s.y === ly)) {
+                        } else if ((oe.type === 'SNAKE' || oe.type === 'SUMMONER') && oe.body && oe.body.some(s => s.x === lx && s.y === ly)) {
                             oe.hp -= enemyLaserDmg; oe.flashUntil = performance.now() + 100;
                             spawnDamageText(lx, ly, enemyLaserDmg, '#f87171');
                             SOUNDS.DAMAGE();
@@ -6675,7 +6869,7 @@ function canEnemyMove(x, y, mover = null) {
     return !enemies.some(e => {
         if (e === mover) return false; // 自分自身は無視
         if (e.x === x && e.y === y) return true;
-        if (e.type === 'SNAKE' || e.type === 'DRAGON') return (e.body && e.body.some(seg => seg.x === x && seg.y === y));
+        if (e.type === 'SNAKE' || e.type === 'DRAGON' || e.type === 'SUMMONER') return (e.body && e.body.some(seg => seg.x === x && seg.y === y));
         return false;
     });
 }
@@ -7109,7 +7303,7 @@ async function tryCharmEnemy() {
             const distHead = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
             if (distHead <= range) {
                 inRange = true;
-            } else if (e.type === 'SNAKE' && e.body) {
+            } else if (e.body) {
                 if (e.body.some(b => Math.abs(b.x - player.x) + Math.abs(b.y - player.y) <= range)) {
                     inRange = true;
                 }
@@ -7120,13 +7314,23 @@ async function tryCharmEnemy() {
     });
 
     if (targets.size > 0) {
+        const charmImmune = ['DRAGON', 'TURRET', 'SUMMONER'];
         targets.forEach(enemy => {
-            enemy.isAlly = true;
-            spawnFloatingText(enemy.x, enemy.y, "CHARMED!!", "#60a5fa");
-            charmedCount++;
+            if (charmImmune.includes(enemy.type)) {
+                spawnFloatingText(enemy.x, enemy.y, "RESIST!", "#ff6b6b");
+            } else {
+                enemy.isAlly = true;
+                spawnFloatingText(enemy.x, enemy.y, "CHARMED!!", "#60a5fa");
+                charmedCount++;
+            }
         });
-        addLog(`📜 Charmed ${charmedCount} enemies! They joined you!`);
-        SOUNDS.CHARM();
+        if (charmedCount > 0) {
+            addLog(`📜 Charmed ${charmedCount} enemies! They joined you!`);
+            SOUNDS.CHARM();
+        } else {
+            addLog("All enemies resisted the charm!");
+            SOUNDS.DAMAGE();
+        }
         updateUI();
         return true;
     }
@@ -7154,11 +7358,14 @@ async function tryExplode() {
     const range = 5;
     let hitCount = 0;
 
-    // 範囲内の敵に大ダメージ
+    // 範囲内の敵に大ダメージ（bodyセグメントも判定対象）
     for (const e of enemies) {
         if (e.hp <= 0) continue;
-        const dist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
-        if (dist <= range) {
+        let inRange = Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= range;
+        if (!inRange && e.body) {
+            inRange = e.body.some(seg => Math.abs(seg.x - player.x) + Math.abs(seg.y - player.y) <= range);
+        }
+        if (inRange) {
             const dmg = 150 + (player.level * 10);
             e.hp -= dmg;
             e.flashUntil = performance.now() + 300;
