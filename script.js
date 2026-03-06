@@ -48,7 +48,8 @@ const SYMBOLS = {
     ESCAPE: '🌀',
     TREE: '♣',
     GRASS: ',',
-    HEAL_TOME: '☤'
+    HEAL_TOME: '☤',
+    BREAKER: 'W'
 };
 
 // オープニング演出用データ
@@ -321,6 +322,12 @@ const SOUNDS = {
         playSound(60, 'sawtooth', 0.4, 0.4);
         playSound(40, 'sawtooth', 0.4, 0.4);
         setTimeout(() => playSound(80, 'square', 0.2, 0.2), 30);
+    },
+    WALL_BREAK: () => {
+        playSound(50, 'sawtooth', 0.35, 0.3);
+        playSound(30, 'sawtooth', 0.35, 0.4);
+        setTimeout(() => playSound(70, 'square', 0.15, 0.2), 50);
+        setTimeout(() => playSound(100, 'sawtooth', 0.1, 0.15), 100);
     },
     HEAL: () => {
         playMelody([{ f: 523.25, d: 0.1 }, { f: 659.25, d: 0.1 }, { f: 783.99, d: 0.1 }, { f: 1046.50, d: 0.3 }]);
@@ -1120,6 +1127,8 @@ function initMap() {
                             sEnemies.push({ type: 'TURRET', x: ex, y: ey, dir: bestDir, hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
                         } else if (enemyRoll < 0.25) {
                             sEnemies.push({ type: 'ORC', x: ex, y: ey, hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
+                        } else if (floorLevel >= 30 && enemyRoll < 0.28) {
+                            sEnemies.push({ type: 'BREAKER', x: ex, y: ey, hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0 });
                         } else {
                             sEnemies.push({ type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 });
                         }
@@ -1761,6 +1770,130 @@ function initMap() {
         // 出口を封印された扉に変更
         map[3][20] = SYMBOLS.DOOR;
         addLog("The exit is SEALED (⊗). Find the KEY (🗝) in the corner!");
+        return;
+    }
+
+    if (floorLevel === 66) {
+        addLog("EVENT: The Breaker's Den.");
+        addLog("WARNING: The walls tremble... something massive lurks here.");
+        addLog("Enemies and treasures are trapped in the walls!");
+
+        // まず全体を壁で埋める
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                map[y][x] = SYMBOLS.WALL;
+            }
+        }
+
+        // プレイヤーの初期位置とその周囲を確保（広めに3x3）
+        player.x = 3; player.y = 3;
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                map[player.y + dy][player.x + dx] = SYMBOLS.FLOOR;
+            }
+        }
+
+        // 出口を右下付近に配置（1マスだけ床）
+        const exitX = COLS - 4, exitY = ROWS - 4;
+        map[exitY][exitX] = SYMBOLS.STAIRS;
+
+        // 壁の中に1マス空間を作るヘルパー（周囲4方向がすべて壁の場所を探す）
+        const findTrappedCell = (minDist) => {
+            for (let t = 0; t < 100; t++) {
+                const cx = Math.floor(Math.random() * (COLS - 6)) + 3;
+                const cy = Math.floor(Math.random() * (ROWS - 6)) + 3;
+                if (map[cy][cx] !== SYMBOLS.WALL) continue;
+                if (map[cy-1][cx] !== SYMBOLS.WALL || map[cy+1][cx] !== SYMBOLS.WALL ||
+                    map[cy][cx-1] !== SYMBOLS.WALL || map[cy][cx+1] !== SYMBOLS.WALL) continue;
+                if (Math.abs(cx - player.x) + Math.abs(cy - player.y) < minDist) continue;
+                return { x: cx, y: cy };
+            }
+            return null;
+        };
+
+        // 敵(E)を壁の中に1マスだけの空間で閉じ込める
+        for (let i = 0; i < 25; i++) {
+            const pos = findTrappedCell(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'NORMAL', x: pos.x, y: pos.y,
+                hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
+                stunTurns: 0
+            });
+        }
+
+        // ORC(G)を壁の中に閉じ込める（2体）
+        for (let i = 0; i < 2; i++) {
+            const pos = findTrappedCell(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'ORC', x: pos.x, y: pos.y,
+                hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                stunTurns: 0
+            });
+        }
+
+        // アイテムを壁の中に1マスだけの空間で閉じ込める
+        const trappedItems = [
+            SYMBOLS.SWORD, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.ARMOR,
+            SYMBOLS.FAIRY, SYMBOLS.WAND,
+            SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH,
+            SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN
+        ];
+        for (const item of trappedItems) {
+            const pos = findTrappedCell(3);
+            if (!pos) continue;
+            map[pos.y][pos.x] = item;
+        }
+
+        // BREAKER: プレイヤーのそばに2匹（確定）
+        const playerBreakers = [
+            { x: player.x + 2, y: player.y },
+            { x: player.x, y: player.y + 2 }
+        ];
+        for (const pb of playerBreakers) {
+            map[pb.y][pb.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: pb.x, y: pb.y,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45,
+                stunTurns: 0
+            });
+        }
+
+        // BREAKER: 穴のすぐ隣に1匹（確定）
+        const exitBreaker = { x: exitX - 1, y: exitY };
+        map[exitBreaker.y][exitBreaker.x] = SYMBOLS.FLOOR;
+        enemies.push({
+            type: 'BREAKER', x: exitBreaker.x, y: exitBreaker.y,
+            hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45,
+            stunTurns: 0
+        });
+
+        // BREAKER: 残り6匹をランダム配置（壁を1マス壊して床にして配置）
+        for (let i = 0; i < 6; i++) {
+            let bx, by, tries = 0;
+            do {
+                bx = Math.floor(Math.random() * (COLS - 4)) + 2;
+                by = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                tries++;
+            } while (tries < 200 && (map[by][bx] !== SYMBOLS.WALL ||
+                enemies.some(en => en.x === bx && en.y === by)));
+            if (tries >= 200) continue;
+            map[by][bx] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: bx, y: by,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45,
+                stunTurns: 0
+            });
+        }
+
         return;
     }
 
@@ -2563,6 +2696,13 @@ function initMap() {
                                 type: 'ORC', x: ex, y: ey,
                                 hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
                                 flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                                stunTurns: 0
+                            });
+                        } else if (floorLevel >= 30 && enemyRoll < 0.28) {
+                            enemies.push({
+                                type: 'BREAKER', x: ex, y: ey,
+                                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45,
                                 stunTurns: 0
                             });
                         } else {
@@ -4060,6 +4200,7 @@ function draw(now) {
                 else if (e.type === 'TURRET') { eColor = '#ef4444'; eChar = SYMBOLS.TURRET; }
                 else if (e.type === 'BLAZE') { eColor = '#fb923c'; eChar = 'F'; }
                 else if (e.type === 'FROST') { eColor = '#ffffff'; eChar = 'I'; }
+                else if (e.type === 'BREAKER') { eColor = '#f59e0b'; eChar = SYMBOLS.BREAKER; }
                 else if (e.type === 'MIMIC') {
                     eColor = '#ef4444'; eChar = 'M';
                     // 正体暴露の変身演出中は点滅
@@ -6377,7 +6518,7 @@ async function enemyTurn() {
                     e.offsetX = (allyBestTarget.x - e.x) * 10; e.offsetY = (allyBestTarget.y - e.y) * 10;
 
                     // 味方の攻撃力計算 (オークなら強い)
-                    let dmg = (e.type === 'ORC' ? 15 : (e.type === 'SNAKE' ? 10 : (e.type === 'MIMIC' ? 12 : (e.type === 'SUMMONER' ? 8 : 5)))) + Math.floor(floorLevel / 2);
+                    let dmg = (e.type === 'ORC' ? 15 : (e.type === 'BREAKER' ? 12 : (e.type === 'SNAKE' ? 10 : (e.type === 'MIMIC' ? 12 : (e.type === 'SUMMONER' ? 8 : 5))))) + Math.floor(floorLevel / 2);
                     allyBestTarget.hp -= dmg;
                     allyBestTarget.flashUntil = performance.now() + 100;
                     spawnDamageText(allyBestTarget.x, allyBestTarget.y, dmg, '#fff');
@@ -6466,7 +6607,7 @@ async function enemyTurn() {
 
                         // 地形変化とスライド防止（味方用）
                         let esx = e.x - oldPos.x, esy = e.y - oldPos.y;
-                        while (e.type !== 'FROST' && e.type !== 'BLAZE' && map[e.y][e.x] === SYMBOLS.ICE) {
+                        while (e.type !== 'FROST' && e.type !== 'BLAZE' && e.type !== 'BREAKER' && map[e.y][e.x] === SYMBOLS.ICE) {
                             const nx = e.x + esx, ny = e.y + esy;
                             if (nx === e.x && ny === e.y) break;
                             if (!canEnemyMove(nx, ny, e)) break;
@@ -6516,7 +6657,6 @@ async function enemyTurn() {
                         if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
                         else if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
                     }
-
                     if (moved) {
                         if (e.type === 'SNAKE') {
                             SOUNDS.SNAKE_MOVE();
@@ -6528,7 +6668,7 @@ async function enemyTurn() {
 
                         // 地形変化とスライド防止（味方用）
                         let esx = e.x - oldPos.x, esy = e.y - oldPos.y;
-                        while (e.type !== 'FROST' && e.type !== 'BLAZE' && map[e.y][e.x] === SYMBOLS.ICE) {
+                        while (e.type !== 'FROST' && e.type !== 'BLAZE' && e.type !== 'BREAKER' && map[e.y][e.x] === SYMBOLS.ICE) {
                             const nx = e.x + esx, ny = e.y + esy;
                             if (nx === e.x && ny === e.y) break;
                             if (!canEnemyMove(nx, ny, e)) break;
@@ -6605,6 +6745,97 @@ async function enemyTurn() {
             if (bestMove.x !== e.x || bestMove.y !== e.y) {
                 SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y;
             }
+        } else if (e.type === 'BREAKER') {
+            // BREAKERの移動AI: 直進優先で遠くまで掘り進む
+            const allDirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+
+            // 初回: ランダムな進行方向を割り当て
+            if (e.breakerDir == null) {
+                e.breakerDir = Math.floor(Math.random() * 4);
+            }
+
+            // 進行方向の候補リストを構築（優先順位付き）
+            const curDir = allDirs[e.breakerDir];
+            // 90度ターンの2方向（ランダム順）
+            const perpDirs = allDirs.filter(d => d.x !== curDir.x && d.y !== curDir.y && !(d.x === -curDir.x && d.y === -curDir.y));
+            if (Math.random() < 0.5) perpDirs.reverse();
+            // 逆方向（最後の手段）
+            const reverseDir = allDirs.find(d => d.x === -curDir.x && d.y === -curDir.y);
+
+            // 優先順: 直進 > 横 > 逆走
+            const orderedDirs = [curDir, ...perpDirs, reverseDir];
+
+            // 外壁に近い場合は方向転換を促す（端から3マス以内）
+            const nearEdge = e.x <= 3 || e.x >= COLS - 4 || e.y <= 3 || e.y >= ROWS - 4;
+            if (nearEdge) {
+                // マップ中心方向を最優先に
+                const cx = Math.floor(COLS / 2), cy = Math.floor(ROWS / 2);
+                const toCenterDx = cx - e.x, toCenterDy = cy - e.y;
+                orderedDirs.sort((a, b) => {
+                    const scoreA = a.x * toCenterDx + a.y * toCenterDy;
+                    const scoreB = b.x * toCenterDx + b.y * toCenterDy;
+                    return scoreB - scoreA;
+                });
+            }
+
+            // たまに（15%）ランダムに方向転換して探索範囲を広げる
+            if (!nearEdge && Math.random() < 0.15) {
+                e.breakerDir = Math.floor(Math.random() * 4);
+                orderedDirs[0] = allDirs[e.breakerDir];
+            }
+
+            let moved = false;
+            const tryMove = (d) => {
+                const nx = e.x + d.x, ny = e.y + d.y;
+                if (nx <= 0 || nx >= COLS - 1 || ny <= 0 || ny >= ROWS - 1) return false;
+                if (nx === player.x && ny === player.y) return false;
+                if (enemies.some(oe => oe !== e && oe.x === nx && oe.y === ny)) return false;
+                if (map[ny][nx] === SYMBOLS.WALL) {
+                    map[ny][nx] = SYMBOLS.FLOOR;
+                    e.x = nx; e.y = ny;
+                    SOUNDS.WALL_BREAK();
+                    setScreenShake(8, 200);
+                    addLog("CRASH! The Breaker smashed through a wall!");
+                    spawnFloatingText(nx, ny, "BREAK!", '#f59e0b');
+                    return true;
+                } else if (canEnemyMove(nx, ny, e)) {
+                    e.x = nx; e.y = ny;
+                    return true;
+                }
+                return false;
+            };
+
+            for (const d of orderedDirs) {
+                if (tryMove(d)) {
+                    // 移動成功した方向を記憶
+                    e.breakerDir = allDirs.indexOf(d);
+                    if (e.breakerDir === -1) e.breakerDir = allDirs.findIndex(ad => ad.x === d.x && ad.y === d.y);
+                    moved = true;
+                    break;
+                }
+            }
+            // 隣接していたら攻撃（逃げられなかった場合）
+            if (!moved && minDist === 1 && bestTarget.isPlayer) {
+                e.offsetX = (bestTarget.x - e.x) * 10; e.offsetY = (bestTarget.y - e.y) * 10;
+                spawnSlash(bestTarget.x, bestTarget.y);
+                SOUNDS.ENEMY_ATTACK();
+                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 6) - player.armorCount);
+                if (player.isDefending) {
+                    if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
+                    else damage = Math.max(1, Math.floor(damage * 0.4));
+                }
+                if (damage > 0) {
+                    SOUNDS.DAMAGE();
+                    player.hp -= damage; player.flashUntil = performance.now() + 200;
+                    if (player.hp > 0) animateBounce(player);
+                    spawnDamageText(player.x, player.y, damage, '#ffffff');
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); }
+                }
+                if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                attackOccurred = true;
+                await new Promise(r => setTimeout(r, 60));
+                e.offsetX = 0; e.offsetY = 0;
+            }
         } else if (minDist === 1) {
             // 攻撃演出
             if (e.type === 'ORC') {
@@ -6641,7 +6872,7 @@ async function enemyTurn() {
             if (bestTarget.isPlayer) {
 
                 // プレイヤーへの攻撃（既存ロジック）
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : 1))) - player.armorCount);
+                let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : (e.type === 'BREAKER' ? 6 : 1)))) - player.armorCount);
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.4));
@@ -6688,6 +6919,8 @@ async function enemyTurn() {
                 else if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
             }
 
+
+
             if (moved) {
                 if (e.type === 'SNAKE') {
                     SOUNDS.SNAKE_MOVE();
@@ -6697,7 +6930,7 @@ async function enemyTurn() {
 
                 // 敵の氷スライド (フロストとブレイズは滑らない)
                 let esx = e.x - oldPos.x, esy = e.y - oldPos.y;
-                while (e.type !== 'FROST' && e.type !== 'BLAZE' && map[e.y][e.x] === SYMBOLS.ICE) {
+                while (e.type !== 'FROST' && e.type !== 'BLAZE' && e.type !== 'BREAKER' && map[e.y][e.x] === SYMBOLS.ICE) {
                     const nx = e.x + esx, ny = e.y + esy;
                     if (nx === e.x && ny === e.y) break;
                     if (!canEnemyMove(nx, ny, e)) break;
