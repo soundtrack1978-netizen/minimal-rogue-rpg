@@ -2046,6 +2046,169 @@ function initMap() {
     let isMazeFloor = !isDenseMazeFloor && layoutRoll < 0.2;
     let isGreatHallFloor = !isDenseMazeFloor && !isMazeFloor && layoutRoll < 0.4;
 
+    if (floorLevel === 80) {
+        addLog("EVENT: The Frozen Furnace.");
+        addLog("WARNING: Ice and fire are sealed within these walls!");
+        addLog("Enemies and treasures are trapped in the walls!");
+
+        // まず全体を壁で埋める
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                map[y][x] = SYMBOLS.WALL;
+            }
+        }
+
+        // プレイヤーの初期位置とその周囲を確保（3x3）
+        player.x = 3; player.y = 3;
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                map[player.y + dy][player.x + dx] = SYMBOLS.FLOOR;
+            }
+        }
+
+        // 出口を右下付近に配置（1マスだけ床）
+        const exitX = COLS - 4, exitY = ROWS - 4;
+        map[exitY][exitX] = SYMBOLS.STAIRS;
+
+        // 壁の中に1マス空間を作るヘルパー
+        const findTrappedCell80 = (minDist) => {
+            for (let t = 0; t < 100; t++) {
+                const cx = Math.floor(Math.random() * (COLS - 6)) + 3;
+                const cy = Math.floor(Math.random() * (ROWS - 6)) + 3;
+                if (map[cy][cx] !== SYMBOLS.WALL) continue;
+                if (map[cy-1][cx] !== SYMBOLS.WALL || map[cy+1][cx] !== SYMBOLS.WALL ||
+                    map[cy][cx-1] !== SYMBOLS.WALL || map[cy][cx+1] !== SYMBOLS.WALL) continue;
+                if (Math.abs(cx - player.x) + Math.abs(cy - player.y) < minDist) continue;
+                return { x: cx, y: cy };
+            }
+            return null;
+        };
+
+        // 敵(E)を壁の中に閉じ込める
+        for (let i = 0; i < 12; i++) {
+            const pos = findTrappedCell80(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'NORMAL', x: pos.x, y: pos.y,
+                hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
+                stunTurns: 0
+            });
+        }
+
+        // FROST(I)を壁の中に閉じ込める（5体）— 解放されると周囲を凍らせる
+        for (let i = 0; i < 5; i++) {
+            const pos = findTrappedCell80(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'FROST', x: pos.x, y: pos.y,
+                hp: 15 + floorLevel * 2, maxHp: 15 + floorLevel * 2,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15,
+                stunTurns: 0
+            });
+        }
+
+        // BLAZE(F)を壁の中に閉じ込める（5体）— 解放されると周囲を溶岩に
+        for (let i = 0; i < 5; i++) {
+            const pos = findTrappedCell80(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BLAZE', x: pos.x, y: pos.y,
+                hp: 15 + floorLevel * 2, maxHp: 15 + floorLevel * 2,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15,
+                stunTurns: 0
+            });
+        }
+
+        // タレット(T)を壁の中に閉じ込める（2体）
+        for (let i = 0; i < 2; i++) {
+            const pos = findTrappedCell80(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'TURRET', x: pos.x, y: pos.y, dir: Math.floor(Math.random() * 4),
+                hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                stunTurns: 0
+            });
+        }
+
+        // ORC(G)を壁の中に閉じ込める（2体）
+        for (let i = 0; i < 2; i++) {
+            const pos = findTrappedCell80(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'ORC', x: pos.x, y: pos.y,
+                hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                stunTurns: 0
+            });
+        }
+
+        // アイテムを壁の中に閉じ込める
+        const trappedItems80 = [
+            SYMBOLS.SWORD, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.ARMOR,
+            SYMBOLS.FAIRY,
+            SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH,
+            SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.ESCAPE
+        ];
+        for (const item of trappedItems80) {
+            const pos = findTrappedCell80(3);
+            if (!pos) continue;
+            map[pos.y][pos.x] = item;
+        }
+
+        // BREAKER: プレイヤーのそばに2匹（確定）
+        const playerBreakers80 = [
+            { x: player.x + 2, y: player.y },
+            { x: player.x, y: player.y + 2 }
+        ];
+        for (const pb of playerBreakers80) {
+            map[pb.y][pb.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: pb.x, y: pb.y,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45,
+                stunTurns: 0
+            });
+        }
+
+        // BREAKER: 穴のすぐ隣に1匹（確定）
+        const exitBreaker80 = { x: exitX - 1, y: exitY };
+        map[exitBreaker80.y][exitBreaker80.x] = SYMBOLS.FLOOR;
+        enemies.push({
+            type: 'BREAKER', x: exitBreaker80.x, y: exitBreaker80.y,
+            hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45,
+            stunTurns: 0
+        });
+
+        // BREAKER: 残り7匹をランダム配置
+        for (let i = 0; i < 7; i++) {
+            let bx, by, tries = 0;
+            do {
+                bx = Math.floor(Math.random() * (COLS - 4)) + 2;
+                by = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                tries++;
+            } while (tries < 200 && (map[by][bx] !== SYMBOLS.WALL ||
+                enemies.some(en => en.x === bx && en.y === by)));
+            if (tries >= 200) continue;
+            map[by][bx] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: bx, y: by,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45,
+                stunTurns: 0
+            });
+        }
+
+        return;
+    }
+
     if (floorLevel === 77) {
         addLog("EVENT: The Forbidden Labyrinth.");
         // フロア全体を一旦床にして、迷路ロジックの土台を作る
@@ -6917,6 +7080,40 @@ async function enemyTurn() {
             attackOccurred = true;
             await new Promise(r => setTimeout(r, 60));
             e.offsetX = 0; e.offsetY = 0;
+        } else if ((e.type === 'FROST' || e.type === 'BLAZE') && minDist > detectRange) {
+            // FROST/BLAZE: ターゲットが遠くてもBREAKERが近ければ逃げる
+            const nearBreaker = enemies.find(ob => ob.type === 'BREAKER' && !ob._dead &&
+                Math.abs(ob.x - e.x) + Math.abs(ob.y - e.y) <= 5);
+            if (nearBreaker) {
+                const oldPos = { x: e.x, y: e.y };
+                const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+                // BREAKERから遠ざかる方向を優先
+                dirs.sort((a, b) => {
+                    const distA = Math.abs(nearBreaker.x - (e.x + a.x)) + Math.abs(nearBreaker.y - (e.y + a.y));
+                    const distB = Math.abs(nearBreaker.x - (e.x + b.x)) + Math.abs(nearBreaker.y - (e.y + b.y));
+                    if (distB !== distA) return distB - distA;
+                    return Math.random() - 0.5;
+                });
+                let moved = false;
+                for (const d of dirs) {
+                    if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
+                        e.x += d.x; e.y += d.y; moved = true; break;
+                    }
+                }
+                if (moved && !e._dead) {
+                    if (e.type === 'FROST') {
+                        if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.LAVA) {
+                            map[e.y][e.x] = SYMBOLS.ICE;
+                            SOUNDS.FREEZE();
+                        }
+                    } else if (e.type === 'BLAZE') {
+                        if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.ICE) {
+                            map[e.y][e.x] = SYMBOLS.LAVA;
+                            SOUNDS.IGNITE();
+                        }
+                    }
+                }
+            }
         } else if (minDist <= detectRange) {
             // 接近
             const oldPos = { x: e.x, y: e.y };
