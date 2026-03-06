@@ -1812,7 +1812,7 @@ function initMap() {
         };
 
         // 敵(E)を壁の中に1マスだけの空間で閉じ込める
-        for (let i = 0; i < 25; i++) {
+        for (let i = 0; i < 24; i++) {
             const pos = findTrappedCell(5);
             if (!pos) continue;
             map[pos.y][pos.x] = SYMBOLS.FLOOR;
@@ -1822,6 +1822,20 @@ function initMap() {
                 flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
                 stunTurns: 0
             });
+        }
+
+        // タレット(T)を壁の中に閉じ込める（1体）
+        {
+            const pos = findTrappedCell(5);
+            if (pos) {
+                map[pos.y][pos.x] = SYMBOLS.FLOOR;
+                enemies.push({
+                    type: 'TURRET', x: pos.x, y: pos.y, dir: Math.floor(Math.random() * 4),
+                    hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                    stunTurns: 0
+                });
+            }
         }
 
         // ORC(G)を壁の中に閉じ込める（2体）
@@ -1840,7 +1854,7 @@ function initMap() {
         // アイテムを壁の中に1マスだけの空間で閉じ込める
         const trappedItems = [
             SYMBOLS.SWORD, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.ARMOR,
-            SYMBOLS.FAIRY, SYMBOLS.WAND,
+            SYMBOLS.FAIRY,
             SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH,
             SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN
         ];
