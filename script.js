@@ -5,6 +5,8 @@ const hpElement = document.getElementById('hp');
 const lvElement = document.getElementById('lv');
 const staminaBar = document.getElementById('stamina-bar');
 const floorElement = document.getElementById('floor');
+const statsBar = document.querySelector('.stats-bar');
+statsBar.style.display = 'none';
 
 // 設定
 const TILE_SIZE = 20;
@@ -573,6 +575,7 @@ let player = {
 let enemies = [];
 let wisps = []; // {x, y, dirIndex} - 無敵の障害物
 let floorLevel = 1;
+let pendingF4Tutorial = false;
 let damageTexts = [];
 let attackLines = [];
 let tempWalls = []; // {x, y, hp}
@@ -1585,6 +1588,64 @@ function initMap() {
         // 念のため、出口への道を一文字分広げて再確保 (32から35までを床に)
         for (let x = 32; x <= 35; x++) { if (map[12][x] === SYMBOLS.WALL) map[12][x] = SYMBOLS.FLOOR; }
         map[12][35] = SYMBOLS.DOOR;
+        return;
+    }
+
+    if (floorLevel === 4) {
+        addLog("EVENT: The Sealed Chamber.");
+        addLog("TIP: W (Breaker) destroys walls. Let it carve a path!");
+
+        // 全面を壁で埋める
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                map[y][x] = SYMBOLS.WALL;
+            }
+        }
+
+        // --- 左の小部屋（プレイヤー）---
+        // 3x3の小部屋: x=2..4, y=11..13
+        for (let y = 11; y <= 13; y++) {
+            for (let x = 2; x <= 4; x++) {
+                map[y][x] = SYMBOLS.FLOOR;
+            }
+        }
+        player.x = 3; player.y = 12;
+
+        // --- 右の小部屋（穴）---
+        // 3x3の小部屋: x=35..37, y=11..13
+        for (let y = 11; y <= 13; y++) {
+            for (let x = 35; x <= 37; x++) {
+                map[y][x] = SYMBOLS.FLOOR;
+            }
+        }
+        map[12][36] = SYMBOLS.STAIRS;
+
+        // --- BREAKER 3匹 ---
+        // 1. プレイヤーのとなり（左部屋内）
+        enemies.push({
+            type: 'BREAKER', x: 4, y: 12,
+            hp: 30, maxHp: 30,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30,
+            stunTurns: 0
+        });
+
+        // 2. 中間地点（壁の中に1マス空間）
+        map[12][20] = SYMBOLS.FLOOR;
+        enemies.push({
+            type: 'BREAKER', x: 20, y: 12,
+            hp: 30, maxHp: 30,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30,
+            stunTurns: 0
+        });
+
+        // 3. 穴のとなり（右部屋内）
+        enemies.push({
+            type: 'BREAKER', x: 35, y: 12,
+            hp: 30, maxHp: 30,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30,
+            stunTurns: 0
+        });
+
         return;
     }
 
@@ -4226,6 +4287,9 @@ function drawOpening(now) {
 }
 
 function gameLoop(now) {
+    const hideStates = ['TITLE', 'OPENING', 'GAMEOVER', 'GAMEOVER_SEQ', 'ENDING', 'ENDING_SEQ'];
+    statsBar.style.display = hideStates.includes(gameState) ? 'none' : '';
+
     if (gameState === 'TITLE') {
         drawTitle();
     } else if (gameState === 'MENU') {
@@ -4248,7 +4312,7 @@ function gameLoop(now) {
         draw(now);
     } else {
         draw(now);
-        damageTexts = damageTexts.filter(d => now - d.startTime < 700);
+        damageTexts = damageTexts.filter(d => now - d.startTime < 400);
         attackLines = attackLines.filter(l => now < l.until);
     }
 
@@ -4908,9 +4972,9 @@ function draw(now) {
     // 攻撃線、ダメージテキスト
     attackLines.forEach(l => { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); });
     damageTexts.forEach(d => {
-        const elapsed = (now - d.startTime) / 700;
+        const elapsed = (now - d.startTime) / 400;
         ctx.save(); ctx.globalAlpha = 1 - elapsed; ctx.fillStyle = d.color;
-        ctx.fillText(d.text, d.x * TILE_SIZE + TILE_SIZE, d.y * TILE_SIZE - (elapsed * 30)); ctx.restore();
+        ctx.fillText(d.text, d.x * TILE_SIZE + TILE_SIZE, d.y * TILE_SIZE - 5); ctx.restore();
     });
 
     // ゲームオーバーの赤色オーバーレイ
@@ -7472,9 +7536,11 @@ async function enemyTurn() {
                     setScreenShake(8, 200);
                     addLog("CRASH! The Breaker smashed through a wall!");
                     spawnFloatingText(nx, ny, "BREAK!", '#f59e0b');
-                    // 壁から何か出現する判定
+                    // 壁から何か出現する判定（4Fチュートリアルでは無効）
                     const dropRoll = Math.random();
-                    if (dropRoll < 0.12) {
+                    if (floorLevel === 4) {
+                        // 4Fではドロップなし
+                    } else if (dropRoll < 0.12) {
                         // アイテム出現（12%）: 壊した壁の元の位置にアイテムを落とす
                         const dropItems = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.HEAL_TOME, SYMBOLS.GUARDIAN, SYMBOLS.BREAKER_TOME];
                         const dropItem = dropItems[Math.floor(Math.random() * dropItems.length)];
@@ -7954,6 +8020,27 @@ async function enemyTurn() {
 
     // ターンの最後にもチェック（近づいてきた敵を仲間にする）
     processFairyCharm();
+
+    // 4F チュートリアル表示（5ターン経過時）
+    if (floorLevel === 4 && !pendingF4Tutorial && turnCount === 5) {
+        pendingF4Tutorial = true;
+        await showStoryPages([
+            [
+                "The Wall Breakers are",
+                "destroying the walls...",
+                "",
+                "ウォールブレイカーが",
+                "壁を破壊している"
+            ],
+            [
+                "They are reshaping",
+                "the dungeon!",
+                "",
+                "こいつらが",
+                "ダンジョンを作りかえている"
+            ]
+        ]);
+    }
 }
 
 async function applyLaserDamage() {
@@ -8139,7 +8226,7 @@ async function startGame(startFloor = 1, isTestMode = false) {
 
     isPlayerVisible = false; // 着地まで隠す
     gameOverAlpha = 0;
-    floorLevel = startFloor; turnCount = 0; tempWalls = []; wisps = [];
+    floorLevel = startFloor; turnCount = 0; tempWalls = []; wisps = []; pendingF4Tutorial = false;
     initMap(); // 描画エラーを防ぐため、先に構造だけ初期化しておく
     updateUI();
 
