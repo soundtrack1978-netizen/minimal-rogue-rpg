@@ -63,9 +63,10 @@ const RINGS = [
   { id: 'CRITICAL_RING', name: 'Critical Ring', nameJa: '会心の指輪',   desc: 'Critical hit chance 10% -> 20%',       descJa: '会心の一撃の確率が2倍に',             cost: 250, symbol: '◎' },
   { id: 'STAMINA_RING',  name: 'Stamina Ring',  nameJa: '活力の指輪',   desc: 'Attack stamina cost 20 -> 12',         descJa: '攻撃時のスタミナ消費を軽減',         cost: 150, symbol: '◎' },
   { id: 'KNOCKBACK_RING',name: 'Knockback Ring', nameJa: '突風の指輪',  desc: 'Attacks push enemies back 1 tile',     descJa: '攻撃で敵を1マス押し戻す',             cost: 500, symbol: '◎' },
-  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Recover 1 HP on kill',                 descJa: '敵を倒すとHP1回復',                   cost: 200, symbol: '◎' },
+  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Recover 1 HP every turn',              descJa: '毎ターンHP1回復',                     cost: 200, symbol: '◎' },
   { id: 'TOUGH_RING',    name: 'Tough Ring',    nameJa: '堅守の指輪',   desc: '+1 armor (damage reduction)',           descJa: '防御力+1（被ダメージ軽減）',          cost: 180, symbol: '◎' },
   { id: 'BREAKER_RING',  name: 'Breaker Ring',  nameJa: '壁壊しの指輪', desc: 'Break 1 wall when stamina is full (costs all stamina)', descJa: 'スタミナ満タン時に壁を1マス破壊（スタミナ全消費）', cost: 300, symbol: '◎' },
+  { id: 'BOMB_RING',     name: 'Bomb Ring',     nameJa: '爆弾の指輪',   desc: 'Place bombs instead of blocks (explode in 5 turns)', descJa: 'ブロックの代わりに爆弾を設置（5ターンで爆発）', cost: 350, symbol: '◎' },
 ];
 
 // オープニング演出用データ
@@ -560,6 +561,8 @@ let statusPage = 0;
 let shopSelection = 0;
 let shopTab = 'BUY'; // 'BUY' or 'EQUIP'
 let shopStock = []; // 商人のランダム品揃え（RINGS配列のインデックス3つ）
+let shopConfirmSelection = 0; // 購入確認のYES/NO選択
+let hasPurchasedFromMerchant = false; // 商人から購入したかどうか
 let ringEquipSelection = 0; // RINGS menu in MENU screen
 let nextSlideAction = null; // 氷の上で滑っている最中の入力を保持
 let isIceFloor = false; // 現在のフロアが氷のフロアかどうか
@@ -600,6 +603,8 @@ let pendingF4Tutorial = false;
 let damageTexts = [];
 let attackLines = [];
 let tempWalls = []; // {x, y, hp}
+let bombs = []; // {x, y, timer, hp}
+let blastEffects = []; // {tiles: [{x,y}], endTime: number} - 爆風エフェクト
 let isProcessing = false;
 let bufferedInput = null; // { dx, dy } 次のターンの入力バッファ
 let turnCount = 0;
@@ -616,6 +621,69 @@ let hasShownSaveTut = false; // はじめてのセーブ時のテキストフラ
 let hasShownFairyTut = false; // はじめての妖精との出会いフラグ
 let hasShownTomeTut = false; // はじめての魔導書入手フラグ
 let hasShownEquipTut = false; // はじめての装備品（剣・盾）入手フラグ
+let hasShownMerchantEpilogue = false; // 10F商人の買い物後テキスト表示済みフラグ
+let merchantPatternIndex = -1; // 10F商人の選択された会話パターン
+const MERCHANT_PATTERNS = [
+    { // パターン①
+        intro: [
+            ["傷ついた冒険者の男がいる。", "腹部を押さえ、血のにじむ手でこちらを見上げた。", "あなたに気づくと、弱々しく笑った。"],
+            ["「……おまえも、迷ったのか？", "なあ、金をくれよ。", "これと交換だ……ちゃんとした品だぜ……」"]
+        ],
+        epilogue: [
+            ["「ありがとうよ……", "これで、向こうに渡れる……」"],
+            ["男はその金を、自分の亡骸に持たせるつもりらしい。"]
+        ]
+    },
+    { // パターン②
+        intro: [
+            ["倒れ込んだ冒険者が、床を掻いている。", "何かを探すように、指先が震えている。", "あなたを見ると、必死に声を絞り出した。"],
+            ["「金……持ってるだろ……？", "頼む……少しでいい……", "これ、やるから……だから……」"]
+        ],
+        epilogue: [
+            ["「……間に合った……", "これで、置いていかれずにすむ……」"],
+            ["死者の列に加わるには、支払いが必要だとされている。", "持たぬ者は、岸辺に取り残されるのだ。"]
+        ]
+    },
+    { // パターン③
+        intro: [
+            ["壁にもたれた老いた冒険者がいる。", "呼吸は浅く、目だけがはっきりとあなたを捉えている。"],
+            ["「……ひとつ、頼みがある。", "金を、いくらか分けてくれ。", "礼はする……これを持っていけ……」"]
+        ],
+        epilogue: [
+            ["「助かった……これで、恥をかかずに済む……」"]
+        ]
+    },
+    { // パターン④
+        intro: [
+            ["横たわる冒険者がいる。", "もう立ち上がる力も残っていないようだ。", "あなたの足音に、ゆっくりと目を開いた。"],
+            ["「ああ、人だ……", "なあ、金をくれないか。", "代わりに、これを持っていけ……」"]
+        ],
+        epilogue: [
+            ["「悪いな……", "これで、もう、準備はいい……」"],
+            ["死を前にした者は、自らの旅支度を整えるという。", "金は、その最後の品のひとつだ。"]
+        ]
+    },
+    { // パターン⑤
+        intro: [
+            ["笑っている冒険者がいる。", "しかしその目は焦点が合っていない。"],
+            ["「はは……　来た来た……　客だ……", "なあ、金をくれよ。", "そうしないと……　渡れないんだ……」"]
+        ],
+        epilogue: [
+            ["「はは……　これでいい……", "いつでも、あの世に行ける……」"],
+            ["死者の国に入れなければ、アンデッドとして彷徨うことになるのだ。"]
+        ]
+    },
+    { // パターン⑥
+        intro: [
+            ["若い冒険者が、壁に寄りかかって座っている。", "あなたを見ると、どこか安心したように息をついた。"],
+            ["「……よかった、誰か来てくれた。", "少しだけ金を分けてくれないか。", "これ、置いていくからさ……」"]
+        ],
+        epilogue: [
+            ["「ありがとう……", "これで、死者の国に行ける……」"],
+            ["死者の国への船賃が無い場合、アンデッドとして彷徨うことになる。", "本当かどうかは、わからない。"]
+        ]
+    }
+];
 let dungeonCore = null; // {x, y, hp}
 let hasSpawnedDragon = false; // ドラゴンが出現したか
 
@@ -688,6 +756,7 @@ function loadGame() {
         if (data.enemies) enemies = data.enemies;
         if (data.wisps) wisps = data.wisps;
         if (data.tempWalls) tempWalls = data.tempWalls;
+        if (data.bombs) bombs = data.bombs.map(b => ({ ...b, hp: b.hp || 2 }));
 
         // マルチスクリーン状態の復元
         multiScreenMode = data.multiScreenMode || false;
@@ -833,6 +902,7 @@ function saveGame() {
         enemies: enemies,
         wisps: wisps,
         tempWalls: tempWalls,
+        bombs: bombs,
 
         // マルチスクリーン情報
         multiScreenMode: multiScreenMode,
@@ -848,6 +918,23 @@ function saveGame() {
 }
 
 function updateUI() {
+    // LIFE_RING: 毎ターンHP+1回復
+    if (hasRing('LIFE_RING') && player.hp < player.maxHp) {
+        player.hp = Math.min(player.maxHp, player.hp + 1);
+    }
+    // 爆弾のターン経過処理
+    bombs.forEach(b => b.timer--);
+    let hasDetonation = true;
+    while (hasDetonation) {
+        hasDetonation = false;
+        const readyBombs = bombs.filter(b => b.timer <= 0);
+        for (const bomb of readyBombs) {
+            if (bombs.includes(bomb)) {
+                detonateBomb(bomb);
+                hasDetonation = true;
+            }
+        }
+    }
     isPlayerVisible = true; // 確実に表示状態にする
     hpElement.innerText = `${player.hp}/${player.maxHp}`;
     if (player.isShielded) {
@@ -919,6 +1006,8 @@ function initMap() {
     damageTexts = [];
     attackLines = [];
     tempWalls = []; // 設置ブロックをリセット
+    bombs = []; // 爆弾をリセット
+    blastEffects = []; // 爆風エフェクトをリセット
     wisps = []; // ウィルをリセット
     player.hasKey = false;
     player.isStealth = false; // フロア移動で解除
@@ -926,6 +1015,9 @@ function initMap() {
     wallDropCount = 0; // 壁破壊ドロップカウンターリセット
     shopStock = []; // 商人の品揃えリセット（次の商人接触時に生成）
     merchantState = null; // 商人状態リセット
+    hasPurchasedFromMerchant = false; // 購入フラグリセット
+    hasShownMerchantEpilogue = false; // エピローグ表示フラグリセット
+    merchantPatternIndex = -1; // 会話パターンリセット
     player.isBreaker = false; // フロア移動で解除
     player.fairyRemainingCharms = player.fairyCount;
     dungeonCore = null;
@@ -933,11 +1025,17 @@ function initMap() {
     multiScreenMode = false;
     screenGrid = null;
 
+    // 商人出現判定 (約15階おき: 10F, 25F, 40F, 55F, 70F, 85F確定、±2Fは30%の確率)
+    const merchantBaseFloors = [10, 25, 40, 55, 70, 85];
+    const isExactMerchantFloor = merchantBaseFloors.includes(floorLevel);
+    const isNearMerchantFloor = !isExactMerchantFloor && merchantBaseFloors.some(mf => Math.abs(floorLevel - mf) <= 2);
+    const isMerchantFloor = floorLevel >= 10 && floorLevel < 100 && (isExactMerchantFloor || (isNearMerchantFloor && Math.random() < 0.3));
+
     // --- MULTI-SCREEN FLOOR (Floor 50+: 固定ステージ以外) ---
     const fixedStageFloors = [50, 66, 75, 77, 80, 88, 100];
     if (floorLevel >= 50 && floorLevel < 100 && !fixedStageFloors.includes(floorLevel)) {
         multiScreenMode = true;
-        screenGridSize = (floorLevel >= 90) ? 3 : 2;
+        screenGridSize = (floorLevel === 99) ? 4 : (floorLevel >= 90) ? 3 : 2;
         addLog("⚠️ DANGER ZONE: Multi-screen labyrinth!");
         addLog(`Explore ${screenGridSize}x${screenGridSize} screens to find the KEY and EXIT.`);
 
@@ -1512,6 +1610,44 @@ function initMap() {
             if (saveMap[sy2][sx2] === SYMBOLS.FLOOR) { saveMap[sy2][sx2] = SYMBOLS.SAVE; break; }
         }
 
+        // マルチスクリーン内の商人配置
+        if (isMerchantFloor) {
+            // スタート・カギ・ドア・セーブ以外の画面から1つ選ぶ
+            const reserved = new Set(['0,0', `${screenGridSize-1},${screenGridSize-1}`, `${screenGridSize-1},0`,
+                `${screenGridSize > 2 ? Math.floor(screenGridSize/2) : 0},${Math.floor(screenGridSize/2)}`]);
+            const candidates = [];
+            for (let sy2 = 0; sy2 < screenGridSize; sy2++) {
+                for (let sx2 = 0; sx2 < screenGridSize; sx2++) {
+                    if (!reserved.has(`${sx2},${sy2}`)) candidates.push({ sx: sx2, sy: sy2 });
+                }
+            }
+            if (candidates.length > 0) {
+                const pick = candidates[Math.floor(Math.random() * candidates.length)];
+                const mMap = screenGrid.maps[pick.sy][pick.sx];
+                const mRooms = allRooms[`${pick.sx},${pick.sy}`];
+                if (mRooms && mRooms.length > 0) {
+                    const mRoom = mRooms[Math.floor(Math.random() * mRooms.length)];
+                    // 部屋内の床タイルに商人を配置
+                    for (let ty = mRoom.y; ty < mRoom.y + mRoom.h; ty++) {
+                        let placed = false;
+                        for (let tx = mRoom.x; tx < mRoom.x + mRoom.w; tx++) {
+                            if (mMap[ty][tx] === SYMBOLS.FLOOR) {
+                                mMap[ty][tx] = SYMBOLS.MERCHANT;
+                                merchantState = { x: tx, y: ty, facing: 'LEFT', jumpUntil: 0, nextAction: 3 + Math.floor(Math.random() * 4), hp: 30 };
+                                // 商人の位置の敵を除去
+                                screenGrid.enemies[pick.sy][pick.sx] = screenGrid.enemies[pick.sy][pick.sx].filter(
+                                    e => !(e.x === tx && e.y === ty)
+                                );
+                                placed = true;
+                                break;
+                            }
+                        }
+                        if (placed) break;
+                    }
+                }
+            }
+        }
+
         // 現在の画面をグローバルにロード
         currentScreen = { x: 0, y: 0 };
         map = screenGrid.maps[0][0];
@@ -1812,6 +1948,61 @@ function initMap() {
         enemies.push({
             type: 'BREAKER', x: 35, y: 12,
             hp: 30, maxHp: 30,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30,
+            stunTurns: 0
+        });
+
+        return;
+    }
+
+    if (floorLevel === 10) {
+        addLog("EVENT: A voice echoes from deep within the walls...");
+        addLog("TIP: Let the Breakers (W) carve through the walls!");
+
+        // 全面を壁で埋める
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                map[y][x] = SYMBOLS.WALL;
+            }
+        }
+
+        // --- 左の小部屋（プレイヤー）3x3: x=2..4, y=11..13
+        for (let y = 11; y <= 13; y++) {
+            for (let x = 2; x <= 4; x++) {
+                map[y][x] = SYMBOLS.FLOOR;
+            }
+        }
+        player.x = 3; player.y = 12;
+
+        // --- 中央の小部屋（商人）5x3: x=18..22, y=11..13
+        for (let y = 11; y <= 13; y++) {
+            for (let x = 18; x <= 22; x++) {
+                map[y][x] = SYMBOLS.FLOOR;
+            }
+        }
+        map[12][20] = SYMBOLS.MERCHANT;
+        merchantState = { x: 20, y: 12, facing: 'LEFT', jumpUntil: 0, nextAction: 3 + Math.floor(Math.random() * 4), hp: 30 };
+
+        // --- 右の小部屋（穴）3x3: x=35..37, y=11..13
+        for (let y = 11; y <= 13; y++) {
+            for (let x = 35; x <= 37; x++) {
+                map[y][x] = SYMBOLS.FLOOR;
+            }
+        }
+        map[12][36] = SYMBOLS.STAIRS;
+
+        // --- BREAKER 2匹 ---
+        // 1. プレイヤーの右隣（左部屋から右へ掘り進む）
+        enemies.push({
+            type: 'BREAKER', x: 4, y: 12,
+            hp: 50, maxHp: 50,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30,
+            stunTurns: 0
+        });
+        // 2. 穴の左隣（右部屋から左へ掘り進む）
+        enemies.push({
+            type: 'BREAKER', x: 35, y: 12,
+            hp: 50, maxHp: 50,
             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30,
             stunTurns: 0
         });
@@ -3376,9 +3567,9 @@ function initMap() {
         }
     }
 
-    // 商人NPC配置 (10Fは確定、11F以降は15%の確率)
+    // 商人NPC配置 (通常ダンジョン用)
     // 商人専用の小部屋を生成し、通路1マスで既存の部屋と接続する
-    if (floorLevel >= 10 && floorLevel < 100 && !multiScreenMode && (floorLevel === 10 || Math.random() < 0.15)) {
+    if (!multiScreenMode && isMerchantFloor) {
         let merchantPlaced = false;
         // 全部屋をシャッフルして試す（スタート部屋以外）
         const srcRooms = rooms.slice(1).sort(() => Math.random() - 0.5);
@@ -3422,7 +3613,7 @@ function initMap() {
                 else if (dir.dy === 1) { mcx = sx; mcy = sy + shopH - 1; }
                 else { mcx = sx + shopW - 1; mcy = sy; }
                 map[mcy][mcx] = SYMBOLS.MERCHANT;
-                merchantState = { x: mcx, y: mcy, facing: 'LEFT', jumpUntil: 0, nextAction: 3 + Math.floor(Math.random() * 4) };
+                merchantState = { x: mcx, y: mcy, facing: 'LEFT', jumpUntil: 0, nextAction: 3 + Math.floor(Math.random() * 4), hp: 30 };
                 // 通路を掘って接続
                 if (dir.dx === 1) {
                     for (let tx = srcRoom.x + srcRoom.w; tx < sx; tx++) map[srcRoom.cy][tx] = SYMBOLS.FLOOR;
@@ -3449,7 +3640,7 @@ function initMap() {
                     const fy = fallbackRoom.cy + dy;
                     if (fy >= 0 && fy < ROWS && fx >= 0 && fx < COLS && map[fy][fx] === SYMBOLS.FLOOR) {
                         map[fy][fx] = SYMBOLS.MERCHANT;
-                        merchantState = { x: fx, y: fy, facing: 'LEFT', jumpUntil: 0, nextAction: 3 + Math.floor(Math.random() * 4) };
+                        merchantState = { x: fx, y: fy, facing: 'LEFT', jumpUntil: 0, nextAction: 3 + Math.floor(Math.random() * 4), hp: 30 };
                         enemies = enemies.filter(e => !(e.x === fx && e.y === fy));
                         addLog("A stranded adventurer (＠) is on this floor!");
                         merchantPlaced = true;
@@ -3916,6 +4107,7 @@ function isWallAt(x, y) {
     const tile = map[y][x];
     if (tile === SYMBOLS.WALL || tile === SYMBOLS.DOOR || tile === SYMBOLS.CORE || tile === SYMBOLS.BLOCK || tile === SYMBOLS.BLOCK_CRACKED || tile === SYMBOLS.MERCHANT) return true;
     if (tempWalls.some(w => w.x === x && w.y === y)) return true;
+    if (bombs.some(b => b.x === x && b.y === y)) return true;
     return false;
 }
 
@@ -4213,14 +4405,15 @@ async function animateEnemyFallOld(e) {
     setScreenShake(8, 150);
 }
 
-async function showStoryPages(pages, useMiddlePos = false) {
+async function showStoryPages(pages, useMiddlePos = false, useTopPos = false) {
     for (let i = 0; i < pages.length; i++) {
         const isLastPage = (i === pages.length - 1);
         storyMessage = {
             lines: pages[i],
             alpha: 0,
             showNext: !isLastPage,
-            useMiddlePos: useMiddlePos
+            useMiddlePos: useMiddlePos,
+            useTopPos: useTopPos
         };
         isTutorialInputActive = true;
 
@@ -4677,6 +4870,10 @@ function gameLoop(now) {
     } else if (gameState === 'SHOP') {
         draw(now);
         drawShopScreen();
+    } else if (gameState === 'CONFIRM_BUY') {
+        draw(now);
+        drawShopScreen();
+        drawConfirmBuy();
     } else if (gameState === 'RINGS') {
         draw(now);
         drawRingsScreen();
@@ -4868,68 +5065,84 @@ function drawShopScreen() {
     const h = canvas.height - pad * 2;
     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.fillRect(pad, pad, w, h);
-    ctx.strokeStyle = '#fbbf24';
+    ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
     ctx.strokeRect(pad, pad, w, h);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fbbf24';
+    ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px Courier New';
-    ctx.fillText('-- 遭難した冒険者 --', canvas.width / 2, pad + 30);
+    ctx.fillText('-- Stranded Adventurer --', canvas.width / 2, pad + 30);
 
     // ゴールド表示
     ctx.font = '14px Courier New';
-    ctx.fillStyle = '#fbbf24';
+    ctx.fillStyle = '#fff';
     ctx.textAlign = 'right';
-    ctx.fillText(`所持金: ${player.gold}G`, pad + w - 15, pad + 55);
+    ctx.fillText(`Gold: ${player.gold}G`, pad + w - 15, pad + 55);
     ctx.textAlign = 'left';
 
     const startY = pad + 80;
-    const lineH = 55;
-    const stockRings = shopStock.map(i => RINGS[i]);
-    stockRings.forEach((ring, i) => {
+    const lineH = 45;
+    shopStock.forEach((item, i) => {
         const yPos = startY + i * lineH;
-        const owned = player.ownedRings.includes(ring.id);
-        const canAfford = player.gold >= ring.cost;
         const isSelected = shopSelection === i;
+        const canAfford = player.gold >= item.cost;
+        let name = '', nameJa = '', descJa = '', owned = false, symbol = '';
+
+        if (item.type === 'ring') {
+            const ring = RINGS[item.ringIndex];
+            name = ring.name; nameJa = ring.nameJa; descJa = ring.descJa;
+            owned = player.ownedRings.includes(ring.id);
+            symbol = ring.symbol;
+        } else if (item.type === 'sword') {
+            name = 'Sword'; nameJa = '剣'; descJa = '攻撃力+3';
+            symbol = SYMBOLS.SWORD;
+        } else if (item.type === 'armor') {
+            name = 'Armor'; nameJa = '防具'; descJa = '防御力+1';
+            symbol = SYMBOLS.ARMOR;
+        }
 
         if (isSelected) {
-            ctx.fillStyle = 'rgba(251, 191, 36, 0.15)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
             ctx.fillRect(pad + 5, yPos - 12, w - 10, lineH - 4);
-            ctx.fillStyle = '#fbbf24';
+            ctx.fillStyle = '#fff';
             ctx.fillText('>', pad + 12, yPos + 5);
         }
 
-        // 英語名 + 日本語名
+        // アイコン + 名前
         ctx.font = '14px Courier New';
+        const iconColor = (item.type === 'sword' || item.type === 'armor') ? '#38bdf8' : '#fff';
         if (owned) {
             ctx.fillStyle = '#4ade80';
-            ctx.fillText(`✓ ${ring.name}（${ring.nameJa}）`, pad + 30, yPos + 5);
+            ctx.fillText(`✓ ${symbol} ${name}（${nameJa}）`, pad + 30, yPos + 5);
         } else if (!canAfford) {
             ctx.fillStyle = '#555';
-            ctx.fillText(`  ${ring.name}（${ring.nameJa}）`, pad + 30, yPos + 5);
+            ctx.fillText(`  ${symbol} ${name}（${nameJa}）`, pad + 30, yPos + 5);
         } else {
+            // アイコン部分を色分け
+            ctx.fillStyle = isSelected ? iconColor : (item.type === 'ring' ? '#ccc' : '#38bdf8');
+            ctx.fillText(`  ${symbol}`, pad + 30, yPos + 5);
             ctx.fillStyle = isSelected ? '#fff' : '#ccc';
-            ctx.fillText(`  ${ring.name}（${ring.nameJa}）`, pad + 30, yPos + 5);
+            ctx.fillText(` ${name}（${nameJa}）`, pad + 30 + ctx.measureText(`  ${symbol}`).width, yPos + 5);
         }
 
         // コスト
         ctx.textAlign = 'right';
-        ctx.fillStyle = owned ? '#4ade80' : (canAfford ? '#fbbf24' : '#555');
-        ctx.fillText(owned ? '購入済' : `${ring.cost}G`, pad + w - 15, yPos + 5);
+        ctx.fillStyle = owned ? '#4ade80' : (canAfford ? '#fff' : '#555');
+        ctx.fillText(owned ? 'Owned' : `${item.cost}G`, pad + w - 15, yPos + 5);
         ctx.textAlign = 'left';
 
-        // 日本語説明（常に表示）
+        // 説明
         ctx.font = '12px Courier New';
         ctx.fillStyle = isSelected ? '#aaa' : '#666';
-        ctx.fillText(`  ${ring.descJa}`, pad + 30, yPos + 24);
+        ctx.fillText(`  ${descJa}`, pad + 30, yPos + 22);
     });
 
     // 操作ガイド
     ctx.textAlign = 'center';
     ctx.font = '12px Courier New';
     ctx.fillStyle = '#666';
-    ctx.fillText('[↑↓] 選択  [Enter] 購入  [X] 閉じる', canvas.width / 2, pad + h - 12);
+    ctx.fillText('[Up/Down] Select  [Enter] Buy  [X] Close', canvas.width / 2, pad + h - 12);
 }
 
 function drawRingsScreen() {
@@ -5147,6 +5360,39 @@ function drawInventoryScreen() {
     ctx.fillText('Press [Enter] to Use / [X] to Back', canvas.width / 2, canvas.height - 65);
 }
 
+function drawConfirmBuy() {
+    const item = shopStock[shopSelection];
+    let name = '';
+    if (item.type === 'ring') name = RINGS[item.ringIndex].name;
+    else if (item.type === 'sword') name = 'Sword';
+    else if (item.type === 'armor') name = 'Armor';
+
+    const w = 320, h = 130;
+    const x = (canvas.width - w) / 2;
+    const y = (canvas.height - h) / 2;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillText(`Buy ${name}?`, canvas.width / 2, y + 35);
+
+    ctx.font = '13px Courier New';
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`${item.cost}G`, canvas.width / 2, y + 60);
+
+    ctx.font = '16px Courier New';
+    ctx.fillStyle = (shopConfirmSelection === 0) ? '#fff' : '#666';
+    ctx.fillText(shopConfirmSelection === 0 ? '> YES <' : '  YES  ', canvas.width / 2 - 60, y + 100);
+    ctx.fillStyle = (shopConfirmSelection === 1) ? '#fff' : '#666';
+    ctx.fillText(shopConfirmSelection === 1 ? '> NO <' : '  NO  ', canvas.width / 2 + 60, y + 100);
+}
+
 function drawConfirmEscape() {
     const w = 320, h = 160;
     const x = (canvas.width - w) / 2;
@@ -5236,6 +5482,8 @@ function drawFloatingParticles() {
 
 function draw(now) {
     if (!now) now = performance.now();
+    // 期限切れの爆風エフェクトを除去
+    blastEffects = blastEffects.filter(b => now < b.endTime);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
@@ -5273,6 +5521,18 @@ function draw(now) {
                     }
                 }
 
+                // 爆風エフェクト（赤く点滅）
+                for (const blast of blastEffects) {
+                    if (now < blast.endTime && blast.tiles.some(t => t.x === x && t.y === y)) {
+                        const remaining = (blast.endTime - now) / 500;
+                        const flash = Math.floor(now / 80) % 2 === 0;
+                        if (flash) {
+                            ctx.save(); ctx.fillStyle = '#ef4444'; ctx.globalAlpha = 0.5 * remaining;
+                            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); ctx.restore();
+                        }
+                    }
+                }
+
                 if (char === SYMBOLS.WALL) {
                     ctx.fillStyle = '#222'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
                     ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.beginPath();
@@ -5295,21 +5555,39 @@ function draw(now) {
                     ctx.fillStyle = '#38bdf8'; ctx.fillText(SYMBOLS.SAVE, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                 } else if (char === SYMBOLS.MERCHANT) {
                     // 遭難冒険者: 向きに応じて反転、ジャンプアニメーション
-                    ctx.save();
-                    let jumpOff = 0;
-                    if (merchantState && merchantState.jumpUntil > now) {
-                        const jumpProgress = (merchantState.jumpUntil - now) / 300;
-                        jumpOff = Math.sin(jumpProgress * Math.PI) * 8;
-                    }
-                    const facingRight = merchantState && merchantState.facing === 'RIGHT';
-                    if (facingRight) {
-                        ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2 - jumpOff);
-                        ctx.scale(-1, 1);
-                        ctx.fillStyle = '#fbbf24'; ctx.fillText(SYMBOLS.MERCHANT, 0, 0);
+                    // 死亡演出中: 点滅 → 消滅
+                    if (merchantState && merchantState.dyingUntil) {
+                        if (now >= merchantState.dyingUntil) {
+                            // 点滅終了 → 消す
+                            map[merchantState.y][merchantState.x] = SYMBOLS.FLOOR;
+                            merchantState = null;
+                        } else {
+                            // 点滅描画（100msごとに表示/非表示を切替）
+                            const visible = Math.floor(now / 100) % 2 === 0;
+                            if (visible) {
+                                ctx.save();
+                                ctx.fillStyle = '#ef4444';
+                                ctx.fillText(SYMBOLS.MERCHANT, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                                ctx.restore();
+                            }
+                        }
                     } else {
-                        ctx.fillStyle = '#fbbf24'; ctx.fillText(SYMBOLS.MERCHANT, px + TILE_SIZE / 2, py + TILE_SIZE / 2 - jumpOff);
+                        ctx.save();
+                        let jumpOff = 0;
+                        if (merchantState && merchantState.jumpUntil > now) {
+                            const jumpProgress = (merchantState.jumpUntil - now) / 300;
+                            jumpOff = Math.sin(jumpProgress * Math.PI) * 8;
+                        }
+                        const facingRight = merchantState && merchantState.facing === 'RIGHT';
+                        if (facingRight) {
+                            ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2 - jumpOff);
+                            ctx.scale(-1, 1);
+                            ctx.fillStyle = '#fbbf24'; ctx.fillText(SYMBOLS.MERCHANT, 0, 0);
+                        } else {
+                            ctx.fillStyle = '#fbbf24'; ctx.fillText(SYMBOLS.MERCHANT, px + TILE_SIZE / 2, py + TILE_SIZE / 2 - jumpOff);
+                        }
+                        ctx.restore();
                     }
-                    ctx.restore();
                 } else if (char === SYMBOLS.POISON || char === SYMBOLS.LAVA || char === SYMBOLS.FIRE_FLOOR) {
                     if (char === SYMBOLS.POISON) {
                         ctx.fillStyle = '#a855f7'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
@@ -5366,6 +5644,51 @@ function draw(now) {
                 ctx.fillStyle = (w.hp === 1) ? '#aaa' : '#fff';
                 ctx.fillText((w.hp === 1) ? SYMBOLS.BLOCK_CRACKED : SYMBOLS.BLOCK, wx + TILE_SIZE / 2, wy + TILE_SIZE / 2);
             }
+        });
+
+        // 2.5. 爆弾（接地ブロック風の四角形）
+        bombs.forEach(b => {
+            const bx = b.x * TILE_SIZE;
+            const by = b.y * TILE_SIZE;
+            ctx.save();
+            // タイマーに応じた色: 灰色 → オレンジ → 赤
+            let bombFill, bombHighlight;
+            if (b.timer >= 4) { bombFill = '#6b7280'; bombHighlight = '#9ca3af'; }
+            else if (b.timer === 3) { bombFill = '#78716c'; bombHighlight = '#a8a29e'; }
+            else if (b.timer === 2) { bombFill = '#b45309'; bombHighlight = '#f59e0b'; }
+            else { bombFill = '#dc2626'; bombHighlight = '#f87171'; }
+            // hp1(ひび入り)なら暗くする
+            if (b.hp === 1) { bombFill = bombFill + 'aa'; bombHighlight = bombHighlight + 'aa'; }
+            // ブロックと同じ四角形を描画
+            ctx.fillStyle = bombFill;
+            ctx.fillRect(bx + 2, by + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            // ハイライト（左辺に明るい線）
+            ctx.strokeStyle = bombHighlight;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(bx + 2, by + 2);
+            ctx.lineTo(bx + 2, by + TILE_SIZE - 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(bx + 2, by + 2);
+            ctx.lineTo(bx + TILE_SIZE - 2, by + 2);
+            ctx.stroke();
+            // 残りターン数を中央に表示
+            ctx.font = "bold 11px 'Courier New'";
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(String(b.timer), bx + TILE_SIZE / 2, by + TILE_SIZE / 2);
+            // ひび入り表示
+            if (b.hp === 1) {
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(bx + 5, by + 5);
+                ctx.lineTo(bx + TILE_SIZE / 2, by + TILE_SIZE / 2 - 2);
+                ctx.lineTo(bx + TILE_SIZE - 5, by + TILE_SIZE - 5);
+                ctx.stroke();
+            }
+            ctx.restore();
         });
 
         // 3. エネミー
@@ -5580,9 +5903,11 @@ function draw(now) {
             } else { totalH += 20; }
         });
 
-        // ▼マークが画面下端の少し上に来るよう配置
+        // テキスト表示位置の決定
         let currentY = canvas.height - totalH - 45;
-        if (storyMessage.useMiddlePos && dungeonCore) {
+        if (storyMessage.useTopPos) {
+            currentY = 30;
+        } else if (storyMessage.useMiddlePos && dungeonCore) {
             currentY = (player.y * TILE_SIZE + dungeonCore.y * TILE_SIZE) / 2 - totalH / 2;
         }
 
@@ -5632,6 +5957,87 @@ function addLog(msg) {
     logElement.scrollTop = logElement.scrollHeight;
 }
 
+function detonateBomb(bomb) {
+    const idx = bombs.indexOf(bomb);
+    if (idx !== -1) bombs.splice(idx, 1);
+    const damage = 15 + player.level * 2;
+    const blastTiles = [
+        { x: bomb.x, y: bomb.y },
+        { x: bomb.x - 1, y: bomb.y },
+        { x: bomb.x + 1, y: bomb.y },
+        { x: bomb.x, y: bomb.y - 1 },
+        { x: bomb.x, y: bomb.y + 1 }
+    ];
+    SOUNDS.EXPLODE();
+    setScreenShake(10, 200);
+    spawnFloatingText(bomb.x, bomb.y, "BOMB!", "#ef4444");
+    // 爆風エフェクト（0.5秒間赤く点滅）
+    blastEffects.push({ tiles: blastTiles.map(t => ({ x: t.x, y: t.y })), endTime: performance.now() + 500 });
+    // 敵へのダメージ
+    for (const tile of blastTiles) {
+        enemies.forEach(e => {
+            if (e.hp <= 0) return;
+            let hit = (e.x === tile.x && e.y === tile.y);
+            if (!hit && (e.type === 'SNAKE' || e.type === 'SUMMONER') && e.body) {
+                hit = e.body.some(seg => seg.x === tile.x && seg.y === tile.y);
+            }
+            if (hit) {
+                e.hp -= damage;
+                spawnFloatingText(e.x, e.y, `-${damage}`, "#ef4444");
+                if (e.hp <= 0) {
+                    handleEnemyDeath(e, true);
+                }
+            }
+        });
+    }
+    // プレイヤーへのダメージ
+    if (blastTiles.some(t => t.x === player.x && t.y === player.y)) {
+        const reduced = Math.max(1, damage - player.armorCount);
+        player.hp -= reduced;
+        spawnFloatingText(player.x, player.y, `-${reduced}`, "#ff6b6b");
+        if (player.hp <= 0) {
+            player.hp = 0;
+            triggerGameOver();
+        }
+    }
+    // 誘爆: 範囲内の他の爆弾の timer を 0 に
+    for (const tile of blastTiles) {
+        bombs.forEach(b => {
+            if (b.x === tile.x && b.y === tile.y) {
+                b.timer = 0;
+            }
+        });
+    }
+    // tempWalls破壊
+    for (const tile of blastTiles) {
+        const twIdx = tempWalls.findIndex(w => w.x === tile.x && w.y === tile.y);
+        if (twIdx !== -1) tempWalls.splice(twIdx, 1);
+    }
+    // 周囲の壁を破壊（マップの壁）
+    for (const tile of blastTiles) {
+        if (tile.x >= 1 && tile.x < COLS - 1 && tile.y >= 1 && tile.y < ROWS - 1) {
+            if (map[tile.y][tile.x] === SYMBOLS.WALL) {
+                map[tile.y][tile.x] = SYMBOLS.FLOOR;
+            }
+        }
+    }
+    // 遭難冒険者へのダメージ
+    if (merchantState) {
+        for (const tile of blastTiles) {
+            if (tile.x === merchantState.x && tile.y === merchantState.y) {
+                merchantState.hp = (merchantState.hp || 30) - damage;
+                spawnFloatingText(merchantState.x, merchantState.y, `-${damage}`, "#ef4444");
+                if (merchantState.hp <= 0) {
+                    addLog("The stranded adventurer was killed by the explosion!");
+                    spawnFloatingText(merchantState.x, merchantState.y, "DEAD", "#ff0000");
+                    merchantState.dyingUntil = performance.now() + 800;
+                }
+                break;
+            }
+        }
+    }
+}
+
 function tryPlaceBlock(dx, dy) {
     if (!player.hasWand) return false;
     const bx = player.x + dx, by = player.y + dy;
@@ -5645,7 +6051,15 @@ function tryPlaceBlock(dx, dy) {
         if (e.x === bx && e.y === by) return true;
         if ((e.type === 'SNAKE' || e.type === 'SUMMONER') && e.body) return e.body.some(seg => seg.x === bx && seg.y === by);
         return false;
-    }) && !wisps.some(w => w.x === bx && w.y === by) && !tempWalls.some(w => w.x === bx && w.y === by)) {
+    }) && !wisps.some(w => w.x === bx && w.y === by) && !tempWalls.some(w => w.x === bx && w.y === by)
+       && !bombs.some(b => b.x === bx && b.y === by)) {
+        if (hasRing('BOMB_RING')) {
+            bombs.push({ x: bx, y: by, timer: 5, hp: 2 });
+            addLog("Placed a bomb!");
+            SOUNDS.SELECT();
+            SOUNDS.MOVE();
+            return true;
+        }
         tempWalls.push({ x: bx, y: by, hp: 2, type: 'BLOCK' });
         addLog("Constructed a block!");
         SOUNDS.SELECT();
@@ -6276,6 +6690,38 @@ async function handleAction(dx, dy) {
         return;
     }
 
+    // 爆弾への攻撃チェック
+    const bombAtIdx = bombs.findIndex(b => b.x === nx && b.y === ny);
+    if (bombAtIdx !== -1 && !victim) {
+        const bomb = bombs[bombAtIdx];
+        spawnSlash(nx, ny);
+        SOUNDS.HIT();
+        player.offsetX = dx * 10; player.offsetY = dy * 10;
+
+        bomb.hp--;
+        if (bomb.hp <= 0) {
+            bombs.splice(bombAtIdx, 1);
+            addLog("The bomb was disarmed!");
+            SOUNDS.DEFEAT();
+        } else {
+            addLog("The bomb is cracked!");
+        }
+
+        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 20);
+        await new Promise(r => setTimeout(r, 200));
+        player.offsetX = 0; player.offsetY = 0;
+
+        if (!transition.active) {
+            turnCount++;
+            updateUI();
+            await applyLaserDamage();
+            await enemyTurn();
+            isProcessing = false;
+            if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
+        }
+        return;
+    }
+
     if (victim && victim.isAlly && victim.type !== 'TURRET') {
         // 味方とは攻撃せず位置を入れ替える（タレットは固定なので除外）
         const oldX = player.x, oldY = player.y;
@@ -6305,24 +6751,50 @@ async function handleAction(dx, dy) {
         player.stamina = Math.min(100, player.stamina + 20);
 
         // 商人への接触（壁扱いだが、隣接してEnterの代わりに方向キーで話しかける）
-        if (map[ny][nx] === SYMBOLS.MERCHANT) {
+        if (map[ny][nx] === SYMBOLS.MERCHANT && !(merchantState && merchantState.dyingUntil)) {
             SOUNDS.GET_ITEM();
             if (shopStock.length === 0) {
                 const unowned = RINGS.map((r, i) => i).filter(i => !player.ownedRings.includes(RINGS[i].id));
                 const pool = unowned.length >= 3 ? unowned : RINGS.map((r, i) => i);
                 const shuffled = pool.slice().sort(() => Math.random() - 0.5);
-                shopStock = shuffled.slice(0, 3);
+                const ringItems = shuffled.slice(0, 3).map(i => ({ type: 'ring', ringIndex: i, cost: RINGS[i].cost }));
+                // 武器・防具の価格: 10Fは100G固定、他の階はランダム
+                const equipCost = (floorLevel === 10) ? 100 : (80 + Math.floor(Math.random() * 121)); // 80-200G
+                shopStock = [
+                    ...ringItems,
+                    { type: 'sword', cost: equipCost },
+                    { type: 'armor', cost: equipCost }
+                ];
+            }
+            // 商人がプレイヤーの方を向く
+            if (merchantState) {
+                merchantState.facing = (player.x < nx) ? 'LEFT' : 'RIGHT';
+                merchantState.jumpUntil = performance.now() + 300;
+            }
+            // 商人の会話テキスト表示
+            addLog("A stranded adventurer offers to trade!");
+            updateUI();
+            const showOnTop = player.y >= Math.floor(ROWS / 2);
+            if (floorLevel === 10) {
+                // 10F: 固定テキスト
+                await showStoryPages([
+                    ["傷ついた冒険者の男がいる。", "あなたを見て、おどろいた様子で話しかけてきた。"],
+                    ["「おまえも、迷ったのか？", "なあ、金をくれよ。", "指輪と交換しようぜ」"]
+                ], false, showOnTop);
+            } else {
+                // 他の階: ランダム会話パターン
+                merchantPatternIndex = Math.floor(Math.random() * MERCHANT_PATTERNS.length);
+                await showStoryPages(MERCHANT_PATTERNS[merchantPatternIndex].intro, false, showOnTop);
             }
             gameState = 'SHOP';
             shopSelection = 0;
-            addLog("A stranded adventurer offers to trade!");
-            updateUI();
             isProcessing = false;
             return;
         }
 
         const isBlockedByWall = map[ny][nx] === SYMBOLS.WALL;
         const isBlockedByTempWall = tempWalls.some(w => w.x === nx && w.y === ny);
+        const isBlockedByBomb = bombs.some(b => b.x === nx && b.y === ny);
 
         if (isBlockedByWall && !player.isBreaker && hasRing('BREAKER_RING') && player.stamina >= 100 && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
             // 壁壊しの指輪: スタミナ満タン時に壁を壊して進む（スタミナ全消費）
@@ -6346,7 +6818,7 @@ async function handleAction(dx, dy) {
             if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 10);
             if (!transition.active) { turnCount++; updateUI(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
-        } else if (isBlockedByWall || isBlockedByTempWall) {
+        } else if (isBlockedByWall || isBlockedByTempWall || isBlockedByBomb) {
             player.offsetX = dx * 5; player.offsetY = dy * 5;
             await new Promise(r => setTimeout(r, 50));
             player.offsetX = 0; player.offsetY = 0;
@@ -6857,11 +7329,6 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
             spawnFloatingText(enemy.x, enemy.y, `+${goldDrop}G`, "#fbbf24");
         }
 
-        // LIFE_RING: HP+1 on kill
-        if (hasRing('LIFE_RING')) {
-            player.hp = Math.min(player.maxHp, player.hp + 1);
-            if (player.hp < player.maxHp) spawnFloatingText(player.x, player.y, "+1HP", "#4ade80");
-        }
 
         if (enemy.type === 'GOLD') {
             player.hp = player.maxHp; // HP全快
@@ -6914,7 +7381,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
 }
 
 async function attackEnemy(enemy, dx, dy, isMain = true) {
-    // BREAKERは攻撃無効
+    // BREAKERは攻撃無効だが、殴られた方向へ逃げる（3〜5マス直進）
     if (enemy.type === 'BREAKER') {
         spawnSlash(player.x + dx, player.y + dy);
         SOUNDS.HIT();
@@ -6923,6 +7390,13 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
         if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRing('STAMINA_RING') ? 12 : 20));
         draw(); await new Promise(r => setTimeout(r, 100));
         if (isMain) { player.offsetX = 0; player.offsetY = 0; }
+        // プレイヤーと反対方向へ進行方向をセット（3〜5ターン維持）
+        const allDirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+        const fleeIdx = allDirs.findIndex(d => d.x === dx && d.y === dy);
+        if (fleeIdx !== -1) {
+            enemy.breakerDir = fleeIdx;
+            enemy.breakerForcedTurns = 3 + Math.floor(Math.random() * 3); // 3〜5ターン直進
+        }
         return;
     }
     spawnSlash(player.x + dx, player.y + dy); if (isMain) SOUNDS.HIT();
@@ -7373,6 +7847,23 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
                 SOUNDS.EXPLODE();
                 setScreenShake(20, 300);
             }
+        }
+        // 爆弾に突っ込んだら即爆発
+        const slideBombIdx = bombs.findIndex(b => b.x === nx && b.y === ny);
+        if (slideBombIdx !== -1) {
+            bombs[slideBombIdx].timer = 0;
+            let hasDetonation = true;
+            while (hasDetonation) {
+                hasDetonation = false;
+                const readyBombs = bombs.filter(b => b.timer <= 0);
+                for (const bomb of readyBombs) {
+                    if (bombs.includes(bomb)) {
+                        detonateBomb(bomb);
+                        hasDetonation = true;
+                    }
+                }
+            }
+            break; // 爆発で停止
         }
 
         player.x = nx;
@@ -7889,6 +8380,17 @@ async function enemyTurn() {
                                 addLog("CRASH! The enemy smashed the block!");
                                 SOUNDS.EXPLODE(); setScreenShake(10, 200);
                             }
+                            const ebIdx = bombs.findIndex(b => b.x === nx && b.y === ny);
+                            if (ebIdx !== -1) {
+                                bombs[ebIdx].timer = 0;
+                                let hasDet = true;
+                                while (hasDet) {
+                                    hasDet = false;
+                                    const rb = bombs.filter(b => b.timer <= 0);
+                                    for (const bomb of rb) { if (bombs.includes(bomb)) { detonateBomb(bomb); hasDet = true; } }
+                                }
+                                break;
+                            }
 
                             if (allyBestTarget.type === 'SNAKE') {
                                 for (let i = allyBestTarget.body.length - 1; i > 0; i--) {
@@ -8122,9 +8624,15 @@ async function enemyTurn() {
             // 優先順: 直進 > 横 > 逆走
             const orderedDirs = [curDir, ...perpDirs, reverseDir];
 
-            // 外壁に近い場合は方向転換を促す（端から3マス以内）
+            // 殴られて逃走中のカウントダウン
+            const isForced = e.breakerForcedTurns && e.breakerForcedTurns > 0;
+            if (isForced) {
+                e.breakerForcedTurns--;
+            }
+
+            // 外壁に近い場合は方向転換を促す（端から3マス以内）※逃走中は無視
             const nearEdge = e.x <= 3 || e.x >= COLS - 4 || e.y <= 3 || e.y >= ROWS - 4;
-            if (nearEdge) {
+            if (nearEdge && !isForced) {
                 // マップ中心方向を最優先に
                 const cx = Math.floor(COLS / 2), cy = Math.floor(ROWS / 2);
                 const toCenterDx = cx - e.x, toCenterDy = cy - e.y;
@@ -8135,8 +8643,8 @@ async function enemyTurn() {
                 });
             }
 
-            // たまに（15%）ランダムに方向転換して探索範囲を広げる
-            if (!nearEdge && Math.random() < 0.15) {
+            // たまに（15%）ランダムに方向転換して探索範囲を広げる ※逃走中は無視
+            if (!nearEdge && !isForced && Math.random() < 0.15) {
                 e.breakerDir = Math.floor(Math.random() * 4);
                 orderedDirs[0] = allDirs[e.breakerDir];
             }
@@ -8147,7 +8655,7 @@ async function enemyTurn() {
                 if (nx <= 0 || nx >= COLS - 1 || ny <= 0 || ny >= ROWS - 1) return false;
                 if (nx === player.x && ny === player.y) return false;
                 if (enemies.some(oe => oe !== e && oe.x === nx && oe.y === ny)) return false;
-                if (map[ny][nx] === SYMBOLS.STAIRS || map[ny][nx] === SYMBOLS.DOOR) return false;
+                if (map[ny][nx] === SYMBOLS.STAIRS || map[ny][nx] === SYMBOLS.DOOR || map[ny][nx] === SYMBOLS.MERCHANT) return false;
                 if (map[ny][nx] === SYMBOLS.WALL) {
                     map[ny][nx] = SYMBOLS.FLOOR;
                     e.x = nx; e.y = ny;
@@ -8157,8 +8665,8 @@ async function enemyTurn() {
                     spawnFloatingText(nx, ny, "BREAK!", '#f59e0b');
                     // 壁から何か出現する判定（4Fチュートリアルでは無効、1フロア2個まで）
                     const dropRoll = Math.random();
-                    if (floorLevel === 4) {
-                        // 4Fではドロップなし
+                    if (floorLevel === 4 || floorLevel === 10) {
+                        // 4F・10Fではドロップなし
                     } else if (dropRoll < 0.12 && wallDropCount < 2) {
                         // アイテム出現（12%、上限2個/フロア）: 壊した壁の元の位置にアイテムを落とす
                         const dropItems = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.HEAL_TOME, SYMBOLS.GUARDIAN, SYMBOLS.BREAKER_TOME];
@@ -8364,6 +8872,29 @@ async function enemyTurn() {
                     tempWalls.splice(twIdx, 1);
                     SOUNDS.WALL_BREAK();
                     spawnFloatingText(nx, ny, "CRUSH!", '#a78bfa');
+                    e.x = nx; e.y = ny;
+                    e.layerDir = allDirs.findIndex(ad => ad.x === d.x && ad.y === d.y);
+                    if (e.layerDir === -1) e.layerDir = 0;
+                    moved = true;
+                    crushedWall = true;
+                    break;
+                }
+                // 爆弾があれば壊して進む（tempWallと同様）
+                const bombIdx = bombs.findIndex(b => b.x === nx && b.y === ny);
+                if (bombIdx !== -1) {
+                    bombs[bombIdx].timer = 0;
+                    // 即爆発（連鎖処理含む）
+                    let hasDetonation = true;
+                    while (hasDetonation) {
+                        hasDetonation = false;
+                        const readyBombs = bombs.filter(b => b.timer <= 0);
+                        for (const bomb of readyBombs) {
+                            if (bombs.includes(bomb)) {
+                                detonateBomb(bomb);
+                                hasDetonation = true;
+                            }
+                        }
+                    }
                     e.x = nx; e.y = ny;
                     e.layerDir = allDirs.findIndex(ad => ad.x === d.x && ad.y === d.y);
                     if (e.layerDir === -1) e.layerDir = 0;
@@ -8657,7 +9188,7 @@ async function enemyTurn() {
             if (map[my][mx] !== SYMBOLS.MERCHANT) continue;
             const threatenedByEnemy = enemies.some(e => !e.isAlly && e.hp > 0 && Math.abs(e.x - mx) <= 1 && Math.abs(e.y - my) <= 1);
             const threatenedByWisp = wisps.some(w => Math.abs(w.x - mx) <= 1 && Math.abs(w.y - my) <= 1);
-            if (threatenedByEnemy || threatenedByWisp) {
+            if ((threatenedByEnemy || threatenedByWisp) && floorLevel !== 10) {
                 map[my][mx] = SYMBOLS.FLOOR;
                 merchantState = null;
                 spawnFloatingText(mx, my, "FLED!", "#fbbf24");
@@ -8746,6 +9277,8 @@ function canEnemyMove(x, y, mover = null) {
         SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.TOME,
         SYMBOLS.MERCHANT
     ].includes(tile);
+    // ミミックが擬態中の穴には敵が移動できない（本物の穴には落ちてOK）
+    if (tile === SYMBOLS.STAIRS && enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === x && e.y === y)) return false;
     // ブレイズとオークは溶岩を障害物と見なさない
     if (isObstacle) {
         if (tile === SYMBOLS.LAVA && mover && (mover.type === 'BLAZE' || mover.type === 'ORC')) {
@@ -8755,6 +9288,7 @@ function canEnemyMove(x, y, mover = null) {
         }
     }
     if (tempWalls.some(w => w.x === x && w.y === y)) return false;
+    if (bombs.some(b => b.x === x && b.y === y)) return false;
     if (player.x === x && player.y === y) return false;
 
     // レーザーの経路は避ける (移動する本人のレーザーは無視)
@@ -8860,10 +9394,11 @@ async function startGame(startFloor = 1, isTestMode = false) {
     player.hp = player.maxHp;
     player.nextExp = player.level <= 5 ? player.level * 7 : player.level * 10;
 
-    // テストプレイ（ステージセレクト）用：壁破壊の魔導書を所持 & ゴールド大量
+    // テストプレイ（ステージセレクト）用：壁破壊の魔導書を所持 & ゴールド大量 & 全指輪所持
     if (isTestMode) {
         player.breakerTomes = 3;
         player.gold = 9999;
+        player.ownedRings = RINGS.map(r => r.id);
     }
 
     // テストプレイ(Floor 100)用のデバッグバフ
@@ -9027,6 +9562,49 @@ window.addEventListener('keydown', async e => {
         return;
     }
 
+    if (gameState === 'CONFIRM_BUY') {
+        if (e.key === 'ArrowLeft' || e.key === 'a') {
+            shopConfirmSelection = 0; SOUNDS.SELECT(); e.preventDefault();
+        }
+        if (e.key === 'ArrowRight' || e.key === 'd') {
+            shopConfirmSelection = 1; SOUNDS.SELECT(); e.preventDefault();
+        }
+        if (e.key === 'Enter') {
+            if (shopConfirmSelection === 0) {
+                // YES: 購入実行
+                const item = shopStock[shopSelection];
+                player.gold -= item.cost;
+                hasPurchasedFromMerchant = true;
+                if (item.type === 'ring') {
+                    const ring = RINGS[item.ringIndex];
+                    player.ownedRings.push(ring.id);
+                    SOUNDS.GET_ITEM();
+                    addLog(`Bought ${ring.nameJa} (${ring.name})!`);
+                    spawnFloatingText(player.x, player.y, ring.nameJa, "#fff");
+                } else if (item.type === 'sword') {
+                    player.swordCount++;
+                    SOUNDS.GET_ITEM();
+                    addLog("Bought a SWORD! (Attack: +3)");
+                    spawnFloatingText(player.x, player.y, "ATTACK UP", "#38bdf8");
+                } else if (item.type === 'armor') {
+                    player.armorCount++;
+                    SOUNDS.GET_ITEM();
+                    addLog(`Bought ARMOR! (Defense: ${player.armorCount})`);
+                    spawnFloatingText(player.x, player.y, "DEFENSE UP", "#38bdf8");
+                }
+                updateUI();
+            } else {
+                SOUNDS.SELECT();
+            }
+            gameState = 'SHOP';
+            e.preventDefault();
+        }
+        if (e.key.toLowerCase() === 'x' || e.key === 'Escape') {
+            gameState = 'SHOP'; SOUNDS.SELECT(); e.preventDefault();
+        }
+        return;
+    }
+
     if (gameState === 'CONFIRM_ESCAPE') {
         if (e.key === 'ArrowLeft' || e.key === 'a') {
             menuSelection = 0; SOUNDS.SELECT(); e.preventDefault();
@@ -9068,16 +9646,15 @@ window.addEventListener('keydown', async e => {
             SOUNDS.SELECT();
             return;
         } else if (gameState === 'SHOP') {
-            const ring = RINGS[shopStock[shopSelection]];
-            if (ring && !player.ownedRings.includes(ring.id) && player.gold >= ring.cost) {
-                player.gold -= ring.cost;
-                player.ownedRings.push(ring.id);
-                SOUNDS.GET_ITEM();
-                addLog(`${ring.nameJa}（${ring.name}）を購入した！`);
-                spawnFloatingText(player.x, player.y, ring.nameJa, "#fbbf24");
-                updateUI();
+            const item = shopStock[shopSelection];
+            if (!item) return;
+            const canBuy = player.gold >= item.cost;
+            const isOwnedRing = item.type === 'ring' && player.ownedRings.includes(RINGS[item.ringIndex].id);
+            if (canBuy && !isOwnedRing) {
+                gameState = 'CONFIRM_BUY';
+                shopConfirmSelection = 0;
+                SOUNDS.SELECT();
             }
-            SOUNDS.SELECT();
             return;
         } else if (gameState === 'RINGS') {
             const ownedRings = RINGS.filter(r => player.ownedRings.includes(r.id));
@@ -9203,12 +9780,41 @@ window.addEventListener('keydown', async e => {
         if (gameState === 'PLAYING') { gameState = 'MENU'; menuSelection = 0; SOUNDS.SELECT(); }
         else if (gameState === 'MENU') { gameState = 'PLAYING'; SOUNDS.SELECT(); }
         else if (gameState === 'STATUS' || gameState === 'INVENTORY') { gameState = 'MENU'; SOUNDS.SELECT(); }
-        else if (gameState === 'SHOP') { gameState = 'PLAYING'; SOUNDS.SELECT(); }
+        else if (gameState === 'SHOP') {
+            gameState = 'PLAYING'; SOUNDS.SELECT();
+            if (!hasShownMerchantEpilogue && hasPurchasedFromMerchant) {
+                hasShownMerchantEpilogue = true;
+                const showOnTop = player.y >= Math.floor(ROWS / 2);
+                if (floorLevel === 10) {
+                    await showStoryPages([
+                        ["「ありがとうよ。", "これで死者の世界に渡れるよ……」"],
+                        ["死者の国へ渡るための船賃を、棺に入れる風習がある。", "男はそのために、金が必要だったらしい。"]
+                    ], false, showOnTop);
+                } else if (merchantPatternIndex >= 0) {
+                    await showStoryPages(MERCHANT_PATTERNS[merchantPatternIndex].epilogue, false, showOnTop);
+                }
+            }
+        }
         else if (gameState === 'RINGS') { gameState = 'MENU'; SOUNDS.SELECT(); }
         return;
     }
     if (e.key === 'Escape') {
-        if (gameState === 'SHOP') { gameState = 'PLAYING'; SOUNDS.SELECT(); return; }
+        if (gameState === 'SHOP') {
+            gameState = 'PLAYING'; SOUNDS.SELECT();
+            if (!hasShownMerchantEpilogue && hasPurchasedFromMerchant) {
+                hasShownMerchantEpilogue = true;
+                const showOnTop = player.y >= Math.floor(ROWS / 2);
+                if (floorLevel === 10) {
+                    await showStoryPages([
+                        ["「ありがとうよ。", "これで死者の世界に渡れるよ……」"],
+                        ["死者の国へ渡るための船賃を、棺に入れる風習がある。", "男はそのために、金が必要だったらしい。"]
+                    ], false, showOnTop);
+                } else if (merchantPatternIndex >= 0) {
+                    await showStoryPages(MERCHANT_PATTERNS[merchantPatternIndex].epilogue, false, showOnTop);
+                }
+            }
+            return;
+        }
         if (gameState === 'RINGS') { gameState = 'MENU'; SOUNDS.SELECT(); return; }
     }
     if (gameState === 'PLAYING' && !isProcessing) {
