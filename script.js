@@ -704,7 +704,8 @@ let isIceFloor = false; // 現在のフロアが氷のフロアかどうか
 let isWindFloor = false; // 突風の間
 let windTimer = 0;
 let windGustEndTime = 0; // 突風エフェクト終了時刻
-let testFloor = 1; // テストプレイ用の開始階層
+let testFloor = 1;    // テストプレイ用の開始階層
+let deepTestFloor = 101; // ディープテスト用の開始階層（101〜200）
 let map = [];
 let player = {
     x: 0, y: 0, hp: 30, maxHp: 30, level: 1, exp: 0, nextExp: 7,
@@ -1069,6 +1070,8 @@ function updateUI() {
     lvElement.style.color = '#ffffff';
     if (floorLevel === 100) {
         floorElement.innerText = "LAST FLOOR";
+    } else if (floorLevel >= 101) {
+        floorElement.innerText = `DEEP ${floorLevel} [${currentScreen.x},${currentScreen.y}]`;
     } else if (multiScreenMode) {
         floorElement.innerText = `${floorLevel}/100`;
     } else {
@@ -1143,13 +1146,19 @@ function initMap() {
     const isNearMerchantFloor = !isExactMerchantFloor && merchantBaseFloors.some(mf => Math.abs(floorLevel - mf) <= 2);
     const isMerchantFloor = floorLevel >= 10 && floorLevel < 100 && (isExactMerchantFloor || (isNearMerchantFloor && Math.random() < 0.3));
 
-    // --- MULTI-SCREEN FLOOR (Floor 50+: 固定ステージ以外) ---
+    // --- MULTI-SCREEN FLOOR (Floor 50+: 固定ステージ以外 / 101F+: DEEP TEST 10x10) ---
     const fixedStageFloors = [50, 66, 75, 77, 80, 85, 88, 100];
-    if (floorLevel >= 50 && floorLevel < 100 && !fixedStageFloors.includes(floorLevel)) {
+    if ((floorLevel >= 50 && floorLevel < 100 && !fixedStageFloors.includes(floorLevel)) || floorLevel >= 101) {
         multiScreenMode = true;
-        screenGridSize = (floorLevel === 99) ? 4 : (floorLevel >= 90) ? 3 : 2;
-        addLog("⚠️ DANGER ZONE: Multi-screen labyrinth!");
-        addLog(`Explore ${screenGridSize}x${screenGridSize} screens to find the KEY and EXIT.`);
+        if (floorLevel >= 101) {
+            screenGridSize = 10;
+            addLog("🌀 DEEP ZONE: 10x10 MEGA LABYRINTH!");
+            addLog("KEY and EXIT are hidden somewhere in the 100 screens. Good luck.");
+        } else {
+            screenGridSize = (floorLevel === 99) ? 4 : (floorLevel >= 90) ? 3 : 2;
+            addLog("⚠️ DANGER ZONE: Multi-screen labyrinth!");
+            addLog(`Explore ${screenGridSize}x${screenGridSize} screens to find the KEY and EXIT.`);
+        }
 
         // N×N画面分のマップ・敵・ウィスプを格納するグリッドを初期化
         screenGrid = {
@@ -1661,12 +1670,27 @@ function initMap() {
             return { sMap, sEnemies, sWisps, rooms };
         }
 
+        // カギ・出口の画面座標をランダムに決定（スタート(0,0)を避け、互いに別の画面）
+        let keyScreenX, keyScreenY, doorScreenX, doorScreenY;
+        {
+            const allScreens = [];
+            for (let sy = 0; sy < screenGridSize; sy++)
+                for (let sx = 0; sx < screenGridSize; sx++)
+                    if (!(sx === 0 && sy === 0)) allScreens.push({ sx, sy });
+            for (let i = allScreens.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allScreens[i], allScreens[j]] = [allScreens[j], allScreens[i]];
+            }
+            ({ sx: keyScreenX, sy: keyScreenY } = allScreens[0]);
+            ({ sx: doorScreenX, sy: doorScreenY } = allScreens[1]);
+        }
+
         // 各画面を生成（迷路型・通常ダンジョン型・壁掘り型をランダムに混合）
         // 90F以降: 特殊画面（プレイヤー開始/カギ/ドア/セーブ）以外でbreaker型が出現
         const specialScreens = new Set([
             '0,0',  // プレイヤー開始
-            `${screenGridSize-1},${screenGridSize-1}`,  // カギ
-            `${screenGridSize-1},0`,  // ドア
+            `${keyScreenX},${keyScreenY}`,  // カギ
+            `${doorScreenX},${doorScreenY}`,  // ドア
             `${screenGridSize > 2 ? Math.floor(screenGridSize/2) : 0},${Math.floor(screenGridSize/2)}`  // セーブ
         ]);
         const allRooms = {}; // 各画面の部屋情報を保持
@@ -1697,8 +1721,7 @@ function initMap() {
             e => !(Math.abs(e.x - player.x) <= 3 && Math.abs(e.y - player.y) <= 3)
         );
 
-        // カギ: 対角の画面に配置
-        const keyScreenY = screenGridSize - 1, keyScreenX = screenGridSize - 1;
+        // カギ: 決定済みの画面に配置
         const keyMap = screenGrid.maps[keyScreenY][keyScreenX];
         for (let y = ROWS - 3; y >= 2; y--) {
             let placed = false;
@@ -1708,8 +1731,7 @@ function initMap() {
             if (placed) break;
         }
 
-        // 階段(DOOR): 右上の画面に配置（カギとは別の画面）
-        const doorScreenX = screenGridSize - 1, doorScreenY = 0;
+        // 階段(DOOR): 決定済みの画面に配置
         const doorMap = screenGrid.maps[doorScreenY][doorScreenX];
         const doorRooms = allRooms[`${doorScreenX},${doorScreenY}`];
         const doorRoom = doorRooms[doorRooms.length - 1];
@@ -5605,21 +5627,27 @@ function drawTitle() {
 
     const menuY = canvas.height / 2 + 30;
     ctx.font = '24px Courier New';
-    const options = ['START NEW GAME', 'CONTINUE', 'TEST PLAY'];
+    const options = ['START NEW GAME', 'CONTINUE', 'TEST PLAY', 'DEEP TEST'];
     const hasSave = localStorage.getItem('minimal_rogue_save') !== null;
     options.forEach((opt, i) => {
         const isSelected = titleSelection === i;
         const isDisabled = i === 1 && !hasSave;
         ctx.fillStyle = isDisabled ? '#333' : (isSelected ? '#fff' : '#666');
         let text = opt;
-        if (i === 2) text = `TEST: FLOOR ${testFloor}`; // TEST PLAYの表示
+        if (i === 2) text = `TEST: FLOOR ${testFloor}`;
+        if (i === 3) text = `DEEP TEST: FLOOR ${deepTestFloor}`;
         if (isSelected) {
             text = `> ${text} <`;
             if (i === 2) {
-                // テストプレイ選択中のみ操作ガイドを出す
                 ctx.font = '12px Courier New';
                 ctx.fillStyle = '#888';
-                ctx.fillText('Use [Left/Right] to change Floor', canvas.width / 2, menuY + i * 40 + 25);
+                ctx.fillText('Use [Left/Right] to change Floor  (1-100)', canvas.width / 2, menuY + i * 40 + 25);
+                ctx.font = '24px Courier New';
+            }
+            if (i === 3) {
+                ctx.font = '12px Courier New';
+                ctx.fillStyle = '#f97316';
+                ctx.fillText('Use [Left/Right] to change Floor  (101-200)', canvas.width / 2, menuY + i * 40 + 25);
                 ctx.font = '24px Courier New';
             }
         }
@@ -11273,7 +11301,7 @@ window.addEventListener('keydown', async e => {
 
     if (e.key === 'ArrowUp' || e.key === 'w') {
         e.preventDefault();
-        if (gameState === 'TITLE') { titleSelection = (titleSelection + 2) % 3; SOUNDS.SELECT(); return; }
+        if (gameState === 'TITLE') { titleSelection = (titleSelection + 3) % 4; SOUNDS.SELECT(); return; }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 2) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
             const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes].filter(c => c > 0);
@@ -11293,7 +11321,7 @@ window.addEventListener('keydown', async e => {
     }
     if (e.key === 'ArrowDown' || e.key === 's') {
         e.preventDefault();
-        if (gameState === 'TITLE') { titleSelection = (titleSelection + 1) % 3; SOUNDS.SELECT(); return; }
+        if (gameState === 'TITLE') { titleSelection = (titleSelection + 1) % 4; SOUNDS.SELECT(); return; }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
             const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes].filter(c => c > 0);
@@ -11314,7 +11342,11 @@ window.addEventListener('keydown', async e => {
     if (e.key === 'ArrowLeft' || e.key === 'a') {
         if (['TITLE', 'STATUS'].includes(gameState)) e.preventDefault();
         if (gameState === 'TITLE' && titleSelection === 2) {
-            testFloor = (testFloor - 2 + 100) % 100 + 1; // 1から左で100へ
+            testFloor = (testFloor - 2 + 100) % 100 + 1;
+            SOUNDS.SELECT(); return;
+        }
+        if (gameState === 'TITLE' && titleSelection === 3) {
+            deepTestFloor = deepTestFloor > 101 ? deepTestFloor - 1 : 200;
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'STATUS') { statusPage = (statusPage + 2) % 3; SOUNDS.SELECT(); return; }
@@ -11322,7 +11354,11 @@ window.addEventListener('keydown', async e => {
     if (e.key === 'ArrowRight' || e.key === 'd') {
         if (['TITLE', 'STATUS'].includes(gameState)) e.preventDefault();
         if (gameState === 'TITLE' && titleSelection === 2) {
-            testFloor = (testFloor % 100) + 1; // 100から右で1へ
+            testFloor = (testFloor % 100) + 1;
+            SOUNDS.SELECT(); return;
+        }
+        if (gameState === 'TITLE' && titleSelection === 3) {
+            deepTestFloor = deepTestFloor < 200 ? deepTestFloor + 1 : 101;
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'STATUS') { statusPage = (statusPage + 1) % 3; SOUNDS.SELECT(); return; }
@@ -11424,6 +11460,7 @@ window.addEventListener('keydown', async e => {
             if (titleSelection === 0) startGame();
             else if (titleSelection === 1 && hasSave) continueGame();
             else if (titleSelection === 2) startGame(testFloor, true);
+            else if (titleSelection === 3) startGame(deepTestFloor, true);
             SOUNDS.SELECT();
             return;
         } else if (gameState === 'MENU') {
