@@ -88,6 +88,7 @@ let fireFloors = []; // {x, y, life: 1} // 1ターンで消える炎の床
 let flameProjectiles = []; // {x, y, dx, dy, life} - 炎ブロックが発射する飛翔体
 let bombProjectiles = []; // {x, y, dx, dy} - 爆弾星ブロックが発射する飛翔爆弾
 let wallDropCount = 0; // 壁破壊アイテムドロップのフロア内カウンター
+let isXWallStage = false; // 壁の中からXが出てくるステージフラグ（1%確率）
 let merchantState = null; // { x, y, facing: 'LEFT'|'RIGHT', jumpUntil: 0, nextAction: 0 }
 let tomeEffect = { active: false, x: 0, y: 0, range: 0, color: '', endTime: 0 };
 
@@ -1127,6 +1128,7 @@ function initMap() {
     player.isStealth = false; // フロア移動で解除
     player.isInfiniteStamina = false; // フロア移動で解除
     wallDropCount = 0; // 壁破壊ドロップカウンターリセット
+    isXWallStage = Math.random() < 0.01; // 1%の確率でXが壁から出るステージ
     shopStock = []; // 商人の品揃えリセット（次の商人接触時に生成）
     merchantState = null; // 商人状態リセット
     hasPurchasedFromMerchant = false; // 購入フラグリセット
@@ -4555,6 +4557,11 @@ function initMap() {
         addLog("This floor is locked. Find the KEY (k)!");
     }
 
+    // Xステージ警告
+    if (isXWallStage) {
+        addLog("⚠️ The walls feel... alive. Something lurks within.");
+    }
+
     // 炎ブロックをランダム配置（広い部屋に低確率でクラスター出現）
     // 8F/10F/15Fは固定ステージなので除外。9〜15Fは出現率・クラスター数を大幅増加
     const isFireZone = floorLevel >= 9 && floorLevel <= 15;
@@ -6337,6 +6344,28 @@ function drawConfirmEscape() {
 
 function hasRing(id) {
     return player.equippedRings.includes(id);
+}
+
+function spawnXFromWall(x, y) {
+    // 壁を壊した位置の隣接する空きマスにBOMBERを出現させる
+    const dirs = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
+    const spawnCandidates = dirs.filter(d => {
+        const sx = x + d.dx, sy = y + d.dy;
+        return sx >= 1 && sx < COLS - 1 && sy >= 1 && sy < ROWS - 1
+            && map[sy][sx] === SYMBOLS.FLOOR
+            && !enemies.some(e => e.x === sx && e.y === sy && e.hp > 0)
+            && !(player.x === sx && player.y === sy);
+    });
+    // 出現位置: 隣接空きマスがあればそちら、なければ壊した場所自体
+    const pos = spawnCandidates.length > 0
+        ? spawnCandidates[Math.floor(Math.random() * spawnCandidates.length)]
+        : { dx: 0, dy: 0 };
+    const ex = x + pos.dx, ey = y + pos.dy;
+    if (ex < 1 || ex >= COLS - 1 || ey < 1 || ey >= ROWS - 1) return;
+    if (player.x === ex && player.y === ey) return;
+    enemies.push({ type: 'BOMBER', x: ex, y: ey, hp: 1, maxHp: 1, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 12, stunTurns: 0 });
+    spawnFloatingText(ex, ey, "X!", '#f97316');
+    setScreenShake(4, 150);
 }
 
 function spawnFloatingText(x, y, text, color) {
@@ -8332,6 +8361,10 @@ async function handleAction(dx, dy) {
             addLog("The Breaker Ring shattered the wall!");
             spawnFloatingText(nx, ny, "BREAK!", '#f59e0b');
             if (!player.isInfiniteStamina) player.stamina = 0;
+            // Xステージ: 高確率でBOMBERが出現
+            if (isXWallStage && Math.random() < 0.75) {
+                spawnXFromWall(nx, ny);
+            }
             if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall && player.isBreaker && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
@@ -8343,6 +8376,10 @@ async function handleAction(dx, dy) {
             addLog("You smashed through the wall!");
             spawnFloatingText(nx, ny, "BREAK!", '#f59e0b');
             if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 10);
+            // Xステージ: 高確率でBOMBERが出現
+            if (isXWallStage && Math.random() < 0.75) {
+                spawnXFromWall(nx, ny);
+            }
             if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall || isBlockedByTempWall || isBlockedByBomb) {
