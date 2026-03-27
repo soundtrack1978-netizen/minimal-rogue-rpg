@@ -5041,15 +5041,19 @@ async function startFloorTransition() {
 
     // 階層ごとのストーリー演出
     if (floorLevel === 100) {
-        isProcessing = true;
-        await new Promise(r => setTimeout(r, 600));
-        await showStoryPages([
-            ["Before your eyes lies a sphere of light.", "", "あなたの目の前に、光の球体がある"],
-            ["It is the Dungeon Core.", "", "ダンジョンコアだ"],
-            ["You once read of it in ancient scrolls.", "", "古い文献で、読んだことがある"],
-            ["Destroy this, and the dungeon", "will vanish into nothingness.", "", "これを破壊すれば、ダンジョンは消え去るのだ"],
-            ["And then, you may finally", "return to the surface.", "", "そしてあなたは、地上へ帰還することが", "できるだろう"]
-        ], true);
+        const hasSeenStory = localStorage.getItem('floor100_story_seen') === '1';
+        if (!hasSeenStory) {
+            isProcessing = true;
+            await new Promise(r => setTimeout(r, 600));
+            await showStoryPages([
+                ["Before your eyes lies a sphere of light.", "", "あなたの目の前に、光の球体がある"],
+                ["It is the Dungeon Core.", "", "ダンジョンコアだ"],
+                ["You once read of it in ancient scrolls.", "", "古い文献で、読んだことがある"],
+                ["Destroy this, and the dungeon", "will vanish into nothingness.", "", "これを破壊すれば、ダンジョンは消え去るのだ"],
+                ["And then, you may finally", "return to the surface.", "", "そしてあなたは、地上へ帰還することが", "できるだろう"]
+            ], true);
+            localStorage.setItem('floor100_story_seen', '1');
+        }
     }
     isProcessing = false;
 }
@@ -7885,6 +7889,8 @@ async function triggerEnding() {
     transition.active = false;
     endingSkipLock = false;
     isProcessing = false;
+    // クリア達成: 次回の新規プレイでまた100Fのストーリーが読めるようにリセット
+    localStorage.removeItem('floor100_story_seen');
 }
 
 async function handleAction(dx, dy) {
