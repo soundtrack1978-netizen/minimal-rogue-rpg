@@ -1168,6 +1168,8 @@ function initMap() {
                 Array.from({ length: screenGridSize }, () => [])),
             wisps: Array.from({ length: screenGridSize }, () =>
                 Array.from({ length: screenGridSize }, () => [])),
+            tempWalls: Array.from({ length: screenGridSize }, () =>
+                Array.from({ length: screenGridSize }, () => [])),
             wind: Array.from({ length: screenGridSize }, () =>
                 Array.from({ length: screenGridSize }, () => false))
         };
@@ -1188,6 +1190,7 @@ function initMap() {
             const sMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
             const sEnemies = [];
             const sWisps = [];
+            const sTempWalls = [];
             const rooms = [];
 
             if (screenType === 'breaker') {
@@ -1343,6 +1346,137 @@ function initMap() {
                         }
                     }
                 }
+            } else if (screenType === 'castle') {
+                // === お城型（間取り図風: 矩形部屋 + 1マス幅廊下） ===
+                const MIN_SEP = 2; // 部屋間の最小壁間隔
+                const castleRooms = [];
+
+                for (let attempt = 0; attempt < 400 && castleRooms.length < 10; attempt++) {
+                    const rw = 4 + Math.floor(Math.random() * 7);  // 幅4〜10
+                    const rh = 3 + Math.floor(Math.random() * 5);  // 高さ3〜7
+                    const rx = 2 + Math.floor(Math.random() * (COLS - rw - 4));
+                    const ry = 2 + Math.floor(Math.random() * (ROWS - rh - 4));
+                    const overlaps = castleRooms.some(r =>
+                        rx < r.x + r.w + MIN_SEP && rx + rw + MIN_SEP > r.x &&
+                        ry < r.y + r.h + MIN_SEP && ry + rh + MIN_SEP > r.y
+                    );
+                    if (overlaps) continue;
+                    castleRooms.push({ x: rx, y: ry, w: rw, h: rh, cx: rx + Math.floor(rw / 2), cy: ry + Math.floor(rh / 2) });
+                }
+
+                // 部屋を床にする
+                for (const r of castleRooms) {
+                    for (let py = r.y; py < r.y + r.h; py++)
+                        for (let px = r.x; px < r.x + r.w; px++)
+                            sMap[py][px] = SYMBOLS.FLOOR;
+                    rooms.push({ x: r.x, y: r.y, w: r.w, h: r.h, cx: r.cx, cy: r.cy });
+                }
+
+                // 最小スパニングツリーで1マス幅L字廊下を接続
+                if (castleRooms.length > 1) {
+                    const inTree = new Set([0]);
+                    while (inTree.size < castleRooms.length) {
+                        let bestA = -1, bestB = -1, bestD = Infinity;
+                        for (const ai of inTree) {
+                            for (let bi = 0; bi < castleRooms.length; bi++) {
+                                if (inTree.has(bi)) continue;
+                                const d = Math.abs(castleRooms[ai].cx - castleRooms[bi].cx) + Math.abs(castleRooms[ai].cy - castleRooms[bi].cy);
+                                if (d < bestD) { bestD = d; bestA = ai; bestB = bi; }
+                            }
+                        }
+                        if (bestA < 0) break;
+                        // L字廊下（縦先か横先をランダム）
+                        const ra = castleRooms[bestA], rb = castleRooms[bestB];
+                        let cpx = ra.cx, cpy = ra.cy;
+                        if (Math.random() < 0.5) {
+                            while (cpx !== rb.cx) { cpx += rb.cx > cpx ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) sMap[cpy][cpx] = SYMBOLS.FLOOR; }
+                            while (cpy !== rb.cy) { cpy += rb.cy > cpy ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) sMap[cpy][cpx] = SYMBOLS.FLOOR; }
+                        } else {
+                            while (cpy !== rb.cy) { cpy += rb.cy > cpy ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) sMap[cpy][cpx] = SYMBOLS.FLOOR; }
+                            while (cpx !== rb.cx) { cpx += rb.cx > cpx ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) sMap[cpy][cpx] = SYMBOLS.FLOOR; }
+                        }
+                        inTree.add(bestB);
+                    }
+                }
+                // 追加通路（ランダムに2本）
+                for (let k = 0; k < 2; k++) {
+                    if (castleRooms.length < 2) break;
+                    const ra = castleRooms[Math.floor(Math.random() * castleRooms.length)];
+                    const rb = castleRooms[Math.floor(Math.random() * castleRooms.length)];
+                    if (ra === rb) continue;
+                    let cpx = ra.cx, cpy = ra.cy;
+                    while (cpx !== rb.cx) { cpx += rb.cx > cpx ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) sMap[cpy][cpx] = SYMBOLS.FLOOR; }
+                    while (cpy !== rb.cy) { cpy += rb.cy > cpy ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) sMap[cpy][cpx] = SYMBOLS.FLOOR; }
+                }
+
+                // 各部屋にモンスター配置（一部はモンスタールーム）
+                for (let ri = 0; ri < castleRooms.length; ri++) {
+                    const cr = castleRooms[ri];
+                    const isMonsterRoom = Math.random() < 0.35; // 35%でモンスタールーム
+                    const count = isMonsterRoom
+                        ? 3 + Math.floor(Math.random() * 3)  // 3〜5体
+                        : Math.random() < 0.5 ? 0 : 1;       // 通常は0か1体
+                    for (let ei = 0; ei < count; ei++) {
+                        // 部屋内のランダムな床タイルを探す
+                        let ex, ey, found = false;
+                        for (let t = 0; t < 30; t++) {
+                            ex = cr.x + 1 + Math.floor(Math.random() * (cr.w - 2));
+                            ey = cr.y + 1 + Math.floor(Math.random() * (cr.h - 2));
+                            if (sMap[ey][ex] === SYMBOLS.FLOOR && !sEnemies.some(e => e.x === ex && e.y === ey)) { found = true; break; }
+                        }
+                        if (!found) continue;
+                        const roll = Math.random();
+                        if (roll < 0.10) {
+                            let bestDir = 0, maxDist = -1;
+                            for (let d = 0; d < 4; d++) {
+                                const ddx = [0,1,0,-1][d], ddy = [-1,0,1,0][d];
+                                let dist = 0, tx2 = ex+ddx, ty2 = ey+ddy;
+                                while (tx2>=0&&tx2<COLS&&ty2>=0&&ty2<ROWS&&sMap[ty2][tx2]!==SYMBOLS.WALL){dist++;tx2+=ddx;ty2+=ddy;}
+                                if (dist > maxDist) { maxDist = dist; bestDir = d; }
+                            }
+                            sEnemies.push({ type:'TURRET', x:ex, y:ey, dir:bestDir, hp:100+floorLevel*5, maxHp:100+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
+                        } else if (roll < 0.25) {
+                            sEnemies.push({ type:'ORC', x:ex, y:ey, hp:40+floorLevel*5, maxHp:40+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
+                        } else if (roll < 0.38) {
+                            sEnemies.push({ type:'BREAKER', x:ex, y:ey, hp:50+floorLevel*4, maxHp:50+floorLevel*4, flashUntil:0, offsetX:0, offsetY:0, expValue:45, stunTurns:0 });
+                        } else {
+                            sEnemies.push({ type:'NORMAL', x:ex, y:ey, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0 });
+                        }
+                    }
+
+                }
+
+                // 星ブロックを画面全体で1個だけ・低確率で配置（12%）
+                if (Math.random() < 0.12 && castleRooms.length > 0) {
+                    const cr = castleRooms[Math.floor(Math.random() * castleRooms.length)];
+                    for (let t = 0; t < 30; t++) {
+                        const bx = cr.x + 1 + Math.floor(Math.random() * Math.max(1, cr.w - 2));
+                        const by = cr.y + 1 + Math.floor(Math.random() * Math.max(1, cr.h - 2));
+                        if (sMap[by][bx] === SYMBOLS.FLOOR && !sEnemies.some(e => e.x===bx&&e.y===by)) {
+                            sTempWalls.push({ x: bx, y: by, hp: 2, type: 'FIRE_BLOCK' });
+                            break;
+                        }
+                    }
+                }
+
+                // 商人をたまに配置（8%: フロアにまだ商人がいない場合のみ）
+                if (!merchantState && Math.random() < 0.08 && castleRooms.length > 0) {
+                    const shuffled = castleRooms.slice().sort(() => Math.random() - 0.5);
+                    for (const cr of shuffled) {
+                        let placed = false;
+                        for (let t = 0; t < 30 && !placed; t++) {
+                            const mx = cr.x + 1 + Math.floor(Math.random() * (cr.w - 2));
+                            const my = cr.y + 1 + Math.floor(Math.random() * (cr.h - 2));
+                            if (sMap[my][mx] === SYMBOLS.FLOOR && !sEnemies.some(e => e.x===mx&&e.y===my)) {
+                                sMap[my][mx] = SYMBOLS.MERCHANT;
+                                merchantState = { x: mx, y: my, facing: 'LEFT', jumpUntil: 0, nextAction: 3 + Math.floor(Math.random() * 4), hp: 30 };
+                                placed = true;
+                            }
+                        }
+                        if (placed) break;
+                    }
+                }
+
             } else {
                 // === 通常ダンジョン型（部屋+通路） ===
                 const roomCount = Math.floor(Math.random() * 4) + 8;
@@ -1667,7 +1801,7 @@ function initMap() {
                 }
             }
 
-            return { sMap, sEnemies, sWisps, rooms };
+            return { sMap, sEnemies, sWisps, sTempWalls, rooms };
         }
 
         // カギ・出口の画面座標をランダムに決定（スタート(0,0)を避け、互いに別の画面）
@@ -1701,12 +1835,14 @@ function initMap() {
                 if (floorLevel >= 90 && !isSpecial && Math.random() < 0.35) {
                     screenType = 'breaker'; // 35%の確率で壁掘り型
                 } else {
-                    screenType = Math.random() < 0.5 ? 'maze' : 'dungeon';
+                    const r = Math.random();
+                    screenType = r < 0.15 ? 'maze' : r < 0.35 ? 'dungeon' : 'castle';
                 }
                 const result = generateOneScreen(sx, sy, screenType);
                 screenGrid.maps[sy][sx] = result.sMap;
                 screenGrid.enemies[sy][sx] = result.sEnemies;
                 screenGrid.wisps[sy][sx] = result.sWisps;
+                screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
                 allRooms[`${sx},${sy}`] = result.rooms;
             }
         }
@@ -1793,6 +1929,7 @@ function initMap() {
         map = screenGrid.maps[0][0];
         enemies = screenGrid.enemies[0][0];
         wisps = screenGrid.wisps[0][0];
+        tempWalls = [...(screenGrid.tempWalls[0][0] || [])];
         isWindFloor = screenGrid.wind[0][0];
 
         return;
@@ -2030,6 +2167,7 @@ function initMap() {
         map = screenGrid.maps[0][0];
         enemies = screenGrid.enemies[0][0];
         wisps = screenGrid.wisps[0][0];
+        tempWalls = [...(screenGrid.tempWalls?.[0]?.[0] || [])];
         isWindFloor = true;
         windTimer = 4;
 
@@ -7806,7 +7944,8 @@ async function handleAction(dx, dy) {
                     await new Promise(r => setTimeout(r, 40));
                 }
 
-                // 隣の画面データをロード
+                // 現在画面のtempWallsを保存してから新画面をロード
+                if (screenGrid.tempWalls) screenGrid.tempWalls[currentScreen.y][currentScreen.x] = [...tempWalls];
                 currentScreen.x = newScreenX;
                 currentScreen.y = newScreenY;
                 map = screenGrid.maps[newScreenY][newScreenX];
@@ -7814,7 +7953,7 @@ async function handleAction(dx, dy) {
                 wisps = screenGrid.wisps[newScreenY][newScreenX];
                 isWindFloor = screenGrid.wind ? screenGrid.wind[newScreenY][newScreenX] : false;
                 windTimer = 0;
-                tempWalls = [];
+                tempWalls = screenGrid.tempWalls ? [...(screenGrid.tempWalls[newScreenY][newScreenX] || [])] : [];
 
                 player.x = newPlayerX;
                 player.y = newPlayerY;
