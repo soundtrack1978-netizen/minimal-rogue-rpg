@@ -6494,13 +6494,15 @@ function draw(now) {
                             const jumpProgress = (merchantState.jumpUntil - now) / 300;
                             jumpOff = Math.sin(jumpProgress * Math.PI) * 8;
                         }
+                        const mOffX = (merchantState && merchantState.offsetX) || 0;
+                        const mOffY = (merchantState && merchantState.offsetY) || 0;
                         const facingRight = merchantState && merchantState.facing === 'RIGHT';
                         if (facingRight) {
-                            ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2 - jumpOff);
+                            ctx.translate(px + TILE_SIZE / 2 + mOffX, py + TILE_SIZE / 2 - jumpOff + mOffY);
                             ctx.scale(-1, 1);
                             ctx.fillStyle = '#fbbf24'; ctx.fillText(SYMBOLS.MERCHANT, 0, 0);
                         } else {
-                            ctx.fillStyle = '#fbbf24'; ctx.fillText(SYMBOLS.MERCHANT, px + TILE_SIZE / 2, py + TILE_SIZE / 2 - jumpOff);
+                            ctx.fillStyle = '#fbbf24'; ctx.fillText(SYMBOLS.MERCHANT, px + TILE_SIZE / 2 + mOffX, py + TILE_SIZE / 2 - jumpOff + mOffY);
                         }
                         ctx.restore();
                     }
@@ -10922,19 +10924,15 @@ async function enemyTurn() {
         const threatenedByEnemy = enemies.some(e => !e.isAlly && e.hp > 0 && Math.abs(e.x - mx) <= 1 && Math.abs(e.y - my) <= 1);
         const nearWisp = wisps.find(w => Math.abs(w.x - mx) + Math.abs(w.y - my) <= 3);
 
-        if (threatenedByEnemy) {
-            // 敵が隣接: 即消滅
-            map[my][mx] = SYMBOLS.FLOOR;
-            merchantState = null;
-            spawnFloatingText(mx, my, "FLED!", "#fbbf24");
-            addLog("The adventurer fled in fear!");
-            SOUNDS.MOVE();
-        } else if (nearWisp) {
-            // ウィルが3マス以内: 遠ざかる方向へ1マス移動
+        // 脅威（隣接敵 or 3マス以内ウィスプ）があれば逃げを試みる
+        const threat = threatenedByEnemy ? { x: mx + (enemies.find(e => !e.isAlly && e.hp > 0 && Math.abs(e.x - mx) <= 1 && Math.abs(e.y - my) <= 1)?.x - mx || 0), y: my + (enemies.find(e => !e.isAlly && e.hp > 0 && Math.abs(e.x - mx) <= 1 && Math.abs(e.y - my) <= 1)?.y - my || 0) }
+                       : nearWisp ? nearWisp : null;
+        if (threat) {
+            // 脅威から遠ざかる方向へ1マス移動を試みる
             const moves = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
             moves.sort((a, b) => {
-                const distA = Math.abs(mx + a.dx - nearWisp.x) + Math.abs(my + a.dy - nearWisp.y);
-                const distB = Math.abs(mx + b.dx - nearWisp.x) + Math.abs(my + b.dy - nearWisp.y);
+                const distA = Math.abs(mx + a.dx - threat.x) + Math.abs(my + a.dy - threat.y);
+                const distB = Math.abs(mx + b.dx - threat.x) + Math.abs(my + b.dy - threat.y);
                 return distB - distA;
             });
             let moved = false;
@@ -10951,13 +10949,28 @@ async function enemyTurn() {
                 moved = true;
                 break;
             }
-            if (!moved) {
-                // 逃げ場なし: 消滅
-                map[my][mx] = SYMBOLS.FLOOR;
-                merchantState = null;
-                spawnFloatingText(mx, my, "FLED!", "#fbbf24");
-                addLog("The adventurer fled!");
-                SOUNDS.MOVE();
+            // 逃げ場がなければ、隣接している敵と戦う
+            if (!moved && threatenedByEnemy) {
+                const adjacentEnemy = enemies.find(e => !e.isAlly && e.hp > 0 && Math.abs(e.x - mx) <= 1 && Math.abs(e.y - my) <= 1 && !(e.x === mx && e.y === my));
+                if (adjacentEnemy) {
+                    const adx = adjacentEnemy.x - mx;
+                    const ady = adjacentEnemy.y - my;
+                    // 攻撃モーション（プレイヤーと同じ）
+                    merchantState.offsetX = adx * 10;
+                    merchantState.offsetY = ady * 10;
+                    setTimeout(() => { if (merchantState) { merchantState.offsetX = 0; merchantState.offsetY = 0; } }, 100);
+                    spawnSlash(adjacentEnemy.x, adjacentEnemy.y);
+                    animateBounce(merchantState);
+                    // ダメージを与える（商人の攻撃力: 8）
+                    const mAtk = 8;
+                    adjacentEnemy.hp -= mAtk;
+                    adjacentEnemy.flashUntil = performance.now() + 100;
+                    spawnDamageText(adjacentEnemy.x, adjacentEnemy.y, mAtk, '#fbbf24');
+                    SOUNDS.HIT && SOUNDS.HIT();
+                    if (adjacentEnemy.hp <= 0) {
+                        handleEnemyDeath(adjacentEnemy, false);
+                    }
+                }
             }
         }
     }
