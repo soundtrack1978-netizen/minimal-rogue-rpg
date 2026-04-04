@@ -1851,6 +1851,187 @@ function initMap() {
             return { sMap, sEnemies, sWisps, sTempWalls, rooms };
         }
 
+        // ===== 奇妙な場所（深層101F+専用・低確率） =====
+        function generateBizarreScreen(sx, sy) {
+            const sMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
+            const sEnemies = [];
+            const sWisps = [];
+            const sTempWalls = [];
+            const rooms = [];
+
+            const TYPES = ['MONSTER_FLOOD', 'LAVA_SEA', 'FROZEN_PRISON', 'VOID_CELLS', 'CHAOS_ALTAR'];
+            const bizType = TYPES[Math.floor(Math.random() * TYPES.length)];
+
+            // 共通: 通路入口を開ける
+            const openPassages = () => {
+                if (sx < screenGridSize - 1) { for (let py = 11; py <= 13; py++) { sMap[py][COLS-1] = SYMBOLS.FLOOR; sMap[py][COLS-2] = SYMBOLS.FLOOR; } }
+                if (sx > 0)                 { for (let py = 11; py <= 13; py++) { sMap[py][0] = SYMBOLS.FLOOR; sMap[py][1] = SYMBOLS.FLOOR; } }
+                if (sy < screenGridSize - 1){ for (let px = 18; px <= 21; px++) { sMap[ROWS-1][px] = SYMBOLS.FLOOR; sMap[ROWS-2][px] = SYMBOLS.FLOOR; } }
+                if (sy > 0)                 { for (let px = 18; px <= 21; px++) { sMap[0][px] = SYMBOLS.FLOOR; sMap[1][px] = SYMBOLS.FLOOR; } }
+            };
+
+            // 共通: 入口から近くの床へ通路を掘る
+            const digToNearestFloor = (startX, startY) => {
+                if (sMap[startY][startX] !== SYMBOLS.WALL) return;
+                let best = null, bestD = 999;
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) {
+                    const t = sMap[y][x];
+                    if (t !== SYMBOLS.WALL) {
+                        const d = Math.abs(x-startX)+Math.abs(y-startY);
+                        if (d < bestD) { bestD = d; best = {x,y}; }
+                    }
+                }
+                if (!best) return;
+                let cx = startX, cy = startY;
+                while (cx !== best.x || cy !== best.y) {
+                    if (cx !== best.x && (cy === best.y || Math.random() < 0.5)) cx += best.x > cx ? 1 : -1;
+                    else cy += best.y > cy ? 1 : -1;
+                    if (cx>=1&&cx<COLS-1&&cy>=1&&cy<ROWS-1&&sMap[cy][cx]===SYMBOLS.WALL) sMap[cy][cx]=SYMBOLS.FLOOR;
+                }
+            };
+
+            // ---- MONSTER_FLOOD: 全面開放、モンスターが埋め尽くす ----
+            if (bizType === 'MONSTER_FLOOD') {
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.FLOOR;
+                rooms.push({ x:1, y:1, w:COLS-2, h:ROWS-2, cx:Math.floor(COLS/2), cy:Math.floor(ROWS/2) });
+                const spawnArea = [];
+                for (let y = 3; y < ROWS-3; y++) for (let x = 3; x < COLS-3; x++) spawnArea.push({x,y});
+                spawnArea.sort(() => Math.random()-0.5);
+                const count = 30 + Math.floor(Math.random()*10);
+                for (let i = 0; i < Math.min(count, spawnArea.length); i++) {
+                    const {x, y} = spawnArea[i];
+                    const roll = Math.random();
+                    let type, hp, exp;
+                    if (roll < 0.55) { type='NORMAL'; hp=3+floorLevel; exp=5; }
+                    else if (roll < 0.72) { type='BLAZE'; hp=15+floorLevel*2; exp=15; }
+                    else if (roll < 0.88) { type='FROST'; hp=15+floorLevel*2; exp=15; }
+                    else { type='ORC'; hp=40+floorLevel*5; exp=40; }
+                    sEnemies.push({ type, x, y, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0 });
+                }
+
+            // ---- LAVA_SEA: 9割が溶岩、細い道だけ ----
+            } else if (bizType === 'LAVA_SEA') {
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.LAVA;
+                // 5本のランダムウォークで細道を彫る
+                for (let p = 0; p < 5; p++) {
+                    let cx = Math.floor(Math.random()*(COLS-6))+3;
+                    let cy = Math.floor(Math.random()*(ROWS-6))+3;
+                    for (let step = 0; step < 90; step++) {
+                        sMap[cy][cx] = SYMBOLS.FLOOR;
+                        const dir = Math.floor(Math.random()*4);
+                        if (dir===0) cy--; else if (dir===1) cy++; else if (dir===2) cx--; else cx++;
+                        cx = Math.max(2, Math.min(COLS-3, cx)); cy = Math.max(2, Math.min(ROWS-3, cy));
+                    }
+                }
+                rooms.push({ x:2, y:2, w:4, h:4, cx:4, cy:4 });
+                // 道上に強敵数体
+                const floorTiles = [];
+                for (let y=2;y<ROWS-2;y++) for (let x=2;x<COLS-2;x++) if (sMap[y][x]===SYMBOLS.FLOOR) floorTiles.push({x,y});
+                floorTiles.sort(() => Math.random()-0.5);
+                for (let i = 0; i < Math.min(6, floorTiles.length); i++) {
+                    const {x,y}=floorTiles[i]; const hp=40+floorLevel*5;
+                    sEnemies.push({ type:'ORC', x, y, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
+                }
+
+            // ---- FROZEN_PRISON: 全面氷、FROSTだらけ ----
+            } else if (bizType === 'FROZEN_PRISON') {
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.ICE;
+                rooms.push({ x:1, y:1, w:COLS-2, h:ROWS-2, cx:Math.floor(COLS/2), cy:Math.floor(ROWS/2) });
+                // 氷の柱（壁の島）をランダムに配置
+                for (let i = 0; i < 12; i++) {
+                    const px = Math.floor(Math.random()*(COLS-6))+3;
+                    const py = Math.floor(Math.random()*(ROWS-6))+3;
+                    sMap[py][px] = SYMBOLS.WALL; sMap[py+1][px] = SYMBOLS.WALL;
+                    sMap[py][px+1] = SYMBOLS.WALL; sMap[py+1][px+1] = SYMBOLS.WALL;
+                }
+                // FROSTを多数配置
+                for (let i = 0; i < 16; i++) {
+                    for (let t = 0; t < 50; t++) {
+                        const ex=Math.floor(Math.random()*(COLS-4))+2; const ey=Math.floor(Math.random()*(ROWS-4))+2;
+                        if (sMap[ey][ex]===SYMBOLS.ICE && !sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                            const hp=15+floorLevel*2;
+                            sEnemies.push({ type:'FROST', x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:15, stunTurns:0 });
+                            break;
+                        }
+                    }
+                }
+
+            // ---- VOID_CELLS: 格子状の小独房、細い一本道でつながる ----
+            } else if (bizType === 'VOID_CELLS') {
+                const cellW=7, cellH=6;
+                const cCols=Math.floor((COLS-2)/cellW), cRows=Math.floor((ROWS-2)/cellH);
+                for (let cr=0; cr<cRows; cr++) for (let cc=0; cc<cCols; cc++) {
+                    const rx=1+cc*cellW+1, ry=1+cr*cellH+1;
+                    const rw=cellW-2, rh=cellH-2;
+                    for (let y=ry;y<ry+rh&&y<ROWS-1;y++) for (let x=rx;x<rx+rw&&x<COLS-1;x++) sMap[y][x]=SYMBOLS.FLOOR;
+                    rooms.push({ x:rx, y:ry, w:rw, h:rh, cx:rx+Math.floor(rw/2), cy:ry+Math.floor(rh/2) });
+                    // 右への1マス通路
+                    if (cc<cCols-1) { const doorY=ry+Math.floor(rh/2); if(doorY>=1&&doorY<ROWS-1) sMap[doorY][rx+rw]=SYMBOLS.FLOOR; }
+                    // 下への1マス通路
+                    if (cr<cRows-1) { const doorX=rx+Math.floor(rw/2); if(doorX>=1&&doorX<COLS-1) sMap[ry+rh][doorX]=SYMBOLS.FLOOR; }
+                    // 各部屋にほぼ確実にモンスター
+                    if (Math.random() < 0.85) {
+                        const ex=rx+1, ey=ry+1;
+                        if (ex<COLS-1&&ey<ROWS-1&&sMap[ey][ex]===SYMBOLS.FLOOR) {
+                            const roll=Math.random(); let type,hp,exp;
+                            if (roll<0.6){type='NORMAL';hp=3+floorLevel;exp=5;}
+                            else if(roll<0.8){type='BREAKER';hp=50+floorLevel*4;exp=45;}
+                            else{type='ORC';hp=40+floorLevel*5;exp=40;}
+                            sEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0 });
+                        }
+                    }
+                }
+
+            // ---- CHAOS_ALTAR: 全地形混沌、中央に砲台 ----
+            } else {
+                for (let y=1;y<ROWS-1;y++) for (let x=1;x<COLS-1;x++) {
+                    const r=Math.random();
+                    if(r<0.12) sMap[y][x]=SYMBOLS.WALL;
+                    else if(r<0.32) sMap[y][x]=SYMBOLS.LAVA;
+                    else if(r<0.48) sMap[y][x]=SYMBOLS.ICE;
+                    else if(r<0.53) sMap[y][x]=SYMBOLS.POISON;
+                    else sMap[y][x]=SYMBOLS.FLOOR;
+                }
+                const cx=Math.floor(COLS/2), cy=Math.floor(ROWS/2);
+                for (let dy=-2;dy<=2;dy++) for (let dx=-2;dx<=2;dx++)
+                    if(cy+dy>=1&&cy+dy<ROWS-1&&cx+dx>=1&&cx+dx<COLS-1) sMap[cy+dy][cx+dx]=SYMBOLS.FLOOR;
+                rooms.push({ x:cx-2, y:cy-2, w:5, h:5, cx, cy });
+                const tHp=100+floorLevel*5;
+                sEnemies.push({ type:'TURRET', x:cx, y:cy, dir:0, hp:tHp, maxHp:tHp, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
+                const eTypes=['NORMAL','BLAZE','FROST','ORC','BREAKER'];
+                for (let i=0;i<10;i++) {
+                    for (let t=0;t<60;t++) {
+                        const ex=Math.floor(Math.random()*(COLS-4))+2; const ey=Math.floor(Math.random()*(ROWS-4))+2;
+                        const tile=sMap[ey][ex];
+                        if(tile!==SYMBOLS.WALL&&!sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                            const type=eTypes[Math.floor(Math.random()*eTypes.length)];
+                            let hp,exp;
+                            if(type==='ORC'){hp=40+floorLevel*5;exp=40;}
+                            else if(type==='BREAKER'){hp=50+floorLevel*4;exp=45;}
+                            else if(type==='BLAZE'||type==='FROST'){hp=15+floorLevel*2;exp=15;}
+                            else{hp=3+floorLevel;exp=5;}
+                            sEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0 });
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 全タイプ共通: 通路を開けて床まで掘る
+            openPassages();
+            const entries = [];
+            if (sx > 0)                  entries.push([1, 12]);
+            if (sx < screenGridSize - 1) entries.push([COLS-2, 12]);
+            if (sy > 0)                  entries.push([19, 1]);
+            if (sy < screenGridSize - 1) entries.push([19, ROWS-2]);
+            entries.forEach(([ex, ey]) => digToNearestFloor(ex, ey));
+
+            // roomsが空の場合のフォールバック（キー・出口配置用）
+            if (rooms.length === 0) rooms.push({ x:2, y:2, w:4, h:4, cx:4, cy:4 });
+
+            return { sMap, sEnemies, sWisps, sTempWalls, rooms, bizType };
+        }
+
         // カギ・出口の画面座標をランダムに決定（スタート(0,0)を避け、互いに別の画面）
         let keyScreenX, keyScreenY, doorScreenX, doorScreenY;
         {
@@ -1879,6 +2060,18 @@ function initMap() {
             for (let sx = 0; sx < screenGridSize; sx++) {
                 let screenType;
                 const isSpecial = specialScreens.has(`${sx},${sy}`);
+                // 奇妙な場所（8%: 101F以上・特殊画面以外）
+                if (floorLevel >= 101 && !isSpecial && Math.random() < 0.08) {
+                    const result = generateBizarreScreen(sx, sy);
+                    screenGrid.maps[sy][sx] = result.sMap;
+                    screenGrid.enemies[sy][sx] = result.sEnemies;
+                    screenGrid.wisps[sy][sx] = result.sWisps;
+                    screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
+                    allRooms[`${sx},${sy}`] = result.rooms;
+                    const bizNames = { MONSTER_FLOOD:'モンスターの洪水', LAVA_SEA:'溶岩の海', FROZEN_PRISON:'氷の獄', VOID_CELLS:'虚空の独房', CHAOS_ALTAR:'混沌の祭壇' };
+                    addLog(`⚠️ 奇妙な気配…「${bizNames[result.bizType] || '???'}」`);
+                    continue;
+                }
                 if (floorLevel >= 90 && !isSpecial && Math.random() < 0.35) {
                     screenType = 'breaker'; // 35%の確率で壁掘り型
                 } else {
