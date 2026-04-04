@@ -309,6 +309,22 @@ const SOUNDS = {
         playSound(100, 'triangle', 0.2, 0.3); // 100Hz
         playSound(50, 'sawtooth', 0.1, 0.15); // 低音の衝撃
     },
+    COLOR_CHANGE: () => {
+        // 「ぴろりん」という軽やかなチャイム音
+        const now = audioCtx.currentTime;
+        const notes = [1047, 1319, 1568]; // C6, E6, G6
+        notes.forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + i * 0.07);
+            gain.gain.setValueAtTime(0.15, now + i * 0.07);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.25);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(now + i * 0.07);
+            osc.stop(now + i * 0.07 + 0.25);
+        });
+    },
     SPEED_UP: () => {
         const duration = 0.5;
         const osc = audioCtx.createOscillator();
@@ -687,6 +703,10 @@ function toggleBGM() {
     else stopBGM();
 }
 
+// プレイヤーカラー
+const PLAYER_COLORS = ['#ffffff', '#fbbf24', '#4ade80', '#38bdf8', '#f472b6'];
+let playerColorIndex = 0;
+
 // ゲーム状態
 let gameState = 'TITLE';
 let titleSelection = 0;
@@ -706,7 +726,8 @@ let isWindFloor = false; // 突風の間
 let windTimer = 0;
 let windGustEndTime = 0; // 突風エフェクト終了時刻
 let testFloor = 1;    // テストプレイ用の開始階層
-let deepTestFloor = 101; // ディープテスト用の開始階層（101〜200）
+let deepTestFloor = 101; // ディープテスト用の開始階層（101〜999）
+let familyIdCounter = 0; // 敵ファミリーID採番用
 let map = [];
 let player = {
     x: 0, y: 0, hp: 30, maxHp: 30, level: 1, exp: 0, nextExp: 7,
@@ -738,7 +759,9 @@ let player = {
 };
 let enemies = [];
 let wisps = []; // {x, y, dirIndex} - 無敵の障害物
+let movingFairies = []; // {x, y, screenX, screenY} - マルチスクリーン用自律移動妖精
 let floorLevel = 1;
+let maxReachedFloor = 1; // 最高到達階層
 let pendingF4Tutorial = false;
 let damageTexts = [];
 let attackLines = [];
@@ -889,6 +912,7 @@ function loadGame() {
         player.ownedRings = data.ownedRings || [];
         player.equippedRings = data.equippedRings || [null, null];
         floorLevel = data.floorLevel || 1;
+        maxReachedFloor = data.maxReachedFloor || floorLevel;
 
         // マップ・敵・フロア状態はコンティニュー時に再生成するためここでは復元しない
         updateUI();
@@ -1016,6 +1040,7 @@ function saveGame() {
 
         // 開始階層
         floorLevel: floorLevel,
+        maxReachedFloor: maxReachedFloor,
     };
     localStorage.setItem('minimal_rogue_save', JSON.stringify(data));
     // オートセーブは無音・無表示で行う
@@ -1069,6 +1094,8 @@ function updateUI() {
 
     lvElement.innerText = player.level;
     lvElement.style.color = '#ffffff';
+    const bestFloorEl = document.getElementById('best-floor');
+    if (bestFloorEl) bestFloorEl.innerText = `B${maxReachedFloor}F`;
     if (floorLevel === 100) {
         floorElement.innerText = "LAST FLOOR";
     } else if (floorLevel >= 101) {
@@ -1124,6 +1151,7 @@ function initMap() {
     blastEffects = []; // 爆風エフェクトをリセット
     isWindFloor = false; windTimer = 0;
     wisps = []; // ウィルをリセット
+    movingFairies = []; // 妖精をリセット
     player.hasKey = false;
     player.isStealth = false; // フロア移動で解除
     player.isInfiniteStamina = false; // フロア移動で解除
@@ -1418,6 +1446,8 @@ function initMap() {
                     const count = isMonsterRoom
                         ? 3 + Math.floor(Math.random() * 3)  // 3〜5体
                         : Math.random() < 0.5 ? 0 : 1;       // 通常は0か1体
+                    // 家族グループの判定（101F以上で15%の確率・部屋単位で決定）
+                    const roomFamilyId = (floorLevel >= 101 && Math.random() < 0.05) ? familyIdCounter++ : null;
                     for (let ei = 0; ei < count; ei++) {
                         // 部屋内のランダムな床タイルを探す
                         let ex, ey, found = false;
@@ -1442,7 +1472,9 @@ function initMap() {
                         } else if (roll < 0.38) {
                             sEnemies.push({ type:'BREAKER', x:ex, y:ey, hp:50+floorLevel*4, maxHp:50+floorLevel*4, flashUntil:0, offsetX:0, offsetY:0, expValue:45, stunTurns:0 });
                         } else {
-                            sEnemies.push({ type:'NORMAL', x:ex, y:ey, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0 });
+                            const newEnemy = { type:'NORMAL', x:ex, y:ey, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0 };
+                            if (roomFamilyId != null) { newEnemy.familyId = roomFamilyId; newEnemy.homeX = cr.cx; newEnemy.homeY = cr.cy; newEnemy.breedTimer = 0; }
+                            sEnemies.push(newEnemy);
                         }
                     }
 
@@ -1654,6 +1686,9 @@ function initMap() {
             for (let i = 1; i < rooms.length; i++) {
                 if (Math.random() < 0.2) continue; // 一部の部屋はスキップ
                 const numEnemies = Math.floor(Math.random() * 2) + 1;
+                // 家族グループの判定（101F以上で15%の確率・部屋単位で決定）
+                const roomFamilyId2 = (floorLevel >= 101 && Math.random() < 0.05) ? familyIdCounter++ : null;
+                const roomCenter2 = rooms[i];
                 for (let j = 0; j < numEnemies; j++) {
                     const pos = findWalkableInScreen();
                     if (!pos) continue;
@@ -1682,7 +1717,9 @@ function initMap() {
                         } else if (floorLevel >= 40 && floorLevel <= 49 && enemyRoll < 0.37 + sBreakerBonus) {
                             sEnemies.push({ type: 'LAYER', x: ex, y: ey, hp: 20 + floorLevel * 2, maxHp: 20 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 25, stunTurns: 0 });
                         } else {
-                            sEnemies.push({ type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 });
+                            const newEnemy = { type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 };
+                            if (roomFamilyId2 != null) { newEnemy.familyId = roomFamilyId2; newEnemy.homeX = roomCenter2.cx; newEnemy.homeY = roomCenter2.cy; newEnemy.breedTimer = 0; }
+                            sEnemies.push(newEnemy);
                         }
                     }
                 }
@@ -1846,6 +1883,93 @@ function initMap() {
                 screenGrid.wisps[sy][sx] = result.sWisps;
                 screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
                 allRooms[`${sx},${sy}`] = result.rooms;
+
+                // ===== サモナールーム (1%: 101F以上・スタート画面以外) =====
+                if (floorLevel >= 101 && !(sx === 0 && sy === 0) && Math.random() < 0.01 && result.rooms.length >= 2) {
+                    // スタート部屋(index0)以外からランダム選択
+                    const srIdx = 1 + Math.floor(Math.random() * (result.rooms.length - 1));
+                    const sr = result.rooms[srIdx];
+                    const sMap2 = screenGrid.maps[sy][sx];
+
+                    // 部屋をきれいな床に整える（最低8x6確保）
+                    const srW = Math.max(sr.w, 8), srH = Math.max(sr.h, 6);
+                    const srX = Math.max(1, Math.min(sr.x, COLS - srW - 1));
+                    const srY = Math.max(1, Math.min(sr.y, ROWS - srH - 1));
+                    for (let ry = srY; ry < srY + srH; ry++)
+                        for (let rx = srX; rx < srX + srW; rx++)
+                            sMap2[ry][rx] = SYMBOLS.FLOOR;
+
+                    // 外壁（部屋の輪郭）を壁に戻してはっきりした部屋感を出す
+                    for (let ry = srY; ry < srY + srH; ry++) {
+                        sMap2[ry][srX] = SYMBOLS.WALL;
+                        sMap2[ry][srX + srW - 1] = SYMBOLS.WALL;
+                    }
+                    for (let rx = srX; rx < srX + srW; rx++) {
+                        sMap2[srY][rx] = SYMBOLS.WALL;
+                        sMap2[srY + srH - 1][rx] = SYMBOLS.WALL;
+                    }
+
+                    // 入口（南側中央を開ける）
+                    const entX = srX + Math.floor(srW / 2);
+                    sMap2[srY + srH - 1][entX] = SYMBOLS.FLOOR;
+                    sMap2[srY + srH - 1][entX - 1] = SYMBOLS.FLOOR;
+
+                    // 氷床：部屋内を半分氷で覆う（上半分）
+                    for (let ry = srY + 1; ry < srY + Math.floor(srH / 2); ry++)
+                        for (let rx = srX + 1; rx < srX + srW - 1; rx++)
+                            sMap2[ry][rx] = SYMBOLS.ICE;
+
+                    // 内側の柱（4隅の内側1マス）
+                    const pillarPositions = [
+                        {x: srX+1, y: srY+1}, {x: srX+srW-2, y: srY+1},
+                        {x: srX+1, y: srY+srH-2}, {x: srX+srW-2, y: srY+srH-2}
+                    ];
+                    for (const p of pillarPositions) sMap2[p.y][p.x] = SYMBOLS.WALL;
+
+                    // 部屋内の既存敵を除去
+                    screenGrid.enemies[sy][sx] = screenGrid.enemies[sy][sx].filter(
+                        e => !(e.x >= srX && e.x < srX + srW && e.y >= srY && e.y < srY + srH)
+                    );
+
+                    // SUMMONER を中央上寄りに配置
+                    const sumX = srX + Math.floor(srW / 2) - 1;
+                    const sumY = srY + 2;
+                    const sHp2 = 80 + floorLevel * 4;
+                    const sumBody = [];
+                    const word = "ummoner";
+                    for (let i = 0; i < word.length; i++)
+                        sumBody.push({ x: sumX + i + 1, y: sumY, char: word[i] });
+                    screenGrid.enemies[sy][sx].push({
+                        type: 'SUMMONER', x: sumX, y: sumY,
+                        hp: sHp2, maxHp: sHp2,
+                        flashUntil: 0, offsetX: 0, offsetY: 0,
+                        expValue: 80, stunTurns: 0,
+                        summonCooldown: 5, summonedCount: 0,
+                        body: sumBody
+                    });
+
+                    // 護衛NORMAL 2体
+                    for (const gPos of [{x: sumX-2, y: sumY+2}, {x: sumX+4, y: sumY+2}]) {
+                        if (gPos.x > srX && gPos.x < srX+srW-1 && gPos.y > srY && gPos.y < srY+srH-1) {
+                            sMap2[gPos.y][gPos.x] = SYMBOLS.FLOOR;
+                            screenGrid.enemies[sy][sx].push({
+                                type: 'NORMAL', x: gPos.x, y: gPos.y,
+                                hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0
+                            });
+                        }
+                    }
+
+                    // 報酬アイテム（サモナーの奥・上端近く）
+                    const rewardX = sumX + 1, rewardY = srY + 1;
+                    if (sMap2[rewardY][rewardX] !== SYMBOLS.WALL) {
+                        sMap2[rewardY][rewardX] = SYMBOLS.FLOOR;
+                        const rewards = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.HEAL_TOME];
+                        sMap2[rewardY][rewardX] = rewards[Math.floor(Math.random() * rewards.length)];
+                    }
+
+                    addLog("⚠️ A Summoner's Sanctum lurks nearby...");
+                }
             }
         }
 
@@ -5010,6 +5134,23 @@ async function startFloorTransition() {
     }
 
     initMap();
+    if (floorLevel > maxReachedFloor) maxReachedFloor = floorLevel;
+    // マルチスクリーン: 全画面の妖精タイルを自律エンティティとして登録
+    if (multiScreenMode && screenGrid) {
+        for (let sy = 0; sy < screenGridSize; sy++) {
+            for (let sx = 0; sx < screenGridSize; sx++) {
+                const m = (sx === currentScreen.x && sy === currentScreen.y) ? map : screenGrid.maps[sy][sx];
+                if (!m) continue;
+                for (let fy = 0; fy < ROWS; fy++) {
+                    for (let fx = 0; fx < COLS; fx++) {
+                        if (m[fy][fx] === SYMBOLS.FAIRY) {
+                            movingFairies.push({ x: fx, y: fy, screenX: sx, screenY: sy });
+                        }
+                    }
+                }
+            }
+        }
+    }
     // 階段降下時にHP全回復
     player.hp = player.maxHp;
     player.isSpeeding = false;
@@ -5796,7 +5937,7 @@ function drawTitle() {
             if (i === 3) {
                 ctx.font = '12px Courier New';
                 ctx.fillStyle = '#f97316';
-                ctx.fillText('Use [Left/Right] to change Floor  (101-200)', canvas.width / 2, menuY + i * 40 + 25);
+                ctx.fillText('Use [Left/Right] to change Floor  (101-999)', canvas.width / 2, menuY + i * 40 + 25);
                 ctx.font = '24px Courier New';
             }
         }
@@ -6558,7 +6699,7 @@ function draw(now) {
                         ctx.beginPath(); ctx.moveTo(px + s, py); ctx.lineTo(px + s + TILE_SIZE, py + TILE_SIZE); ctx.stroke();
                     }
                     ctx.restore();
-                } else if ([SYMBOLS.WAND, SYMBOLS.KEY, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.ESCAPE, SYMBOLS.BREAKER_TOME, SYMBOLS.GUARDIAN].includes(char)) {
+                } else if ([SYMBOLS.WAND, SYMBOLS.KEY, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.ESCAPE, SYMBOLS.BREAKER_TOME, SYMBOLS.GUARDIAN, SYMBOLS.TOME].includes(char)) {
                     // 魔導書系アイテムはすべて統一アイコンで表示（拾うまで種類不明）
                     const isTome = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.ESCAPE, SYMBOLS.BREAKER_TOME, SYMBOLS.GUARDIAN].includes(char);
                     const displayChar = isTome ? SYMBOLS.TOME : char;
@@ -6850,7 +6991,7 @@ function draw(now) {
                 const colors = ['#fff', '#fbbf24', '#4ade80', '#38bdf8'];
                 ctx.fillStyle = colors[Math.floor(now / 40) % colors.length]; ctx.shadowBlur = 15; ctx.shadowColor = ctx.fillStyle;
             } else {
-                ctx.fillStyle = pFlashing ? '#f87171' : '#fff';
+                ctx.fillStyle = pFlashing ? '#f87171' : PLAYER_COLORS[playerColorIndex];
             }
 
             if (player.facing === 'RIGHT') {
@@ -7052,8 +7193,9 @@ function detonateBomb(bomb) {
                     spawnFloatingText(e.x, e.y, "CHAIN!", "#f97316");
                     handleEnemyDeath(e, true);
                 } else {
-                    e.hp -= damage;
-                    spawnFloatingText(e.x, e.y, `-${damage}`, "#ef4444");
+                    const eDmg = e.hp;
+                    e.hp -= eDmg;
+                    spawnFloatingText(e.x, e.y, `-${eDmg}`, "#ef4444");
                     if (e.hp <= 0) {
                         handleEnemyDeath(e, true);
                     }
@@ -8107,7 +8249,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8135,7 +8277,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8153,7 +8295,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8179,7 +8321,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8229,7 +8371,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8252,7 +8394,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8371,7 +8513,7 @@ async function handleAction(dx, dy) {
             if (isXWallStage && Math.random() < 0.75) {
                 spawnXFromWall(nx, ny);
             }
-            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall && player.isBreaker && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
             // 壁破壊の魔導書効果: 壁を壊して進む
@@ -8386,7 +8528,7 @@ async function handleAction(dx, dy) {
             if (isXWallStage && Math.random() < 0.75) {
                 spawnXFromWall(nx, ny);
             }
-            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall || isBlockedByTempWall || isBlockedByBomb) {
             player.offsetX = dx * 5; player.offsetY = dy * 5;
@@ -8405,14 +8547,14 @@ async function handleAction(dx, dy) {
                     await new Promise(r => setTimeout(r, 200));
                     player.offsetX = 0; player.offsetY = 0;
                     // 以降の処理（player.x = nx など）をスキップして、敵のターンへ
-                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 } else {
                     addLog("The door is locked.");
                     player.offsetX = dx * 5; player.offsetY = dy * 5;
                     await new Promise(r => setTimeout(r, 50));
                     player.offsetX = 0; player.offsetY = 0;
-                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 }
             } else if (nextTile === SYMBOLS.SWORD) {
@@ -8581,6 +8723,8 @@ async function handleAction(dx, dy) {
                     spawnFloatingText(nx, ny, "GUARDIAN TOME IDENTIFIED", "#facc15");
                 } else if (nextTile === SYMBOLS.FAIRY) {
                     map[ny][nx] = SYMBOLS.FLOOR;
+                    // 自律移動妖精リストからも除去
+                    movingFairies = movingFairies.filter(f => !(f.x === nx && f.y === ny && f.screenX === currentScreen.x && f.screenY === currentScreen.y));
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.FAIRY);
@@ -8817,6 +8961,119 @@ async function checkWispDamage(w) {
 }
 
 // 敵の落下処理を非同期で実行（ターン進行をブロックしない）
+function moveFairies() {
+    if (!multiScreenMode || !screenGrid || movingFairies.length === 0) return;
+
+    // 目標のグローバル位置をキー優先、なければ出口で探す
+    let goalGX = -1, goalGY = -1;
+    const searchSymbols = [SYMBOLS.KEY, SYMBOLS.STAIRS];
+    for (const sym of searchSymbols) {
+        if (goalGX >= 0) break;
+        outer: for (let sy = 0; sy < screenGridSize; sy++) {
+            for (let sx = 0; sx < screenGridSize; sx++) {
+                const m = (sx === currentScreen.x && sy === currentScreen.y) ? map : screenGrid.maps[sy][sx];
+                if (!m) continue;
+                for (let fy = 0; fy < ROWS; fy++)
+                    for (let fx = 0; fx < COLS; fx++)
+                        if (m[fy][fx] === sym) { goalGX = sx * COLS + fx; goalGY = sy * ROWS + fy; break outer; }
+            }
+        }
+    }
+    if (goalGX < 0) return;
+
+    const dirs = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+    const PASS_Y = 12, PASS_X = 19;
+
+    for (let i = movingFairies.length - 1; i >= 0; i--) {
+        const f = movingFairies[i];
+        const isCurrentScreen = (f.screenX === currentScreen.x && f.screenY === currentScreen.y);
+        const fMap = isCurrentScreen ? map : screenGrid.maps[f.screenY][f.screenX];
+        if (!fMap) continue;
+
+        // ---- 画面越え: 通路端にいたら即転送（移動と独立して毎ターン判定）----
+        let crossed = false;
+        if (f.x === 0 && f.screenX > 0 && f.y >= 11 && f.y <= 13)
+            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenX--; f.x = COLS - 2; crossed = true; }
+        else if (f.x === COLS - 1 && f.screenX < screenGridSize - 1 && f.y >= 11 && f.y <= 13)
+            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenX++; f.x = 1; crossed = true; }
+        else if (f.y === 0 && f.screenY > 0 && f.x >= 18 && f.x <= 21)
+            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenY--; f.y = ROWS - 2; crossed = true; }
+        else if (f.y === ROWS - 1 && f.screenY < screenGridSize - 1 && f.x >= 18 && f.x <= 21)
+            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenY++; f.y = 1; crossed = true; }
+
+        if (crossed) {
+            const nMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
+            if (nMap && nMap[f.y][f.x] !== SYMBOLS.KEY && nMap[f.y][f.x] !== SYMBOLS.STAIRS)
+                nMap[f.y][f.x] = SYMBOLS.FAIRY;
+        }
+
+        // ---- プレイヤーと重なったら取得 ----
+        if (isCurrentScreen && f.x === player.x && f.y === player.y) {
+            if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR;
+            movingFairies.splice(i, 1);
+            player.fairyCount++;
+            player.fairyRemainingCharms++;
+            SOUNDS.GET_ITEM();
+            spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
+            addLog("✨ You were joined by a FAIRY! ✨");
+            updateUI();
+            continue;
+        }
+
+        // ---- 1マス移動 ----
+        const curFMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
+        if (!curFMap) continue;
+
+        const fGX = f.screenX * COLS + f.x;
+        const fGY = f.screenY * ROWS + f.y;
+        const goalSX = Math.floor(goalGX / COLS), goalSY = Math.floor(goalGY / ROWS);
+
+        // 目標ローカル座標: 同スクリーンなら直接、違うなら通路入口
+        let targetX, targetY;
+        if (f.screenX === goalSX && f.screenY === goalSY) {
+            targetX = goalGX % COLS; targetY = goalGY % ROWS;
+        } else {
+            const dx = goalSX - f.screenX, dy = goalSY - f.screenY;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                targetX = dx > 0 ? COLS - 1 : 0; targetY = PASS_Y;
+            } else {
+                targetX = PASS_X; targetY = dy > 0 ? ROWS - 1 : 0;
+            }
+        }
+
+        let bestDist = Math.abs(f.x - targetX) + Math.abs(f.y - targetY);
+        let bestDX = 0, bestDY = 0;
+        for (const d of dirs) {
+            const nx = f.x + d.x, ny = f.y + d.y;
+            if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+            if (curFMap[ny][nx] === SYMBOLS.WALL) continue;
+            if (movingFairies.some(o => o !== f && o.x === nx && o.y === ny && o.screenX === f.screenX && o.screenY === f.screenY)) continue;
+            const nd = Math.abs(nx - targetX) + Math.abs(ny - targetY);
+            if (nd < bestDist) { bestDist = nd; bestDX = d.x; bestDY = d.y; }
+        }
+
+        if (bestDX !== 0 || bestDY !== 0) {
+            if (curFMap[f.y][f.x] === SYMBOLS.FAIRY) curFMap[f.y][f.x] = SYMBOLS.FLOOR;
+            f.x += bestDX; f.y += bestDY;
+            const newMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
+            if (newMap && newMap[f.y][f.x] !== SYMBOLS.KEY && newMap[f.y][f.x] !== SYMBOLS.STAIRS)
+                newMap[f.y][f.x] = SYMBOLS.FAIRY;
+
+            // 移動後にプレイヤーと重なったら即取得
+            if (f.screenX === currentScreen.x && f.screenY === currentScreen.y && f.x === player.x && f.y === player.y) {
+                if (newMap && newMap[f.y][f.x] === SYMBOLS.FAIRY) newMap[f.y][f.x] = SYMBOLS.FLOOR;
+                movingFairies.splice(i, 1);
+                player.fairyCount++;
+                player.fairyRemainingCharms++;
+                SOUNDS.GET_ITEM();
+                spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
+                addLog("✨ You were joined by a FAIRY! ✨");
+                updateUI();
+            }
+        }
+    }
+}
+
 function scheduleEnemyFall(enemy, msg, killedByPlayer = false) {
     enemy.isFalling = true;
     addLog(msg);
@@ -10348,7 +10605,27 @@ async function enemyTurn() {
         enemies.filter(ally => ally.isAlly).forEach(ally => targets.push({ x: ally.x, y: ally.y, isAlly: true, obj: ally }));
 
         // ターゲットがいない（ステルス中かつ味方がいない）場合は待機
-        if (targets.length === 0) {
+        // BREAKERはターゲット不在でも自律的に動き続ける
+        // 家族持ちNORMALは巣の周辺をうろつく
+        if (targets.length === 0 && e.type !== 'BREAKER') {
+            if (e.type === 'NORMAL' && e.familyId != null && floorLevel >= 101) {
+                const distHome = Math.abs(e.x - e.homeX) + Math.abs(e.y - e.homeY);
+                const wanderDirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+                if (distHome > 5) {
+                    // 巣に近づく方向を優先
+                    wanderDirs.sort((a,b) => {
+                        const dA = Math.abs(e.homeX-(e.x+a.x)) + Math.abs(e.homeY-(e.y+a.y));
+                        const dB = Math.abs(e.homeX-(e.x+b.x)) + Math.abs(e.homeY-(e.y+b.y));
+                        return dA - dB;
+                    });
+                } else {
+                    // ランダムうろつき
+                    wanderDirs.sort(() => Math.random() - 0.5);
+                }
+                for (const d of wanderDirs) {
+                    if (canEnemyMove(e.x+d.x, e.y+d.y, e)) { e.x+=d.x; e.y+=d.y; break; }
+                }
+            }
             continue;
         }
 
@@ -10366,18 +10643,114 @@ async function enemyTurn() {
         const detectRange = (e.type !== 'ORC' && hasRing('STEALTH_RING')) ? 5 : baseDetect;
 
         if (e.type === 'GOLD' && minDist <= detectRange) {
-            // GOLDは逃走のみ
-            const moves = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-            let bestMove = { x: e.x, y: e.y, score: minDist };
-            moves.forEach(m => {
-                if (canEnemyMove(e.x + m.x, e.y + m.y, e)) {
-                    const nDist = Math.abs(player.x - (e.x + m.x)) + Math.abs(player.y - (e.y + m.y));
-                    if (nDist > bestMove.score) bestMove = { x: e.x + m.x, y: e.y + m.y, score: nDist };
+            // GOLDは出口（STAIRS）へ向かう道案内役。なければプレイヤーから逃げる
+            const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+
+            // ---- 目標地点の決定 ----
+            // マルチスクリーン: 全画面から階段スクリーンを探してグローバル方向を計算
+            let targetX = -1, targetY = -1; // 現画面座標系での目標
+
+            if (multiScreenMode && screenGrid) {
+                // 全スクリーンを検索して階段のあるスクリーン位置を特定
+                let exitSX = -1, exitSY = -1;
+                outer: for (let sy = 0; sy < screenGridSize; sy++) {
+                    for (let sx = 0; sx < screenGridSize; sx++) {
+                        const m = (sx === currentScreen.x && sy === currentScreen.y) ? map : screenGrid.maps[sy][sx];
+                        if (!m) continue;
+                        for (let my = 0; my < ROWS; my++)
+                            for (let mx = 0; mx < COLS; mx++)
+                                if (m[my][mx] === SYMBOLS.STAIRS) { exitSX = sx; exitSY = sy; break outer; }
+                    }
                 }
-            });
-            if (bestMove.x !== e.x || bestMove.y !== e.y) {
-                SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y;
+                if (exitSX >= 0) {
+                    const dsx = exitSX - currentScreen.x; // 出口スクリーンが右なら正
+                    const dsy = exitSY - currentScreen.y; // 出口スクリーンが下なら正
+                    if (exitSX === currentScreen.x && exitSY === currentScreen.y) {
+                        // 同じ画面: 直接向かう
+                        for (let sy = 0; sy < ROWS; sy++)
+                            for (let sx = 0; sx < COLS; sx++)
+                                if (isRealHole(sx, sy)) { targetX = sx; targetY = sy; }
+                    } else if (Math.abs(dsx) >= Math.abs(dsy)) {
+                        // 横方向が支配的 → 左右の通路（y=12付近）を目指す
+                        targetX = dsx > 0 ? COLS - 1 : 0;
+                        targetY = 12;
+                    } else {
+                        // 縦方向が支配的 → 上下の通路（x=19付近）を目指す
+                        targetX = 19;
+                        targetY = dsy > 0 ? ROWS - 1 : 0;
+                    }
+                }
+            } else {
+                // 通常画面: 階段を直接探す
+                for (let sy = 0; sy < ROWS; sy++)
+                    for (let sx = 0; sx < COLS; sx++)
+                        if (isRealHole(sx, sy)) { targetX = sx; targetY = sy; }
             }
+
+            // ---- 移動先の決定 ----
+            if (targetX >= 0) {
+                // 目標へ近づく
+                const curDist = Math.abs(e.x - targetX) + Math.abs(e.y - targetY);
+                let bestMove = null, bestDist = curDist;
+                dirs.forEach(d => {
+                    const nx = e.x + d.x, ny = e.y + d.y;
+                    if (!canEnemyMove(nx, ny, e)) return;
+                    const nd = Math.abs(nx - targetX) + Math.abs(ny - targetY);
+                    if (nd < bestDist) { bestDist = nd; bestMove = { x: nx, y: ny }; }
+                });
+                if (bestMove) { SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y; }
+
+                // 同画面の階段に到達したら脱出
+                if (!multiScreenMode || (targetX !== COLS - 1 && targetX !== 0 && targetY !== ROWS - 1 && targetY !== 0)) {
+                    if (e.x === targetX && e.y === targetY) {
+                        spawnFloatingText(e.x, e.y, "ESCAPED!", '#fbbf24');
+                        addLog("✨ The Gold enemy slipped into the hole!");
+                        e._dead = true;
+                        enemies = enemies.filter(en => en !== e);
+                    }
+                }
+
+                // マルチスクリーン: 通路端に達したら隣画面へ転送
+                if (multiScreenMode && screenGrid && !e._dead) {
+                    const ey = e.y, ex = e.x;
+                    if (ex === 0 && currentScreen.x > 0 && ey >= 11 && ey <= 13) {
+                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
+                        e.x = COLS - 1;
+                        screenGrid.enemies[currentScreen.y][currentScreen.x - 1].push(e);
+                        enemies = enemies.filter(en => en !== e);
+                        SOUNDS.GOLD_FLIGHT();
+                    } else if (ex === COLS - 1 && currentScreen.x < screenGridSize - 1 && ey >= 11 && ey <= 13) {
+                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
+                        e.x = 0;
+                        screenGrid.enemies[currentScreen.y][currentScreen.x + 1].push(e);
+                        enemies = enemies.filter(en => en !== e);
+                        SOUNDS.GOLD_FLIGHT();
+                    } else if (ey === 0 && currentScreen.y > 0 && ex >= 18 && ex <= 21) {
+                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
+                        e.y = ROWS - 1;
+                        screenGrid.enemies[currentScreen.y - 1][currentScreen.x].push(e);
+                        enemies = enemies.filter(en => en !== e);
+                        SOUNDS.GOLD_FLIGHT();
+                    } else if (ey === ROWS - 1 && currentScreen.y < screenGridSize - 1 && ex >= 18 && ex <= 21) {
+                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
+                        e.y = 0;
+                        screenGrid.enemies[currentScreen.y + 1][currentScreen.x].push(e);
+                        enemies = enemies.filter(en => en !== e);
+                        SOUNDS.GOLD_FLIGHT();
+                    }
+                }
+            } else {
+                // 目標なし: プレイヤーから逃げる（従来動作）
+                let bestMove = { x: e.x, y: e.y, score: minDist };
+                dirs.forEach(d => {
+                    if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
+                        const nd = Math.abs(player.x - (e.x + d.x)) + Math.abs(player.y - (e.y + d.y));
+                        if (nd > bestMove.score) bestMove = { x: e.x + d.x, y: e.y + d.y, score: nd };
+                    }
+                });
+                if (bestMove.x !== e.x || bestMove.y !== e.y) { SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y; }
+            }
+            if (e._dead || !enemies.includes(e)) continue;
         } else if (e.type === 'BREAKER') {
             // BREAKERの移動AI: 直進優先で遠くまで掘り進む
             const allDirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
@@ -10487,8 +10860,8 @@ async function enemyTurn() {
                     break;
                 }
             }
-            // 隣接していたら攻撃（逃げられなかった場合）
-            if (!moved && minDist === 1 && bestTarget.isPlayer) {
+            // 隣接していたら攻撃（逃げられなかった場合、ステルス中は攻撃しない）
+            if (!moved && minDist === 1 && bestTarget && bestTarget.isPlayer && !player.isStealth) {
                 e.offsetX = (bestTarget.x - e.x) * 10; e.offsetY = (bestTarget.y - e.y) * 10;
                 spawnSlash(bestTarget.x, bestTarget.y);
                 SOUNDS.ENEMY_ATTACK();
@@ -10894,6 +11267,43 @@ async function enemyTurn() {
 
     if (!attackOccurred && enemies.length > 0) await new Promise(r => setTimeout(r, 50));
 
+    // 深層(101F+)の家族NORMAL敵：隣接ペアでbreedTimerを加算、閾値で繁殖
+    if (floorLevel >= 101) {
+        const BREED_THRESHOLD = 20;
+        const FAMILY_CAP = 5;
+        const spawnQueue = [];
+        for (const e of enemies) {
+            if (e.type !== 'NORMAL' || e.familyId == null || e._dead || e.hp <= 0) continue;
+            e.breedTimer = (e.breedTimer || 0) + 1;
+            if (e.breedTimer >= BREED_THRESHOLD) {
+                e.breedTimer = 0;
+                const hasAdjacentSibling = enemies.some(o =>
+                    o !== e && o.type === 'NORMAL' && o.familyId === e.familyId && !o._dead &&
+                    Math.abs(o.x - e.x) + Math.abs(o.y - e.y) === 1
+                );
+                if (hasAdjacentSibling) {
+                    const familySize = enemies.filter(o => o.familyId === e.familyId && !o._dead).length;
+                    if (familySize < FAMILY_CAP) {
+                        const bDirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+                        bDirs.sort(() => Math.random() - 0.5);
+                        for (const d of bDirs) {
+                            const nx = e.x + d.x, ny = e.y + d.y;
+                            if (canEnemyMove(nx, ny, e) && !(nx === player.x && ny === player.y)) {
+                                spawnQueue.push({ x: nx, y: ny, familyId: e.familyId, homeX: e.homeX, homeY: e.homeY });
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (const sp of spawnQueue) {
+            const child = { type:'NORMAL', x:sp.x, y:sp.y, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0, familyId:sp.familyId, homeX:sp.homeX, homeY:sp.homeY, breedTimer:0 };
+            enemies.push(child);
+            spawnFloatingText(sp.x, sp.y, "♥", '#f472b6');
+        }
+    }
+
     // ターンの最後にレーザー判定
     await applyLaserDamage();
 
@@ -11173,7 +11583,7 @@ async function moveFlameProjectiles() {
             // 現在位置に敵がいれば即ヒット（隣接敵への一瞬表示後に当たる）
             const atCurrent = enemies.find(e => e.x === fp.x && e.y === fp.y && e.hp > 0 && !e._dead && !e.isAlly);
             if (atCurrent) {
-                const dmg = 12;
+                const dmg = atCurrent.hp;
                 atCurrent.hp -= dmg;
                 atCurrent.flashUntil = performance.now() + 100;
                 spawnDamageText(fp.x, fp.y, dmg, '#f97316');
@@ -11230,7 +11640,7 @@ async function moveFlameProjectiles() {
             // 敵へのダメージ（味方以外）
             const hitEnemy = enemies.find(e => e.x === nx && e.y === ny && e.hp > 0 && !e._dead && !e.isAlly);
             if (hitEnemy) {
-                const dmg = 12;
+                const dmg = hitEnemy.hp;
                 hitEnemy.hp -= dmg;
                 hitEnemy.flashUntil = performance.now() + 100;
                 spawnDamageText(nx, ny, dmg, '#f97316');
@@ -11541,7 +11951,7 @@ window.addEventListener('keydown', async e => {
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'TITLE' && titleSelection === 3) {
-            deepTestFloor = deepTestFloor > 101 ? deepTestFloor - 1 : 200;
+            deepTestFloor = deepTestFloor > 101 ? deepTestFloor - 1 : 999;
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'STATUS') { statusPage = (statusPage + 2) % 3; SOUNDS.SELECT(); return; }
@@ -11553,7 +11963,7 @@ window.addEventListener('keydown', async e => {
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'TITLE' && titleSelection === 3) {
-            deepTestFloor = deepTestFloor < 200 ? deepTestFloor + 1 : 101;
+            deepTestFloor = deepTestFloor < 999 ? deepTestFloor + 1 : 101;
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'STATUS') { statusPage = (statusPage + 1) % 3; SOUNDS.SELECT(); return; }
@@ -11871,6 +12281,15 @@ window.addEventListener('keyup', e => {
         }
         isSpacePressed = false;
         spaceUsedForBlock = false;
+        e.preventDefault();
+    }
+});
+
+// @ キーでプレイヤーカラーを切り替え
+window.addEventListener('keydown', e => {
+    if (e.key === '@') {
+        playerColorIndex = (playerColorIndex + 1) % PLAYER_COLORS.length;
+        SOUNDS.COLOR_CHANGE();
         e.preventDefault();
     }
 });
