@@ -760,6 +760,7 @@ let player = {
 let enemies = [];
 let wisps = []; // {x, y, dirIndex} - 無敵の障害物
 let movingFairies = []; // {x, y, screenX, screenY} - マルチスクリーン用自律移動妖精
+let movingMadmen = []; // {x, y, screenX, screenY, hp, ...} - マルチスクリーン追跡狂人
 let floorLevel = 1;
 let maxReachedFloor = 1; // 最高到達階層
 let pendingF4Tutorial = false;
@@ -1152,6 +1153,7 @@ function initMap() {
     isWindFloor = false; windTimer = 0;
     wisps = []; // ウィルをリセット
     movingFairies = []; // 妖精をリセット
+    movingMadmen = []; // 狂人をリセット
     player.hasKey = false;
     player.isStealth = false; // フロア移動で解除
     player.isInfiniteStamina = false; // フロア移動で解除
@@ -2063,6 +2065,23 @@ function initMap() {
         wisps = screenGrid.wisps[0][0];
         tempWalls = [...(screenGrid.tempWalls[0][0] || [])];
         isWindFloor = screenGrid.wind[0][0];
+
+        // 全スクリーンのMADMANをmovingMadmenに転送（スクリーン追跡のため）
+        for (let sy = 0; sy < screenGridSize; sy++) {
+            for (let sx = 0; sx < screenGridSize; sx++) {
+                const madmen = screenGrid.enemies[sy][sx].filter(e => e.type === 'MADMAN');
+                if (madmen.length > 0) {
+                    screenGrid.enemies[sy][sx] = screenGrid.enemies[sy][sx].filter(e => e.type !== 'MADMAN');
+                    madmen.forEach(m => movingMadmen.push({ ...m, screenX: sx, screenY: sy }));
+                }
+            }
+        }
+        // スタート画面(0,0)のmovingMadmenは即座にenemiesへ（ただしプレイヤーから遠ければ）
+        enemies = screenGrid.enemies[0][0];
+        const startMadmen = movingMadmen.filter(m => m.screenX === 0 && m.screenY === 0 &&
+            !(Math.abs(m.x - player.x) <= 3 && Math.abs(m.y - player.y) <= 3));
+        movingMadmen = movingMadmen.filter(m => !(m.screenX === 0 && m.screenY === 0));
+        enemies.push(...startMadmen);
 
         return;
     }
@@ -8121,7 +8140,10 @@ async function handleAction(dx, dy) {
             }
 
             if (canTransition) {
-                // 現在の画面データを保存
+                // 現在の画面データを保存（MADMANはmovingMadmenへ）
+                const leavingMadmen = enemies.filter(e => e.type === 'MADMAN');
+                leavingMadmen.forEach(m => movingMadmen.push({ ...m, screenX: currentScreen.x, screenY: currentScreen.y }));
+                enemies = enemies.filter(e => e.type !== 'MADMAN');
                 screenGrid.maps[currentScreen.y][currentScreen.x] = map;
                 screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies;
                 screenGrid.wisps[currentScreen.y][currentScreen.x] = wisps;
@@ -8143,6 +8165,10 @@ async function handleAction(dx, dy) {
                 map = screenGrid.maps[newScreenY][newScreenX];
                 enemies = screenGrid.enemies[newScreenY][newScreenX];
                 wisps = screenGrid.wisps[newScreenY][newScreenX];
+                // 新スクリーンに追跡中のMADMANがいれば即転入
+                const arrivingMadmen = movingMadmen.filter(m => m.screenX === newScreenX && m.screenY === newScreenY);
+                movingMadmen = movingMadmen.filter(m => !(m.screenX === newScreenX && m.screenY === newScreenY));
+                enemies.push(...arrivingMadmen);
                 isWindFloor = screenGrid.wind ? screenGrid.wind[newScreenY][newScreenX] : false;
                 windTimer = 0;
                 tempWalls = screenGrid.tempWalls ? [...(screenGrid.tempWalls[newScreenY][newScreenX] || [])] : [];
@@ -8262,7 +8288,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8290,7 +8316,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8308,7 +8334,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8334,7 +8360,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8384,7 +8410,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8407,7 +8433,7 @@ async function handleAction(dx, dy) {
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
                 turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies();
+                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
                 isProcessing = false;
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
@@ -8526,7 +8552,7 @@ async function handleAction(dx, dy) {
             if (isXWallStage && Math.random() < 0.75) {
                 spawnXFromWall(nx, ny);
             }
-            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall && player.isBreaker && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
             // 壁破壊の魔導書効果: 壁を壊して進む
@@ -8541,7 +8567,7 @@ async function handleAction(dx, dy) {
             if (isXWallStage && Math.random() < 0.75) {
                 spawnXFromWall(nx, ny);
             }
-            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall || isBlockedByTempWall || isBlockedByBomb) {
             player.offsetX = dx * 5; player.offsetY = dy * 5;
@@ -8560,14 +8586,14 @@ async function handleAction(dx, dy) {
                     await new Promise(r => setTimeout(r, 200));
                     player.offsetX = 0; player.offsetY = 0;
                     // 以降の処理（player.x = nx など）をスキップして、敵のターンへ
-                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 } else {
                     addLog("The door is locked.");
                     player.offsetX = dx * 5; player.offsetY = dy * 5;
                     await new Promise(r => setTimeout(r, 50));
                     player.offsetX = 0; player.offsetY = 0;
-                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 }
             } else if (nextTile === SYMBOLS.SWORD) {
@@ -9084,6 +9110,60 @@ function moveFairies() {
                 updateUI();
             }
         }
+    }
+}
+
+function moveMadmen() {
+    if (!multiScreenMode || !screenGrid || movingMadmen.length === 0) return;
+
+    const PASS_Y = 12, PASS_X = 19;
+    const dirs = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+
+    for (let i = movingMadmen.length - 1; i >= 0; i--) {
+        const m = movingMadmen[i];
+
+        // ---- 画面越え: 通路端にいたら転送（妖精と同じロジック）----
+        if (m.x === 0 && m.screenX > 0 && m.y >= 11 && m.y <= 13)
+            { m.screenX--; m.x = COLS - 2; }
+        else if (m.x === COLS - 1 && m.screenX < screenGridSize - 1 && m.y >= 11 && m.y <= 13)
+            { m.screenX++; m.x = 1; }
+        else if (m.y === 0 && m.screenY > 0 && m.x >= 18 && m.x <= 21)
+            { m.screenY--; m.y = ROWS - 2; }
+        else if (m.y === ROWS - 1 && m.screenY < screenGridSize - 1 && m.x >= 18 && m.x <= 21)
+            { m.screenY++; m.y = 1; }
+
+        // プレイヤーのいるスクリーンに到達 → enemiesに転送
+        if (m.screenX === currentScreen.x && m.screenY === currentScreen.y) {
+            movingMadmen.splice(i, 1);
+            enemies.push(m);
+            spawnFloatingText(m.x, m.y, "!!!", '#ef4444');
+            addLog("狂人がこの部屋に追いついてきた！");
+            continue;
+        }
+
+        // ---- 1マス移動: プレイヤースクリーンへ向かう ----
+        const mMap = screenGrid.maps[m.screenY][m.screenX];
+        if (!mMap) continue;
+
+        const goalSX = currentScreen.x, goalSY = currentScreen.y;
+        let targetX, targetY;
+        const dx = goalSX - m.screenX, dy = goalSY - m.screenY;
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            targetX = dx > 0 ? COLS - 1 : 0; targetY = PASS_Y;
+        } else {
+            targetX = PASS_X; targetY = dy > 0 ? ROWS - 1 : 0;
+        }
+
+        let bestDist = Math.abs(m.x - targetX) + Math.abs(m.y - targetY);
+        let bestDX = 0, bestDY = 0;
+        for (const d of dirs) {
+            const nx = m.x + d.x, ny = m.y + d.y;
+            if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+            if (mMap[ny][nx] === SYMBOLS.WALL) continue;
+            const nd = Math.abs(nx - targetX) + Math.abs(ny - targetY);
+            if (nd < bestDist) { bestDist = nd; bestDX = d.x; bestDY = d.y; }
+        }
+        m.x += bestDX; m.y += bestDY;
     }
 }
 
