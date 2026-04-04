@@ -1471,6 +1471,9 @@ function initMap() {
                             sEnemies.push({ type:'ORC', x:ex, y:ey, hp:40+floorLevel*5, maxHp:40+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
                         } else if (roll < 0.38) {
                             sEnemies.push({ type:'BREAKER', x:ex, y:ey, hp:50+floorLevel*4, maxHp:50+floorLevel*4, flashUntil:0, offsetX:0, offsetY:0, expValue:45, stunTurns:0 });
+                        } else if (floorLevel >= 101 && Math.random() < 0.06) {
+                            // 深層: 低確率で狂人が出現
+                            sEnemies.push({ type:'MADMAN', x:ex, y:ey, hp:15+floorLevel*2, maxHp:15+floorLevel*2, flashUntil:0, offsetX:0, offsetY:0, expValue:30, stunTurns:0 });
                         } else {
                             const newEnemy = { type:'NORMAL', x:ex, y:ey, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0 };
                             if (roomFamilyId != null) { newEnemy.familyId = roomFamilyId; newEnemy.homeX = cr.cx; newEnemy.homeY = cr.cy; newEnemy.breedTimer = 0; }
@@ -1716,6 +1719,9 @@ function initMap() {
                             sEnemies.push({ type: 'BREAKER', x: ex, y: ey, hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0 });
                         } else if (floorLevel >= 40 && floorLevel <= 49 && enemyRoll < 0.37 + sBreakerBonus) {
                             sEnemies.push({ type: 'LAYER', x: ex, y: ey, hp: 20 + floorLevel * 2, maxHp: 20 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 25, stunTurns: 0 });
+                        } else if (floorLevel >= 101 && Math.random() < 0.06) {
+                            // 深層: 低確率で狂人が出現
+                            sEnemies.push({ type: 'MADMAN', x: ex, y: ey, hp: 15+floorLevel*2, maxHp: 15+floorLevel*2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30, stunTurns: 0 });
                         } else {
                             const newEnemy = { type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 };
                             if (roomFamilyId2 != null) { newEnemy.familyId = roomFamilyId2; newEnemy.homeX = roomCenter2.cx; newEnemy.homeY = roomCenter2.cy; newEnemy.breedTimer = 0; }
@@ -6905,6 +6911,13 @@ function draw(now) {
                         eChar = phase === 0 ? 'M' : SYMBOLS.STAIRS;
                     }
                 }
+                else if (e.type === 'MADMAN') {
+                    // 狂人: 赤く不規則に明滅する＠
+                    const mPhase = Math.floor(now / 90) % 3;
+                    eColor = mPhase === 0 ? '#ef4444' : mPhase === 1 ? '#b91c1c' : '#fca5a5';
+                    eChar = SYMBOLS.PLAYER;
+                    ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 8;
+                }
                 if (e.isAlly) eColor = '#60a5fa';
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
@@ -9103,6 +9116,12 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
         stopBGM();
     }
 
+    // 狂人が死んだ場合: 最後の叫び
+    if (enemy.type === 'MADMAN') {
+        const lastWords = ["「…ここから、出してくれ……」", "「…ありがとう……やっと……」", "「…俺は、どこにいる……」"];
+        addLog(lastWords[Math.floor(Math.random() * lastWords.length)]);
+    }
+
     // 召喚師が死んだ場合: 召喚された敵のリファレンスを解除
     if (enemy.type === 'SUMMONER') {
         enemies.forEach(e => {
@@ -10639,7 +10658,7 @@ async function enemyTurn() {
         });
 
         // オークは距離に関係なく探知する。隠密の指輪装備時は探知範囲を縮小
-        const baseDetect = (e.type === 'ORC') ? 999 : 8;
+        const baseDetect = (e.type === 'ORC' || e.type === 'MADMAN') ? 999 : 8;
         const detectRange = (e.type !== 'ORC' && hasRing('STEALTH_RING')) ? 5 : baseDetect;
 
         if (e.type === 'GOLD' && minDist <= detectRange) {
@@ -11131,7 +11150,7 @@ async function enemyTurn() {
             if (bestTarget.isPlayer) {
 
                 // プレイヤーへの攻撃（既存ロジック）
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : (e.type === 'BREAKER' ? 6 : (e.type === 'LAYER' ? 3 : 1))))) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : (e.type === 'MADMAN' ? 8 : (e.type === 'BREAKER' ? 6 : (e.type === 'LAYER' ? 3 : 1)))))) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.4));
@@ -11140,6 +11159,24 @@ async function enemyTurn() {
                     if (e.type === 'ORC') {
                         addLog("The Orc's mighty blow sends you flying!");
                         await knockbackPlayer(player.x - e.x, player.y - e.y, 10 + Math.floor(floorLevel / 2), true);
+                    } else if (e.type === 'MADMAN') {
+                        // 狂人: 叫び声ログ + 20%で二連撃
+                        const madCries = ["「ゔあああああ！！」", "「殺す…殺す……」", "「出してくれ…出してくれ！！」", "「もう…誰も信じない…」"];
+                        addLog(`狂人が叫ぶ: ${madCries[Math.floor(Math.random() * madCries.length)]}`);
+                        SOUNDS.DAMAGE(); setScreenShake(6, 150);
+                        player.hp -= damage; player.flashUntil = performance.now() + 200;
+                        if (player.hp > 0) animateBounce(player);
+                        spawnDamageText(player.x, player.y, damage, '#ef4444');
+                        if (player.hp <= 0) { player.hp = 0; updateUI(); }
+                        // 20%で狂乱の二連撃
+                        if (player.hp > 0 && Math.random() < 0.20) {
+                            await new Promise(r => setTimeout(r, 80));
+                            const dmg2 = Math.max(1, Math.floor(damage * 0.6));
+                            addLog("狂人がさらに叫びながら連撃してくる！");
+                            SOUNDS.DAMAGE();
+                            player.hp -= dmg2; player.flashUntil = performance.now() + 200;
+                            spawnDamageText(player.x, player.y, dmg2, '#ef4444');
+                        }
                     } else {
                         const fatal = Math.random() < 0.05;
                         if (fatal) { damage *= 3; SOUNDS.FATAL(); setScreenShake(15, 400); addLog("💥 FATAL BLOW! 💥"); }
