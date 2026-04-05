@@ -1205,8 +1205,46 @@ function initMap() {
             wind: Array.from({ length: screenGridSize }, () =>
                 Array.from({ length: screenGridSize }, () => false))
         };
-        // 各画面ごとに突風を発生させる（60〜69階は75%、それ以外は3%）
-        const multiWindChance = (floorLevel >= 60 && floorLevel <= 69) ? 0.75 : 0.03;
+        // 深層テーマ: 101F+でフロアごとにランダムに変化するパラメータセット
+        let deepTheme = null;
+        if (floorLevel >= 101) {
+            const _tw = (() => {
+                const r = Math.random();
+                if (r < 0.18) return { maze: 0.70, dungeon: 0.10, castle: 0.10, breaker: 0.10 };
+                if (r < 0.36) return { maze: 0.05, dungeon: 0.10, castle: 0.75, breaker: 0.10 };
+                if (r < 0.52) return { maze: 0.05, dungeon: 0.05, castle: 0.10, breaker: 0.80 };
+                if (r < 0.65) return { maze: 0.10, dungeon: 0.70, castle: 0.10, breaker: 0.10 };
+                return { maze: 0.25, dungeon: 0.25, castle: 0.25, breaker: 0.25 };
+            })();
+            const _rs = Math.random(), _ss = Math.random();
+            // 敵の出現比率（累積閾値: TURRET / TURRET+ORC / TURRET+ORC+BREAKER）
+            const _eStyle = Math.floor(Math.random() * 5);
+            const _eT = [
+                [0.30, 0.60, 0.80], // 強敵混合
+                [0.03, 0.08, 0.73], // BREAKER支配
+                [0.50, 0.55, 0.60], // TURRET要塞
+                [0.03, 0.68, 0.73], // ORC軍団
+                [0.10, 0.30, 0.55], // バランス型
+            ][_eStyle];
+            deepTheme = {
+                screenTypeWeights: _tw,
+                bizarreChance:     0.05 + Math.random() * 0.50,
+                roomCountMin: _rs < 0.33 ? 3 : _rs < 0.66 ? 7 : 13,
+                roomCountMax: _rs < 0.33 ? 6 : _rs < 0.66 ? 11 : 19,
+                roomWMin: _ss < 0.33 ? 3 : _ss < 0.66 ? 4 : 7,
+                roomWMax: _ss < 0.33 ? 6 : _ss < 0.66 ? 9 : 14,
+                roomHMin: _ss < 0.33 ? 2 : _ss < 0.66 ? 4 : 5,
+                roomHMax: _ss < 0.33 ? 4 : _ss < 0.66 ? 7 : 10,
+                monsterRoomChance: 0.10 + Math.random() * 0.65,
+                eT1: _eT[0], eT2: _eT[1], eT3: _eT[2],
+                familyChance: 0.01 + Math.random() * 0.20,
+                madmanChance: 0.05 + Math.random() * 0.85,
+                windChance:   Math.random() * 0.60,
+            };
+        }
+        // 各画面ごとに突風を発生させる（60〜69階は75%、101F+はテーマで変動、それ以外は3%）
+        const multiWindChance = (floorLevel >= 101 && deepTheme) ? deepTheme.windChance
+            : (floorLevel >= 60 && floorLevel <= 69) ? 0.75 : 0.03;
         for (let sy = 0; sy < screenGridSize; sy++) {
             for (let sx = 0; sx < screenGridSize; sx++) {
                 screenGrid.wind[sy][sx] = Math.random() < multiWindChance;
@@ -1347,10 +1385,14 @@ function initMap() {
                     }
                 }
                 // 部屋の生成（迷路の中の開けた空間）
-                const roomCount = Math.floor(Math.random() * 3) + 5;
+                const _mRCMin = deepTheme ? deepTheme.roomCountMin : 5;
+                const _mRCMax = deepTheme ? deepTheme.roomCountMax : 7;
+                const _mRWMin = deepTheme ? deepTheme.roomWMin : 4, _mRWMax = deepTheme ? deepTheme.roomWMax : 8;
+                const _mRHMin = deepTheme ? deepTheme.roomHMin : 4, _mRHMax = deepTheme ? deepTheme.roomHMax : 6;
+                const roomCount = _mRCMin + Math.floor(Math.random() * (_mRCMax - _mRCMin + 1));
                 for (let i = 0; i < roomCount; i++) {
-                    const w = Math.floor(Math.random() * 5) + 4;
-                    const h = Math.floor(Math.random() * 3) + 4;
+                    const w = _mRWMin + Math.floor(Math.random() * (_mRWMax - _mRWMin + 1));
+                    const h = _mRHMin + Math.floor(Math.random() * (_mRHMax - _mRHMin + 1));
                     const rx = Math.floor(Math.random() * (COLS - w - 4)) + 2;
                     const ry = Math.floor(Math.random() * (ROWS - h - 4)) + 2;
                     rooms.push({ x: rx, y: ry, w, h, cx: Math.floor(rx + w / 2), cy: Math.floor(ry + h / 2) });
@@ -1383,9 +1425,12 @@ function initMap() {
                 const MIN_SEP = 2; // 部屋間の最小壁間隔
                 const castleRooms = [];
 
-                for (let attempt = 0; attempt < 400 && castleRooms.length < 10; attempt++) {
-                    const rw = 4 + Math.floor(Math.random() * 7);  // 幅4〜10
-                    const rh = 3 + Math.floor(Math.random() * 5);  // 高さ3〜7
+                const _cRMax = deepTheme ? deepTheme.roomCountMax : 10;
+                const _cRWMin = deepTheme ? deepTheme.roomWMin : 4, _cRWMax = deepTheme ? deepTheme.roomWMax : 10;
+                const _cRHMin = deepTheme ? deepTheme.roomHMin : 3, _cRHMax = deepTheme ? deepTheme.roomHMax : 7;
+                for (let attempt = 0; attempt < 400 && castleRooms.length < _cRMax; attempt++) {
+                    const rw = _cRWMin + Math.floor(Math.random() * (_cRWMax - _cRWMin + 1));
+                    const rh = _cRHMin + Math.floor(Math.random() * (_cRHMax - _cRHMin + 1));
                     const rx = 2 + Math.floor(Math.random() * (COLS - rw - 4));
                     const ry = 2 + Math.floor(Math.random() * (ROWS - rh - 4));
                     const overlaps = castleRooms.some(r =>
@@ -1444,12 +1489,14 @@ function initMap() {
                 // 各部屋にモンスター配置（一部はモンスタールーム）
                 for (let ri = 0; ri < castleRooms.length; ri++) {
                     const cr = castleRooms[ri];
-                    const isMonsterRoom = Math.random() < 0.35; // 35%でモンスタールーム
+                    const _cMRC = deepTheme ? deepTheme.monsterRoomChance : 0.35;
+                    const isMonsterRoom = Math.random() < _cMRC;
                     const count = isMonsterRoom
                         ? 3 + Math.floor(Math.random() * 3)  // 3〜5体
                         : Math.random() < 0.5 ? 0 : 1;       // 通常は0か1体
-                    // 家族グループの判定（101F以上で15%の確率・部屋単位で決定）
-                    const roomFamilyId = (floorLevel >= 101 && Math.random() < 0.05) ? familyIdCounter++ : null;
+                    // 家族グループの判定（101F以上・テーマで変動）
+                    const _cFC = deepTheme ? deepTheme.familyChance : 0.05;
+                    const roomFamilyId = (floorLevel >= 101 && Math.random() < _cFC) ? familyIdCounter++ : null;
                     for (let ei = 0; ei < count; ei++) {
                         // 部屋内のランダムな床タイルを探す
                         let ex, ey, found = false;
@@ -1460,7 +1507,10 @@ function initMap() {
                         }
                         if (!found) continue;
                         const roll = Math.random();
-                        if (roll < 0.10) {
+                        const _ct1 = deepTheme ? deepTheme.eT1 : 0.10;
+                        const _ct2 = deepTheme ? deepTheme.eT2 : 0.25;
+                        const _ct3 = deepTheme ? deepTheme.eT3 : 0.38;
+                        if (roll < _ct1) {
                             let bestDir = 0, maxDist = -1;
                             for (let d = 0; d < 4; d++) {
                                 const ddx = [0,1,0,-1][d], ddy = [-1,0,1,0][d];
@@ -1469,9 +1519,9 @@ function initMap() {
                                 if (dist > maxDist) { maxDist = dist; bestDir = d; }
                             }
                             sEnemies.push({ type:'TURRET', x:ex, y:ey, dir:bestDir, hp:100+floorLevel*5, maxHp:100+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
-                        } else if (roll < 0.25) {
+                        } else if (roll < _ct2) {
                             sEnemies.push({ type:'ORC', x:ex, y:ey, hp:40+floorLevel*5, maxHp:40+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
-                        } else if (roll < 0.38) {
+                        } else if (roll < _ct3) {
                             sEnemies.push({ type:'BREAKER', x:ex, y:ey, hp:50+floorLevel*4, maxHp:50+floorLevel*4, flashUntil:0, offsetX:0, offsetY:0, expValue:45, stunTurns:0 });
                         } else {
                             const newEnemy = { type:'NORMAL', x:ex, y:ey, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0 };
@@ -1515,10 +1565,14 @@ function initMap() {
 
             } else {
                 // === 通常ダンジョン型（部屋+通路） ===
-                const roomCount = Math.floor(Math.random() * 4) + 8;
+                const _dRCMin = deepTheme ? deepTheme.roomCountMin : 8;
+                const _dRCMax = deepTheme ? deepTheme.roomCountMax : 11;
+                const _dRWMin = deepTheme ? deepTheme.roomWMin : 4, _dRWMax = deepTheme ? deepTheme.roomWMax : 9;
+                const _dRHMin = deepTheme ? deepTheme.roomHMin : 4, _dRHMax = deepTheme ? deepTheme.roomHMax : 7;
+                const roomCount = _dRCMin + Math.floor(Math.random() * (_dRCMax - _dRCMin + 1));
                 for (let i = 0; i < roomCount; i++) {
-                    const w = Math.floor(Math.random() * 6) + 4;
-                    const h = Math.floor(Math.random() * 4) + 4;
+                    const w = _dRWMin + Math.floor(Math.random() * (_dRWMax - _dRWMin + 1));
+                    const h = _dRHMin + Math.floor(Math.random() * (_dRHMax - _dRHMin + 1));
                     const rx = Math.floor(Math.random() * (COLS - w - 2)) + 1;
                     const ry = Math.floor(Math.random() * (ROWS - h - 2)) + 1;
                     for (let y = ry; y < ry + h; y++) {
@@ -1688,8 +1742,9 @@ function initMap() {
             for (let i = 1; i < rooms.length; i++) {
                 if (Math.random() < 0.2) continue; // 一部の部屋はスキップ
                 const numEnemies = Math.floor(Math.random() * 2) + 1;
-                // 家族グループの判定（101F以上で15%の確率・部屋単位で決定）
-                const roomFamilyId2 = (floorLevel >= 101 && Math.random() < 0.05) ? familyIdCounter++ : null;
+                // 家族グループの判定（101F以上・テーマで変動）
+                const _dFC = deepTheme ? deepTheme.familyChance : 0.05;
+                const roomFamilyId2 = (floorLevel >= 101 && Math.random() < _dFC) ? familyIdCounter++ : null;
                 const roomCenter2 = rooms[i];
                 for (let j = 0; j < numEnemies; j++) {
                     const pos = findWalkableInScreen();
@@ -1702,7 +1757,10 @@ function initMap() {
                         sEnemies.push({ type: 'BLAZE', x: ex, y: ey, hp: 15 + floorLevel * 2, maxHp: 15 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15, stunTurns: 0 });
                     } else {
                         const enemyRoll = Math.random();
-                        if (enemyRoll < 0.12) {
+                        const _dt1 = deepTheme ? deepTheme.eT1 : 0.12;
+                        const _dt2 = deepTheme ? deepTheme.eT2 : 0.25;
+                        const _dt3 = deepTheme ? deepTheme.eT3 : (floorLevel <= 49 ? 0.35 : 0.28);
+                        if (enemyRoll < _dt1) {
                             // 最も広い方向にビームを向ける
                             let bestDir = 0, maxDist = -1;
                             for (let d = 0; d < 4; d++) {
@@ -1712,11 +1770,11 @@ function initMap() {
                                 if (dist > maxDist) { maxDist = dist; bestDir = d; }
                             }
                             sEnemies.push({ type: 'TURRET', x: ex, y: ey, dir: bestDir, hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
-                        } else if (enemyRoll < 0.25) {
+                        } else if (enemyRoll < _dt2) {
                             sEnemies.push({ type: 'ORC', x: ex, y: ey, hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
-                        } else if (floorLevel >= 4 && enemyRoll < (floorLevel <= 49 ? 0.35 : 0.28) + sBreakerBonus) {
+                        } else if (floorLevel >= 4 && enemyRoll < _dt3 + sBreakerBonus) {
                             sEnemies.push({ type: 'BREAKER', x: ex, y: ey, hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0 });
-                        } else if (floorLevel >= 40 && floorLevel <= 49 && enemyRoll < 0.37 + sBreakerBonus) {
+                        } else if (!deepTheme && floorLevel >= 40 && floorLevel <= 49 && enemyRoll < 0.37 + sBreakerBonus) {
                             sEnemies.push({ type: 'LAYER', x: ex, y: ey, hp: 20 + floorLevel * 2, maxHp: 20 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 25, stunTurns: 0 });
                         } else {
                             const newEnemy = { type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 };
@@ -2054,8 +2112,8 @@ function initMap() {
             for (let sx = 0; sx < screenGridSize; sx++) {
                 let screenType;
                 const isSpecial = specialScreens.has(`${sx},${sy}`);
-                // 奇妙な場所（25%: 101F以上・特殊画面以外）
-                if (floorLevel >= 101 && !isSpecial && Math.random() < 0.25) {
+                // 奇妙な場所（101F以上・特殊画面以外・テーマで変動）
+                if (floorLevel >= 101 && !isSpecial && Math.random() < (deepTheme ? deepTheme.bizarreChance : 0.25)) {
                     const result = generateBizarreScreen(sx, sy);
                     screenGrid.maps[sy][sx] = result.sMap;
                     screenGrid.enemies[sy][sx] = result.sEnemies;
@@ -2066,7 +2124,13 @@ function initMap() {
                     addLog(`⚠️ 奇妙な気配…「${bizNames[result.bizType] || '???'}」`);
                     continue;
                 }
-                if (floorLevel >= 90 && !isSpecial && Math.random() < 0.35) {
+                if (deepTheme) {
+                    // テーマの重みに基づいてスクリーンタイプを選択
+                    const _w = deepTheme.screenTypeWeights;
+                    const _r = Math.random();
+                    const _t1 = _w.maze, _t2 = _t1 + _w.dungeon, _t3 = _t2 + _w.castle;
+                    screenType = _r < _t1 ? 'maze' : _r < _t2 ? 'dungeon' : _r < _t3 ? 'castle' : 'breaker';
+                } else if (floorLevel >= 90 && !isSpecial && Math.random() < 0.35) {
                     screenType = 'breaker'; // 35%の確率で壁掘り型
                 } else {
                     const r = Math.random();
@@ -2253,8 +2317,8 @@ function initMap() {
         tempWalls = [...(screenGrid.tempWalls[0][0] || [])];
         isWindFloor = screenGrid.wind[0][0];
 
-        // フロアに狂人を0〜1体だけ配置（101F以上・40%の確率）
-        if (floorLevel >= 101 && Math.random() < 0.40) {
+        // フロアに狂人を0〜1体だけ配置（101F以上・テーマで変動）
+        if (floorLevel >= 101 && Math.random() < (deepTheme ? deepTheme.madmanChance : 0.40)) {
             // スタート画面(0,0)以外の非空スクリーンからランダムに選ぶ
             const candidates = [];
             for (let sy = 0; sy < screenGridSize; sy++)
