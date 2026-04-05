@@ -9277,6 +9277,38 @@ async function checkWispDamage(w) {
     }
 }
 
+// 妖精BFS: fMap内でstartからtargetまでの最短経路の第一歩を返す
+function fairyBFS(fMap, startX, startY, targetX, targetY) {
+    if (startX === targetX && startY === targetY) return { dx: 0, dy: 0 };
+    const visited = new Uint8Array(ROWS * COLS);
+    visited[startY * COLS + startX] = 1;
+    const queue = [];
+    const dirs4 = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+    for (const d of dirs4) {
+        const nx = startX + d.x, ny = startY + d.y;
+        if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+        if (fMap[ny][nx] === SYMBOLS.WALL) continue;
+        if (visited[ny * COLS + nx]) continue;
+        visited[ny * COLS + nx] = 1;
+        if (nx === targetX && ny === targetY) return { dx: d.x, dy: d.y };
+        queue.push({ x: nx, y: ny, fdx: d.x, fdy: d.y });
+    }
+    let head = 0;
+    while (head < queue.length) {
+        const cur = queue[head++];
+        for (const d of dirs4) {
+            const nx = cur.x + d.x, ny = cur.y + d.y;
+            if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+            if (fMap[ny][nx] === SYMBOLS.WALL) continue;
+            if (visited[ny * COLS + nx]) continue;
+            visited[ny * COLS + nx] = 1;
+            if (nx === targetX && ny === targetY) return { dx: cur.fdx, dy: cur.fdy };
+            queue.push({ x: nx, y: ny, fdx: cur.fdx, fdy: cur.fdy });
+        }
+    }
+    return { dx: 0, dy: 0 }; // 経路なし
+}
+
 // 敵の落下処理を非同期で実行（ターン進行をブロックしない）
 function moveFairies() {
     if (!multiScreenMode || !screenGrid || movingFairies.length === 0) return;
@@ -9372,15 +9404,8 @@ function moveFairies() {
             }
         }
 
-        let bestDist = Math.abs(f.x - targetX) + Math.abs(f.y - targetY);
-        let bestDX = 0, bestDY = 0;
-        for (const d of dirs) {
-            const nx = f.x + d.x, ny = f.y + d.y;
-            if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
-            if (curFMap[ny][nx] === SYMBOLS.WALL) continue; // 壁だけ回避、溶岩・敵はすり抜け
-            const nd = Math.abs(nx - targetX) + Math.abs(ny - targetY);
-            if (nd < bestDist) { bestDist = nd; bestDX = d.x; bestDY = d.y; }
-        }
+        // BFSで障害物（壁）を避けながら最短経路の第一歩を取得
+        const { dx: bestDX, dy: bestDY } = fairyBFS(curFMap, f.x, f.y, targetX, targetY);
 
         if (bestDX !== 0 || bestDY !== 0) {
             fairyLeave(curFMap, f.x, f.y, f.underTile);
