@@ -1518,7 +1518,8 @@ function initMap() {
                                 while (tx2>=0&&tx2<COLS&&ty2>=0&&ty2<ROWS&&sMap[ty2][tx2]!==SYMBOLS.WALL){dist++;tx2+=ddx;ty2+=ddy;}
                                 if (dist > maxDist) { maxDist = dist; bestDir = d; }
                             }
-                            sEnemies.push({ type:'TURRET', x:ex, y:ey, dir:bestDir, hp:100+floorLevel*5, maxHp:100+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
+                            const _cTType = (deepTheme && Math.random() < 0.30) ? 'HOPPER_TURRET' : 'TURRET';
+                            sEnemies.push({ type:_cTType, x:ex, y:ey, dir:bestDir, hp:100+floorLevel*5, maxHp:100+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0, hopTimer:1+Math.floor(Math.random()*3) });
                         } else if (roll < _ct2) {
                             sEnemies.push({ type:'ORC', x:ex, y:ey, hp:40+floorLevel*5, maxHp:40+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
                         } else if (roll < _ct3) {
@@ -1769,7 +1770,8 @@ function initMap() {
                                 while (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS && sMap[ty][tx] !== SYMBOLS.WALL) { dist++; tx += dx_c; ty += dy_c; }
                                 if (dist > maxDist) { maxDist = dist; bestDir = d; }
                             }
-                            sEnemies.push({ type: 'TURRET', x: ex, y: ey, dir: bestDir, hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
+                            const _dTType = (deepTheme && Math.random() < 0.30) ? 'HOPPER_TURRET' : 'TURRET';
+                            sEnemies.push({ type: _dTType, x: ex, y: ey, dir: bestDir, hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0, hopTimer: 1 + Math.floor(Math.random() * 3) });
                         } else if (enemyRoll < _dt2) {
                             sEnemies.push({ type: 'ORC', x: ex, y: ey, hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
                         } else if (floorLevel >= 4 && enemyRoll < _dt3 + sBreakerBonus) {
@@ -7194,6 +7196,12 @@ function draw(now) {
                 else if (e.type === 'SNAKE') { eColor = '#4ade80'; eChar = SYMBOLS.SNAKE; }
                 else if (e.type === 'WISP_ENEMY') { eColor = '#818cf8'; eChar = SYMBOLS.WISP; }
                 else if (e.type === 'TURRET') { eColor = '#ef4444'; eChar = SYMBOLS.TURRET; }
+                else if (e.type === 'HOPPER_TURRET') {
+                    // 移動タレット: オレンジと黄色の間で点滅
+                    eChar = SYMBOLS.TURRET;
+                    eColor = Math.floor(now / 150) % 2 === 0 ? '#f97316' : '#fbbf24';
+                    ctx.shadowColor = '#f97316'; ctx.shadowBlur = 6;
+                }
                 else if (e.type === 'BLAZE') { eColor = '#fb923c'; eChar = 'F'; }
                 else if (e.type === 'FROST') { eColor = '#ffffff'; eChar = 'I'; }
                 else if (e.type === 'BOMBER') { eColor = '#f97316'; eChar = 'X'; }
@@ -7224,7 +7232,7 @@ function draw(now) {
 
         // 3.5. タレットのレーザー光線
         enemies.forEach(e => {
-            if (e.type !== 'TURRET' || e.hp <= 0 || e.isFalling) return;
+            if ((e.type !== 'TURRET' && e.type !== 'HOPPER_TURRET') || e.hp <= 0 || e.isFalling) return;
             const dx = [0, 1, 0, -1][e.dir];
             const dy = [-1, 0, 1, 0][e.dir];
             let lx = e.x + dx, ly = e.y + dy;
@@ -9572,6 +9580,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
             case 'ENEMY': goldDrop = 5 + Math.floor(Math.random() * 6); break; // 5-10
             case 'ORC': goldDrop = 10 + Math.floor(Math.random() * 11); break; // 10-20
             case 'TURRET': goldDrop = 15; break;
+            case 'HOPPER_TURRET': goldDrop = 20; break;
             case 'LAYER': goldDrop = 12; break;
             case 'BREAKER': goldDrop = 20; break;
             case 'MIMIC': goldDrop = 25; break;
@@ -9718,7 +9727,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
     if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRing('STAMINA_RING') ? 12 : 20));
 
     // タレットのノックバック・スライド処理
-    if (enemy.type === 'TURRET' && enemy.hp > 0) {
+    if ((enemy.type === 'TURRET' || enemy.type === 'HOPPER_TURRET') && enemy.hp > 0) {
         const kx = dx, ky = dy;
         const nx = enemy.x + kx, ny = enemy.y + ky;
 
@@ -9761,7 +9770,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
     player.offsetX = 0; player.offsetY = 0;
 
     // KNOCKBACK_RING: 攻撃後に敵を1マス押し戻す
-    if (hasRing('KNOCKBACK_RING') && enemy.hp > 0 && enemy.type !== 'TURRET' && enemy.type !== 'SNAKE' && enemy.type !== 'DRAGON' && enemy.type !== 'SUMMONER' && enemy.type !== 'ORC') {
+    if (hasRing('KNOCKBACK_RING') && enemy.hp > 0 && enemy.type !== 'TURRET' && enemy.type !== 'HOPPER_TURRET' && enemy.type !== 'SNAKE' && enemy.type !== 'DRAGON' && enemy.type !== 'SUMMONER' && enemy.type !== 'ORC') {
         const kbx = enemy.x + dx;
         const kby = enemy.y + dy;
         if (canEnemyMove(kbx, kby, enemy)) {
@@ -10273,7 +10282,7 @@ async function enemyTurn() {
         if (player.fairyCount > 0 && player.fairyRemainingCharms > 0) {
             const adjacentEnemy = enemies.find(e => {
                 if (e.isAlly || e.hp <= 0) return false;
-                if (e.type === 'DRAGON' || e.type === 'TURRET' || e.type === 'SUMMONER') return false;
+                if (e.type === 'DRAGON' || e.type === 'TURRET' || e.type === 'HOPPER_TURRET' || e.type === 'SUMMONER') return false;
                 if (e.type === 'MIMIC' && e.disguised) return false;
 
                 const dx = Math.abs(e.x - player.x);
@@ -10508,6 +10517,32 @@ async function enemyTurn() {
 
         // タレット・ドラゴンはその場を動かない
         if (e.type === 'TURRET') continue;
+
+        // HOPPER_TURRET: レーザーと直角方向へランダムにぴょんぴょん移動
+        if (e.type === 'HOPPER_TURRET') {
+            if (e.hopTimer == null) e.hopTimer = 1 + Math.floor(Math.random() * 3);
+            e.hopTimer--;
+            if (e.hopTimer <= 0) {
+                // レーザー方向(dir)に対して90°の2方向を候補にする
+                const perpMoves = (e.dir === 0 || e.dir === 2)
+                    ? [{ dx: -1, dy: 0 }, { dx: 1, dy: 0 }]   // 上下向き → 左右に移動
+                    : [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }];  // 左右向き → 上下に移動
+                // ランダムに順番を決める
+                if (Math.random() < 0.5) perpMoves.reverse();
+                let hopped = false;
+                for (const { dx, dy } of perpMoves) {
+                    const nx = e.x + dx, ny = e.y + dy;
+                    if (canEnemyMove(nx, ny, e) && !enemies.some(o => o !== e && o.hp > 0 && o.x === nx && o.y === ny)) {
+                        e.x = nx; e.y = ny;
+                        animateBounce(e);
+                        hopped = true;
+                        break;
+                    }
+                }
+                e.hopTimer = 2 + Math.floor(Math.random() * 3); // 次のホップまで2〜4ターン
+            }
+            continue;
+        }
         if (e.type === 'DRAGON') {
             // 近接攻撃の判定（頭部または胴体の隣接マス）
             const segments = [{ x: e.x, y: e.y }, ...(e.body || [])];
@@ -11884,7 +11919,7 @@ async function enemyTurn() {
 
 async function applyLaserDamage() {
     for (const e of enemies) {
-        if (e.type === 'TURRET' && e.hp > 0 && !e.isFalling) {
+        if ((e.type === 'TURRET' || e.type === 'HOPPER_TURRET') && e.hp > 0 && !e.isFalling) {
             const dx = [0, 1, 0, -1][e.dir];
             const dy = [-1, 0, 1, 0][e.dir];
             let lx = e.x + dx, ly = e.y + dy;
@@ -12179,7 +12214,7 @@ async function triggerGameOver() {
 function isTileInLaser(x, y, ignoreEnemy = null) {
     for (const e of enemies) {
         if (e === ignoreEnemy) continue; // 指定された敵は無視
-        if (e.type === 'TURRET' && e.hp > 0 && !e.isFalling) {
+        if ((e.type === 'TURRET' || e.type === 'HOPPER_TURRET') && e.hp > 0 && !e.isFalling) {
             const dx = [0, 1, 0, -1][e.dir];
             const dy = [-1, 0, 1, 0][e.dir];
             let lx = e.x + dx, ly = e.y + dy;
@@ -12770,7 +12805,7 @@ async function tryCharmEnemy() {
     });
 
     if (targets.size > 0) {
-        const charmImmune = ['DRAGON', 'TURRET', 'SUMMONER'];
+        const charmImmune = ['DRAGON', 'TURRET', 'HOPPER_TURRET', 'SUMMONER'];
         targets.forEach(enemy => {
             if (charmImmune.includes(enemy.type)) {
                 spawnFloatingText(enemy.x, enemy.y, "RESIST!", "#ff6b6b");
