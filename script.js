@@ -5383,7 +5383,7 @@ async function startFloorTransition() {
                 for (let fy = 0; fy < ROWS; fy++) {
                     for (let fx = 0; fx < COLS; fx++) {
                         if (m[fy][fx] === SYMBOLS.FAIRY) {
-                            movingFairies.push({ x: fx, y: fy, screenX: sx, screenY: sy });
+                            movingFairies.push({ x: fx, y: fy, screenX: sx, screenY: sy, underTile: SYMBOLS.FLOOR });
                         }
                     }
                 }
@@ -9217,6 +9217,19 @@ async function checkWispDamage(w) {
 function moveFairies() {
     if (!multiScreenMode || !screenGrid || movingFairies.length === 0) return;
 
+    // 妖精がマップタイルを上書きするとき、元のタイルを退避して後で復元するヘルパー
+    const fairyLeave = (fMap, fx, fy, underTile) => {
+        if (fMap && fMap[fy][fx] === SYMBOLS.FAIRY)
+            fMap[fy][fx] = underTile != null ? underTile : SYMBOLS.FLOOR;
+    };
+    const fairyArrive = (fMap, fx, fy) => {
+        if (!fMap) return SYMBOLS.FLOOR;
+        const prev = fMap[fy][fx];
+        if (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS && prev !== SYMBOLS.FAIRY)
+            fMap[fy][fx] = SYMBOLS.FAIRY;
+        return (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS) ? prev : SYMBOLS.FLOOR;
+    };
+
     // 目標のグローバル位置をキー優先、なければ出口で探す
     let goalGX = -1, goalGY = -1;
     const searchSymbols = [SYMBOLS.KEY, SYMBOLS.STAIRS];
@@ -9239,30 +9252,35 @@ function moveFairies() {
 
     for (let i = movingFairies.length - 1; i >= 0; i--) {
         const f = movingFairies[i];
+        if (f.underTile == null) f.underTile = SYMBOLS.FLOOR; // 初回初期化
         const isCurrentScreen = (f.screenX === currentScreen.x && f.screenY === currentScreen.y);
         const fMap = isCurrentScreen ? map : screenGrid.maps[f.screenY][f.screenX];
         if (!fMap) continue;
 
-        // ---- 画面越え: 通路端にいたら即転送（移動と独立して毎ターン判定）----
+        // ---- 画面越え: 通路端にいたら即転送 ----
         let crossed = false;
-        if (f.x === 0 && f.screenX > 0 && f.y >= 11 && f.y <= 13)
-            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenX--; f.x = COLS - 2; crossed = true; }
-        else if (f.x === COLS - 1 && f.screenX < screenGridSize - 1 && f.y >= 11 && f.y <= 13)
-            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenX++; f.x = 1; crossed = true; }
-        else if (f.y === 0 && f.screenY > 0 && f.x >= 18 && f.x <= 21)
-            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenY--; f.y = ROWS - 2; crossed = true; }
-        else if (f.y === ROWS - 1 && f.screenY < screenGridSize - 1 && f.x >= 18 && f.x <= 21)
-            { if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR; f.screenY++; f.y = 1; crossed = true; }
+        if (f.x === 0 && f.screenX > 0 && f.y >= 11 && f.y <= 13) {
+            fairyLeave(fMap, f.x, f.y, f.underTile);
+            f.screenX--; f.x = COLS - 2; crossed = true;
+        } else if (f.x === COLS - 1 && f.screenX < screenGridSize - 1 && f.y >= 11 && f.y <= 13) {
+            fairyLeave(fMap, f.x, f.y, f.underTile);
+            f.screenX++; f.x = 1; crossed = true;
+        } else if (f.y === 0 && f.screenY > 0 && f.x >= 18 && f.x <= 21) {
+            fairyLeave(fMap, f.x, f.y, f.underTile);
+            f.screenY--; f.y = ROWS - 2; crossed = true;
+        } else if (f.y === ROWS - 1 && f.screenY < screenGridSize - 1 && f.x >= 18 && f.x <= 21) {
+            fairyLeave(fMap, f.x, f.y, f.underTile);
+            f.screenY++; f.y = 1; crossed = true;
+        }
 
         if (crossed) {
             const nMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
-            if (nMap && nMap[f.y][f.x] !== SYMBOLS.KEY && nMap[f.y][f.x] !== SYMBOLS.STAIRS)
-                nMap[f.y][f.x] = SYMBOLS.FAIRY;
+            f.underTile = fairyArrive(nMap, f.x, f.y);
         }
 
         // ---- プレイヤーと重なったら取得 ----
         if (isCurrentScreen && f.x === player.x && f.y === player.y) {
-            if (fMap[f.y][f.x] === SYMBOLS.FAIRY) fMap[f.y][f.x] = SYMBOLS.FLOOR;
+            fairyLeave(fMap, f.x, f.y, f.underTile);
             movingFairies.splice(i, 1);
             player.fairyCount++;
             player.fairyRemainingCharms++;
@@ -9273,15 +9291,11 @@ function moveFairies() {
             continue;
         }
 
-        // ---- 1マス移動 ----
+        // ---- 1マス移動: 壁以外はすべてすり抜ける ----
         const curFMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
         if (!curFMap) continue;
 
-        const fGX = f.screenX * COLS + f.x;
-        const fGY = f.screenY * ROWS + f.y;
         const goalSX = Math.floor(goalGX / COLS), goalSY = Math.floor(goalGY / ROWS);
-
-        // 目標ローカル座標: 同スクリーンなら直接、違うなら通路入口
         let targetX, targetY;
         if (f.screenX === goalSX && f.screenY === goalSY) {
             targetX = goalGX % COLS; targetY = goalGY % ROWS;
@@ -9299,22 +9313,20 @@ function moveFairies() {
         for (const d of dirs) {
             const nx = f.x + d.x, ny = f.y + d.y;
             if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
-            if (curFMap[ny][nx] === SYMBOLS.WALL) continue;
-            if (movingFairies.some(o => o !== f && o.x === nx && o.y === ny && o.screenX === f.screenX && o.screenY === f.screenY)) continue;
+            if (curFMap[ny][nx] === SYMBOLS.WALL) continue; // 壁だけ回避、溶岩・敵はすり抜け
             const nd = Math.abs(nx - targetX) + Math.abs(ny - targetY);
             if (nd < bestDist) { bestDist = nd; bestDX = d.x; bestDY = d.y; }
         }
 
         if (bestDX !== 0 || bestDY !== 0) {
-            if (curFMap[f.y][f.x] === SYMBOLS.FAIRY) curFMap[f.y][f.x] = SYMBOLS.FLOOR;
+            fairyLeave(curFMap, f.x, f.y, f.underTile);
             f.x += bestDX; f.y += bestDY;
             const newMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
-            if (newMap && newMap[f.y][f.x] !== SYMBOLS.KEY && newMap[f.y][f.x] !== SYMBOLS.STAIRS)
-                newMap[f.y][f.x] = SYMBOLS.FAIRY;
+            f.underTile = fairyArrive(newMap, f.x, f.y);
 
             // 移動後にプレイヤーと重なったら即取得
             if (f.screenX === currentScreen.x && f.screenY === currentScreen.y && f.x === player.x && f.y === player.y) {
-                if (newMap && newMap[f.y][f.x] === SYMBOLS.FAIRY) newMap[f.y][f.x] = SYMBOLS.FLOOR;
+                fairyLeave(newMap, f.x, f.y, f.underTile);
                 movingFairies.splice(i, 1);
                 player.fairyCount++;
                 player.fairyRemainingCharms++;
