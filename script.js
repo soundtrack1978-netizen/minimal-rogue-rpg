@@ -1473,9 +1473,6 @@ function initMap() {
                             sEnemies.push({ type:'ORC', x:ex, y:ey, hp:40+floorLevel*5, maxHp:40+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
                         } else if (roll < 0.38) {
                             sEnemies.push({ type:'BREAKER', x:ex, y:ey, hp:50+floorLevel*4, maxHp:50+floorLevel*4, flashUntil:0, offsetX:0, offsetY:0, expValue:45, stunTurns:0 });
-                        } else if (floorLevel >= 101 && Math.random() < 0.06) {
-                            // 深層: 低確率で狂人が出現
-                            sEnemies.push({ type:'MADMAN', x:ex, y:ey, hp:15+floorLevel*2, maxHp:15+floorLevel*2, flashUntil:0, offsetX:0, offsetY:0, expValue:30, stunTurns:0 });
                         } else {
                             const newEnemy = { type:'NORMAL', x:ex, y:ey, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0 };
                             if (roomFamilyId != null) { newEnemy.familyId = roomFamilyId; newEnemy.homeX = cr.cx; newEnemy.homeY = cr.cy; newEnemy.breedTimer = 0; }
@@ -1721,9 +1718,6 @@ function initMap() {
                             sEnemies.push({ type: 'BREAKER', x: ex, y: ey, hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0 });
                         } else if (floorLevel >= 40 && floorLevel <= 49 && enemyRoll < 0.37 + sBreakerBonus) {
                             sEnemies.push({ type: 'LAYER', x: ex, y: ey, hp: 20 + floorLevel * 2, maxHp: 20 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 25, stunTurns: 0 });
-                        } else if (floorLevel >= 101 && Math.random() < 0.06) {
-                            // 深層: 低確率で狂人が出現
-                            sEnemies.push({ type: 'MADMAN', x: ex, y: ey, hp: 15+floorLevel*2, maxHp: 15+floorLevel*2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30, stunTurns: 0 });
                         } else {
                             const newEnemy = { type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 };
                             if (roomFamilyId2 != null) { newEnemy.familyId = roomFamilyId2; newEnemy.homeX = roomCenter2.cx; newEnemy.homeY = roomCenter2.cy; newEnemy.breedTimer = 0; }
@@ -2258,6 +2252,33 @@ function initMap() {
         wisps = screenGrid.wisps[0][0];
         tempWalls = [...(screenGrid.tempWalls[0][0] || [])];
         isWindFloor = screenGrid.wind[0][0];
+
+        // フロアに狂人を0〜1体だけ配置（101F以上・40%の確率）
+        if (floorLevel >= 101 && Math.random() < 0.40) {
+            // スタート画面(0,0)以外の非空スクリーンからランダムに選ぶ
+            const candidates = [];
+            for (let sy = 0; sy < screenGridSize; sy++)
+                for (let sx = 0; sx < screenGridSize; sx++)
+                    if (!(sx===0 && sy===0)) candidates.push({sx, sy});
+            if (candidates.length > 0) {
+                const pick = candidates[Math.floor(Math.random() * candidates.length)];
+                const mMap = screenGrid.maps[pick.sy][pick.sx];
+                for (let t = 0; t < 200; t++) {
+                    const mx = Math.floor(Math.random()*(COLS-4))+2;
+                    const my = Math.floor(Math.random()*(ROWS-4))+2;
+                    const tile = mMap[my][mx];
+                    if ((tile===SYMBOLS.FLOOR||tile===SYMBOLS.ICE) &&
+                        !screenGrid.enemies[pick.sy][pick.sx].some(e=>e.x===mx&&e.y===my)) {
+                        const hp = 15+floorLevel*2;
+                        screenGrid.enemies[pick.sy][pick.sx].push({
+                            type:'MADMAN', x:mx, y:my, hp, maxHp:hp,
+                            flashUntil:0, offsetX:0, offsetY:0, expValue:30, stunTurns:0
+                        });
+                        break;
+                    }
+                }
+            }
+        }
 
         // 全スクリーンのMADMANをmovingMadmenに転送（スクリーン追跡のため）
         for (let sy = 0; sy < screenGridSize; sy++) {
