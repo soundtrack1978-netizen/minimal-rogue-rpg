@@ -9286,8 +9286,11 @@ async function checkWispDamage(w) {
 }
 
 // 妖精BFS: fMap内でstartからtargetまでの最短経路の第一歩を返す
+// 妖精は飛行しているため、氷・溶岩・毒沼も1マスずつ通過可能（壁のみ通過不可）
 function fairyBFS(fMap, startX, startY, targetX, targetY) {
     if (startX === targetX && startY === targetY) return { dx: 0, dy: 0 };
+    // 妖精が通過できない「壁扱い」タイルのセット
+    const fairyWall = new Set([SYMBOLS.WALL]);
     const visited = new Uint8Array(ROWS * COLS);
     visited[startY * COLS + startX] = 1;
     const queue = [];
@@ -9295,7 +9298,7 @@ function fairyBFS(fMap, startX, startY, targetX, targetY) {
     for (const d of dirs4) {
         const nx = startX + d.x, ny = startY + d.y;
         if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
-        if (fMap[ny][nx] === SYMBOLS.WALL) continue;
+        if (fairyWall.has(fMap[ny][nx])) continue;
         if (visited[ny * COLS + nx]) continue;
         visited[ny * COLS + nx] = 1;
         if (nx === targetX && ny === targetY) return { dx: d.x, dy: d.y };
@@ -9307,7 +9310,7 @@ function fairyBFS(fMap, startX, startY, targetX, targetY) {
         for (const d of dirs4) {
             const nx = cur.x + d.x, ny = cur.y + d.y;
             if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
-            if (fMap[ny][nx] === SYMBOLS.WALL) continue;
+            if (fairyWall.has(fMap[ny][nx])) continue;
             if (visited[ny * COLS + nx]) continue;
             visited[ny * COLS + nx] = 1;
             if (nx === targetX && ny === targetY) return { dx: cur.fdx, dy: cur.fdy };
@@ -9324,14 +9327,22 @@ function moveFairies() {
     // 妖精がマップタイルを上書きするとき、元のタイルを退避して後で復元するヘルパー
     const fairyLeave = (fMap, fx, fy, underTile) => {
         if (fMap && fMap[fy][fx] === SYMBOLS.FAIRY)
-            fMap[fy][fx] = underTile != null ? underTile : SYMBOLS.FLOOR;
+            fMap[fy][fx] = (underTile != null) ? underTile : SYMBOLS.FLOOR;
     };
+    // 妖精が新しいタイルへ到着: 氷・溶岩・毒沼などの上も飛行でそのまま通過
+    const _fairyPassable = new Set([
+        SYMBOLS.FLOOR, SYMBOLS.ICE, SYMBOLS.LAVA, SYMBOLS.POISON,
+        SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS,
+    ]);
     const fairyArrive = (fMap, fx, fy) => {
         if (!fMap) return SYMBOLS.FLOOR;
         const prev = fMap[fy][fx];
+        // KEY・STAIRS・FAIRY 以外のタイルはFAIRYで上書き（通過可能タイル全て対応）
         if (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS && prev !== SYMBOLS.FAIRY)
             fMap[fy][fx] = SYMBOLS.FAIRY;
-        return (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS) ? prev : SYMBOLS.FLOOR;
+        // underTileとして保存するのはFAIRYでない場合のみ（多重配置防止）
+        if (prev === SYMBOLS.KEY || prev === SYMBOLS.STAIRS) return SYMBOLS.FLOOR;
+        return _fairyPassable.has(prev) ? prev : SYMBOLS.FLOOR;
     };
 
     // 目標のグローバル位置をキー優先、なければ出口で探す
