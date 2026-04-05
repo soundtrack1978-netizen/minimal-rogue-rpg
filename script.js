@@ -2054,8 +2054,8 @@ function initMap() {
             for (let sx = 0; sx < screenGridSize; sx++) {
                 let screenType;
                 const isSpecial = specialScreens.has(`${sx},${sy}`);
-                // 奇妙な場所（8%: 101F以上・特殊画面以外）
-                if (floorLevel >= 101 && !isSpecial && Math.random() < 0.08) {
+                // 奇妙な場所（25%: 101F以上・特殊画面以外）
+                if (floorLevel >= 101 && !isSpecial && Math.random() < 0.25) {
                     const result = generateBizarreScreen(sx, sy);
                     screenGrid.maps[sy][sx] = result.sMap;
                     screenGrid.enemies[sy][sx] = result.sEnemies;
