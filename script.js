@@ -2120,8 +2120,8 @@ function initMap() {
                     screenGrid.wisps[sy][sx] = result.sWisps;
                     screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
                     allRooms[`${sx},${sy}`] = result.rooms;
-                    const bizNames = { MONSTER_FLOOD:'モンスターの洪水', LAVA_SEA:'溶岩の海', FROZEN_PRISON:'氷の獄', VOID_CELLS:'虚空の独房', CHAOS_ALTAR:'混沌の祭壇' };
-                    addLog(`⚠️ 奇妙な気配…「${bizNames[result.bizType] || '???'}」`);
+                    const bizNames = { MONSTER_FLOOD:'Monster Flood', LAVA_SEA:'Sea of Lava', FROZEN_PRISON:'Frozen Prison', VOID_CELLS:'Void Cells', CHAOS_ALTAR:'Chaos Altar' };
+                    addLog(`⚠️ A strange aura... "${bizNames[result.bizType] || '???'}"`);
                     continue;
                 }
                 if (deepTheme) {
@@ -9452,7 +9452,7 @@ function moveMadmen() {
             movingMadmen.splice(i, 1);
             enemies.push(m);
             spawnFloatingText(m.x, m.y, "!!!", '#ef4444');
-            addLog("狂人がこの部屋に追いついてきた！");
+            addLog("The MADMAN has caught up to this room!");
             continue;
         }
 
@@ -9695,7 +9695,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
         damage *= 3;
         SOUNDS.CRITICAL();
         setScreenShake(8, 200);
-        addLog("✨ かいしんの一撃！ ✨");
+        addLog("✨ CRITICAL HIT! ✨");
         spawnFloatingText(player.x + dx, player.y + dy, "CRITICAL!!", "#fbbf24");
     }
 
@@ -10065,7 +10065,7 @@ async function summonDragonTraps(e, count = 1, stage = 'CIRCLE') {
     }
     if (spawned > 0) {
         if (stage === 'READY') {
-            addLog("地面から岩の棘が突き出した！");
+            addLog("Rock spikes burst from the ground!");
         }
         SOUNDS.SELECT();
     }
@@ -11556,8 +11556,8 @@ async function enemyTurn() {
                         await knockbackPlayer(player.x - e.x, player.y - e.y, 10 + Math.floor(floorLevel / 2), true);
                     } else if (e.type === 'MADMAN') {
                         // 狂人: 叫び声ログ + 20%で二連撃
-                        const madCries = ["「ゔあああああ！！」", "「殺す…殺す……」", "「出してくれ…出してくれ！！」", "「もう…誰も信じない…」"];
-                        addLog(`狂人が叫ぶ: ${madCries[Math.floor(Math.random() * madCries.length)]}`);
+                        const madCries = ['"AAAAARGH!!"', '"Kill... kill you..."', '"Let me out... LET ME OUT!!"', '"I trust no one... no one anymore..."'];
+                        addLog(`The MADMAN screams: ${madCries[Math.floor(Math.random() * madCries.length)]}`);
                         SOUNDS.DAMAGE(); setScreenShake(6, 150);
                         player.hp -= damage; player.flashUntil = performance.now() + 200;
                         if (player.hp > 0) animateBounce(player);
@@ -11567,7 +11567,7 @@ async function enemyTurn() {
                         if (player.hp > 0 && Math.random() < 0.20) {
                             await new Promise(r => setTimeout(r, 80));
                             const dmg2 = Math.max(1, Math.floor(damage * 0.6));
-                            addLog("狂人がさらに叫びながら連撃してくる！");
+                            addLog("The MADMAN screams and strikes again!");
                             SOUNDS.DAMAGE();
                             player.hp -= dmg2; player.flashUntil = performance.now() + 200;
                             spawnDamageText(player.x, player.y, dmg2, '#ef4444');
@@ -11764,7 +11764,7 @@ async function enemyTurn() {
                 if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
                 spawnDamageText(player.x, player.y, dmg, '#38bdf8');
                 SOUNDS.DAMAGE();
-                addLog("地面から岩の棘が突き出た！鋭い岩が体を貫く！");
+                addLog("Rock spikes burst from the ground! Sharp rock pierces your body!");
                 setScreenShake(15, 300);
                 hitTarget = true;
                 if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
@@ -11781,7 +11781,7 @@ async function enemyTurn() {
             }
 
             if (!hitTarget) {
-                addLog("地面から岩の棘が突き出した！");
+                addLog("Rock spikes burst from the ground!");
                 SOUNDS.EXPLODE();
                 setScreenShake(10, 200);
             }
