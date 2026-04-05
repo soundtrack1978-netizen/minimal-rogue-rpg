@@ -12,6 +12,7 @@ statsBar.style.display = 'none';
 const TILE_SIZE = 20;
 const ROWS = 25;
 const COLS = 40;
+const DEEP_ENDING_FLOOR = 1801439850948191; // Theoretical max floor (ORC HP formula overflow)
 canvas.width = COLS * TILE_SIZE;
 canvas.height = ROWS * TILE_SIZE + 2; // +2: 描画オフセット分を確保
 
@@ -7934,6 +7935,7 @@ async function windGustSlide() {
         addLog("The wind blows you into the hole!");
         isPlayerVisible = false;
         floorLevel++;
+        if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
         await startFloorTransition();
     }
 }
@@ -8002,6 +8004,7 @@ async function slidePlayer(dx, dy) {
             addLog("You slid into the dark hole...");
             isPlayerVisible = false;
             floorLevel++;
+            if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
             await startFloorTransition();
             break;
         }
@@ -8351,6 +8354,190 @@ async function triggerEnding() {
     isProcessing = false;
     // クリア達成: 次回の新規プレイでまた100Fのストーリーが読めるようにリセット
     localStorage.removeItem('floor100_story_seen');
+}
+
+// 深層エンディング: 理論上の最下層で穴に落ちた時
+async function triggerEnding2() {
+    isProcessing = true;
+    endingSkipLock = true;
+    gameState = 'ENDING_SEQ';
+    transition.text = "";
+    attackLines = [];
+    damageTexts = [];
+
+    addLog("The floor gives way... and you fall.");
+    isPlayerVisible = false;
+    player.offsetX = 0; player.offsetY = 0;
+
+    // 落下音（ノイズのフェードダウン）
+    const fallNoise = (() => {
+        const duration = 4.0;
+        const bufferSize = audioCtx.sampleRate * duration;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buffer;
+        const f = audioCtx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.setValueAtTime(800, audioCtx.currentTime);
+        f.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + duration);
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        src.connect(f); f.connect(g); g.connect(audioCtx.destination);
+        src.start();
+    })();
+
+    // 画面を揺らしながら暗転
+    const shakeStart = performance.now();
+    while (performance.now() - shakeStart < 3000) {
+        const p = (performance.now() - shakeStart) / 3000;
+        screenShake.x = (Math.random() - 0.5) * p * 20;
+        screenShake.y = (Math.random() - 0.5) * p * 20;
+        screenShake.until = performance.now() + 50;
+        transition.flashAlpha = p * 0.3 * (Math.random() < 0.1 ? 1 : 0);
+        draw(performance.now());
+        await new Promise(r => setTimeout(r, 16));
+    }
+    transition.flashAlpha = 0;
+
+    // 完全暗転
+    transition.active = true;
+    transition.mode = 'BLACK_OUT';
+    transition.alpha = 1.0;
+    draw(performance.now());
+    await new Promise(r => setTimeout(r, 4000));
+
+    // 静寂の中、低いドローン音
+    const drone2 = (() => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 28;
+        g.gain.setValueAtTime(0.0, audioCtx.currentTime);
+        g.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + 3);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start();
+        return { osc, g };
+    })();
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    // ストーリーページ: 闇の底
+    await showStoryPages([
+        [{ en: "Darkness.", jp: "暗闇だ" }],
+        [{ en: "An endless fall.", jp: "終わりのない落下" }],
+        [{ en: "How long have you been falling?", jp: "どれくらい落ちているのか" }],
+        [{ en: "The dungeon has no bottom.", jp: "このダンジョンに底はない" }],
+        [{ en: "Or so you thought.", jp: "そう思っていた" }],
+    ], false, false, 4000);
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    // 遠くに光が見える
+    transition.mode = 'STARS';
+    transition.alpha = 0;
+    transition.particles = [];
+    for (let i = 0; i < 1; i++) {
+        transition.particles.push({
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            size: 0.5
+        });
+    }
+    for (let a = 0; a <= 0.3; a += 0.005) {
+        transition.alpha = a;
+        draw(performance.now());
+        await new Promise(r => setTimeout(r, 30));
+    }
+    await new Promise(r => setTimeout(r, 3000));
+
+    await showStoryPages([
+        [{ en: "A faint light.", jp: "ひとつの光" }],
+        [{ en: "Far, far below.", jp: "はるか遠く　下に" }],
+        [{ en: "Something is there.", jp: "何かがある" }],
+    ], false, false, 4000);
+
+    // 光が広がる（パーティクル増加）
+    for (let n = 2; n <= 60; n++) {
+        transition.particles.push({
+            x: canvas.width / 2 + (Math.random() - 0.5) * n * 10,
+            y: canvas.height / 2 + (Math.random() - 0.5) * n * 10,
+            size: Math.random() * 1.0
+        });
+        if (n % 3 === 0) {
+            for (let a = transition.alpha; a <= Math.min(0.8, transition.alpha + 0.1); a += 0.01) {
+                transition.alpha = a;
+                draw(performance.now());
+                await new Promise(r => setTimeout(r, 16));
+            }
+        }
+    }
+    await new Promise(r => setTimeout(r, 2000));
+
+    await showStoryPages([
+        [{ en: "The true core.", jp: "真のコア" }],
+        [{ en: "The heart of the dungeon.", jp: "ダンジョンの心臓" }],
+        [{ en: "It was here all along.", jp: "ずっとここにあった" }],
+        [{ en: "Waiting.", jp: "待っていた" }],
+    ], false, false, 4500);
+
+    // ドローン音を強くしながら完全ホワイトアウト
+    drone2.g.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 5);
+    for (let a = transition.alpha; a <= 1.0; a += 0.008) {
+        transition.alpha = a;
+        draw(performance.now());
+        await new Promise(r => setTimeout(r, 20));
+    }
+    await new Promise(r => setTimeout(r, 1000));
+    SOUNDS.EXPLODE();
+    setScreenShake(30, 1000);
+
+    transition.mode = 'WHITE_OUT';
+    transition.alpha = 1.0;
+    transition.particles = [];
+    transition.flashAlpha = 1.0;
+    draw(performance.now());
+    await new Promise(r => setTimeout(r, 3000));
+    transition.flashAlpha = 0;
+
+    await showStoryPages([
+        [{ en: "And then —", jp: "そして——" }],
+        [{ en: "silence.", jp: "静寂" }],
+        [{ en: "You understood everything.", jp: "あなたはすべてを理解した" }],
+        [{ en: "The dungeon was never a prison.", jp: "ダンジョンは牢獄ではなかった" }],
+        [{ en: "It was a test.", jp: "それは試練だった" }],
+        [{ en: "And you passed.", jp: "あなたは合格した" }],
+    ], false, false, 4000);
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    // ドローン停止
+    drone2.g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 2);
+    setTimeout(() => { drone2.osc.stop(); }, 2500);
+    await new Promise(r => setTimeout(r, 3000));
+
+    // BLACK_OUTへ
+    transition.mode = 'BLACK_OUT';
+    transition.alpha = 1.0;
+    transition.darken = 1;
+    draw(performance.now());
+    await new Promise(r => setTimeout(r, 3000));
+
+    // 衝撃音と共にエンディングテキスト
+    SOUNDS.BANG();
+    transition.mode = 'RED_OUT';
+    transition.text = "TRUE ENDING";
+    transition.textColor = "#fff";
+    draw(performance.now());
+    await new Promise(r => setTimeout(r, 6000));
+    transition.text = "";
+
+    gameState = 'ENDING';
+    transition.active = false;
+    endingSkipLock = false;
+    isProcessing = false;
 }
 
 async function handleAction(dx, dy) {
@@ -9100,6 +9287,7 @@ async function handleAction(dx, dy) {
                     addLog("You fall into the dark hole...");
                     isPlayerVisible = false;
                     floorLevel++;
+                    if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
                     await startFloorTransition();
                 }
             }
@@ -10234,6 +10422,7 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
                 isPlayerVisible = false;
                 floorLevel++;
                 if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
+                if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
                 await startFloorTransition();
                 return;
             }
@@ -12179,6 +12368,7 @@ function canEnemyMove(x, y, mover = null) {
 }
 
 window.debugWin = triggerEnding; // コンソールからデバッグ可能に
+window.debugWin2 = triggerEnding2; // 第二エンディングデバッグ用
 
 function gainExp(amount) {
     player.exp += amount;
