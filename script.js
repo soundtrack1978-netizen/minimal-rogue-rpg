@@ -8534,6 +8534,22 @@ async function triggerEnding2() {
     await new Promise(r => setTimeout(r, 6000));
     transition.text = "";
 
+    // 特別メッセージ (BLACK_OUTで白文字)
+    transition.mode = 'BLACK_OUT';
+    transition.alpha = 1.0;
+    draw(performance.now());
+    await new Promise(r => setTimeout(r, 2000));
+
+    await showStoryPages([
+        ["You have reached the limits of the deep layers."],
+        ["The theoretical upper bound was approximately", "18 quintillion tiers."],
+        ["It should have required 1.71 billion years", "of playtime to reach this point."],
+        ["Truly, well done."],
+        ["And\u2026 thank you."],
+    ], true, false, 5000);
+
+    await new Promise(r => setTimeout(r, 3000));
+
     gameState = 'ENDING';
     transition.active = false;
     endingSkipLock = false;
