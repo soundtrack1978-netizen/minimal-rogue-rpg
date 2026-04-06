@@ -8076,6 +8076,14 @@ async function triggerEnding() {
         }
     };
 
+    // mapが未初期化の場合（デバッグ起動時）はフラッシュのみで開始
+    if (!map || !map[0]) {
+        transition.active = true;
+        transition.mode = 'WHITE_OUT';
+        transition.alpha = 1.0;
+        transition.particles = [];
+    }
+
     // --- フェーズ0a: 破壊の瞬間の長めのフラッシュ (0.5秒白 → 0.3秒戻り) ---
     SOUNDS.EXPLODE();
     transition.flashAlpha = 1.0;
@@ -8088,7 +8096,7 @@ async function triggerEnding() {
     transition.flashAlpha = 0;
 
     // --- フェーズ0b: 時間停止（コア表示のまま） + 1.5秒 ---
-    draw(performance.now());
+    if (map && map[0]) draw(performance.now());
     await new Promise(r => setTimeout(r, 1500));
 
     // --- フェーズ0b2: 点滅前のフラッシュ（3回） ---
@@ -8129,18 +8137,18 @@ async function triggerEnding() {
         screenShake.until = performance.now() + 50;
 
         // コアの表示/非表示をマップで切り替え
-        if (dungeonCore) {
+        if (dungeonCore && map && map[dungeonCore.y]) {
             map[dungeonCore.y][dungeonCore.x] = coreVisible ? SYMBOLS.CORE : SYMBOLS.FLOOR;
         }
 
         // 通常描画
-        draw(performance.now());
+        if (map && map[0]) draw(performance.now());
 
         await new Promise(r => setTimeout(r, 16));
     }
 
     // コアを完全に消す
-    if (dungeonCore) map[dungeonCore.y][dungeonCore.x] = SYMBOLS.FLOOR;
+    if (dungeonCore && map && map[dungeonCore.y]) map[dungeonCore.y][dungeonCore.x] = SYMBOLS.FLOOR;
     playShattering();
 
     // 消えた直後のフラッシュ
@@ -8358,6 +8366,7 @@ async function triggerEnding() {
 
 // 深層エンディング: 理論上の最下層で穴に落ちた時
 async function triggerEnding2() {
+  try {
     isProcessing = true;
     endingSkipLock = true;
     gameState = 'ENDING_SEQ';
@@ -8368,6 +8377,11 @@ async function triggerEnding2() {
     addLog("The floor gives way... and you fall.");
     isPlayerVisible = false;
     player.offsetX = 0; player.offsetY = 0;
+
+    // 最初から黒背景（mapへのアクセスを避ける）
+    transition.active = true;
+    transition.mode = 'BLACK_OUT';
+    transition.alpha = 1.0;
 
     // 落下音（ノイズのフェードダウン）
     const fallNoise = (() => {
@@ -8554,6 +8568,11 @@ async function triggerEnding2() {
     transition.active = false;
     endingSkipLock = false;
     isProcessing = false;
+  } catch(err) {
+    console.error('[triggerEnding2 ERROR]', err);
+    endingSkipLock = false;
+    isProcessing = false;
+  }
 }
 
 async function handleAction(dx, dy) {
@@ -12386,6 +12405,13 @@ function canEnemyMove(x, y, mover = null) {
 window.debugWin = triggerEnding; // コンソールからデバッグ可能に
 window.debugWin2 = triggerEnding2; // 第二エンディングデバッグ用
 
+// URLパラメーターによるデバッグ起動
+(function() {
+    const p = new URLSearchParams(location.search);
+    if (p.get('debug') === '2') setTimeout(() => triggerEnding2(), 500);
+    if (p.get('debug') === '1') setTimeout(() => triggerEnding(), 500);
+})();
+
 function gainExp(amount) {
     player.exp += amount;
     if (player.exp >= player.nextExp) {
@@ -12976,6 +13002,12 @@ window.addEventListener('keydown', e => {
         SOUNDS.COLOR_CHANGE();
         e.preventDefault();
     }
+});
+
+// F8: デバッグ用エンディング起動
+window.addEventListener('keydown', e => {
+    if (e.key === 'F8') { stopBGM(); triggerEnding(); }
+    if (e.key === 'F9') { stopBGM(); triggerEnding2(); }
 });
 
 // スクリーンショット: P キーで Canvas を PNG としてダウンロード
