@@ -6217,23 +6217,48 @@ function gameLoop(now) {
 function drawTitle() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.textAlign = 'center';
+    const deepUnlocked = localStorage.getItem('deep_unlocked') === '1';
+
     ctx.fillStyle = '#fff';
     ctx.font = "bold 40px 'Courier New', Courier, monospace";
     ctx.fillText('MINIMAL ROGUE', canvas.width / 2, canvas.height / 3);
 
+    // 深層解放メッセージ
+    if (deepUnlocked) {
+        const pulse = Math.sin(performance.now() / 600) * 0.3 + 0.7;
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = "12px 'Courier New', Courier, monospace";
+        ctx.fillText('— THE ABYSS AWAITS —', canvas.width / 2, canvas.height / 3 + 30);
+        ctx.restore();
+    }
+
     const menuY = canvas.height / 2 + 30;
     ctx.font = '24px Courier New';
-    const options = ['START NEW GAME', 'CONTINUE', 'TEST PLAY', 'DEEP TEST'];
     const hasSave = localStorage.getItem('minimal_rogue_save') !== null;
+    const options = ['START NEW GAME', 'CONTINUE', 'TEST PLAY', 'DEEP TEST'];
     options.forEach((opt, i) => {
         const isSelected = titleSelection === i;
-        const isDisabled = i === 1 && !hasSave;
-        ctx.fillStyle = isDisabled ? '#333' : (isSelected ? '#fff' : '#666');
+        let isDisabled = i === 1 && !hasSave && !deepUnlocked;
         let text = opt;
+        if (i === 1 && deepUnlocked) {
+            text = 'DESCEND INTO THE ABYSS';
+            ctx.fillStyle = isSelected ? '#38bdf8' : '#1e6fa8';
+        } else {
+            ctx.fillStyle = isDisabled ? '#333' : (isSelected ? '#fff' : '#666');
+        }
         if (i === 2) text = `TEST: FLOOR ${testFloor}`;
         if (i === 3) text = `DEEP TEST: FLOOR ${deepTestFloor}`;
         if (isSelected) {
             text = `> ${text} <`;
+            if (i === 1 && deepUnlocked) {
+                ctx.font = '12px Courier New';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('Beyond floor 100 lies the unknown...', canvas.width / 2, menuY + i * 40 + 25);
+                ctx.font = '24px Courier New';
+                ctx.fillStyle = '#38bdf8';
+            }
             if (i === 2) {
                 ctx.font = '12px Courier New';
                 ctx.fillStyle = '#888';
@@ -8362,6 +8387,8 @@ async function triggerEnding() {
     isProcessing = false;
     // クリア達成: 次回の新規プレイでまた100Fのストーリーが読めるようにリセット
     localStorage.removeItem('floor100_story_seen');
+    // 深層アンロック
+    localStorage.setItem('deep_unlocked', '1');
 }
 
 // 深層エンディング: 理論上の最下層で穴に落ちた時
@@ -12557,6 +12584,11 @@ async function startGame(startFloor = 1, isTestMode = false) {
 }
 
 async function continueGame() {
+    // 深層解放済みの場合は101Fから深層スタート
+    if (localStorage.getItem('deep_unlocked') === '1') {
+        await startDeepRun();
+        return;
+    }
     if (loadGame()) {
         // startGame() と同様の完全なリセット
         screenShake.x = 0; screenShake.y = 0; screenShake.until = 0;
@@ -12573,6 +12605,30 @@ async function continueGame() {
         gameState = 'PLAYING';
         await startFloorTransition();
     }
+}
+
+async function startDeepRun() {
+    // 深層への落下演出
+    isProcessing = true;
+    gameState = 'ENDING_SEQ';
+    transition.active = true;
+    transition.mode = 'BLACK_OUT';
+    transition.alpha = 1.0;
+    transition.text = '';
+
+    await showStoryPages([
+        ["You survived the dungeon."],
+        ["But something calls from below."],
+        ["Deeper."],
+        ["Much deeper."],
+    ], false, false, 3000);
+
+    await new Promise(r => setTimeout(r, 500));
+    isProcessing = false;
+    transition.active = false;
+
+    // 101Fからスタート
+    await startGame(101);
 }
 
 window.addEventListener('keydown', async e => {
@@ -12773,7 +12829,7 @@ window.addEventListener('keydown', async e => {
         if (gameState === 'TITLE') {
             const hasSave = localStorage.getItem('minimal_rogue_save') !== null;
             if (titleSelection === 0) startGame();
-            else if (titleSelection === 1 && hasSave) continueGame();
+            else if (titleSelection === 1 && (hasSave || localStorage.getItem('deep_unlocked') === '1')) continueGame();
             else if (titleSelection === 2) startGame(testFloor, true);
             else if (titleSelection === 3) startGame(deepTestFloor, true);
             SOUNDS.SELECT();
