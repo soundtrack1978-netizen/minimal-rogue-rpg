@@ -5551,7 +5551,13 @@ async function startFloorTransition() {
                 for (let fy = 0; fy < ROWS; fy++) {
                     for (let fx = 0; fx < COLS; fx++) {
                         if (m[fy][fx] === SYMBOLS.FAIRY) {
-                            movingFairies.push({ x: fx, y: fy, screenX: sx, screenY: sy, underTile: SYMBOLS.FLOOR, surrounded: true, waitTurns: 0 });
+                            // 四方が全て壁かどうかを実際に確認して初期化
+                            const _dirs4 = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+                            const _isSurr = _dirs4.every(d => {
+                                const nx = fx + d.x, ny = fy + d.y;
+                                return nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || m[ny][nx] === SYMBOLS.WALL;
+                            });
+                            movingFairies.push({ x: fx, y: fy, screenX: sx, screenY: sy, underTile: SYMBOLS.FLOOR, surrounded: _isSurr, waitTurns: 0 });
                         }
                     }
                 }
