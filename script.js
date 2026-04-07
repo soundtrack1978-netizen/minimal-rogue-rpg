@@ -1867,6 +1867,15 @@ function initMap() {
                 }
             }
 
+            // 深層での妖精出現（15%の確率で床タイルに配置）
+            if (floorLevel >= 101 && Math.random() < 0.15 && rooms.length > 0) {
+                for (let tries = 0; tries < 50; tries++) {
+                    const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
+                    const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                    if (sMap[iy][ix] === SYMBOLS.FLOOR) { sMap[iy][ix] = SYMBOLS.FAIRY; break; }
+                }
+            }
+
             // 1部屋あたりの魔導書を最大2個に制限
             const tomeSyms = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.ESCAPE, SYMBOLS.BREAKER_TOME];
             rooms.forEach(room => {
