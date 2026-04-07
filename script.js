@@ -1978,8 +1978,8 @@ function initMap() {
             const rooms = [];
 
             const TYPES = ['MONSTER_FLOOD', 'LAVA_SEA', 'FROZEN_PRISON', 'VOID_CELLS', 'CHAOS_ALTAR'];
-            // FACTION_WAR は低確率で出現（約15%）
-            const bizType = Math.random() < 0.15 ? 'FACTION_WAR' : TYPES[Math.floor(Math.random() * TYPES.length)];
+            // FACTION_WAR は極低確率で出現（約0.5%）
+            const bizType = Math.random() < 0.005 ? 'FACTION_WAR' : TYPES[Math.floor(Math.random() * TYPES.length)];
 
             // 共通: 通路入口を開ける
             const openPassages = () => {
