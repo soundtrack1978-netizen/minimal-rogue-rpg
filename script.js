@@ -1978,8 +1978,12 @@ function initMap() {
             const rooms = [];
 
             const TYPES = ['MONSTER_FLOOD', 'LAVA_SEA', 'FROZEN_PRISON', 'VOID_CELLS', 'CHAOS_ALTAR'];
-            // FACTION_WAR は極低確率で出現（約0.5%）
-            const bizType = Math.random() < 0.005 ? 'FACTION_WAR' : TYPES[Math.floor(Math.random() * TYPES.length)];
+            // 超レア特殊MAP（各0.5%）
+            const _bRoll = Math.random();
+            const bizType = _bRoll < 0.005 ? 'FACTION_WAR'
+                          : _bRoll < 0.010 ? 'FLEEING_HORDE'
+                          : _bRoll < 0.015 ? 'CIRCLE_SIEGE'
+                          : TYPES[Math.floor(Math.random() * TYPES.length)];
 
             // 共通: 通路入口を開ける
             const openPassages = () => {
@@ -2199,6 +2203,63 @@ function initMap() {
                         }
                     }
                 }
+
+            // ---- FLEEING_HORDE: 逃げ続ける敵の群れ ----
+            } else if (bizType === 'FLEEING_HORDE') {
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.FLOOR;
+                rooms.push({ x:1, y:1, w:COLS-2, h:ROWS-2, cx:Math.floor(COLS/2), cy:Math.floor(ROWS/2) });
+                // 柱・隠れ場所（逃げ込む障害物）
+                for (let i = 0; i < 12; i++) {
+                    const px = Math.floor(Math.random()*(COLS-8))+4;
+                    const py = Math.floor(Math.random()*(ROWS-6))+3;
+                    sMap[py][px] = SYMBOLS.WALL;
+                    if (Math.random() < 0.5) sMap[py][px+1] = SYMBOLS.WALL;
+                    if (Math.random() < 0.5) sMap[py+1][px] = SYMBOLS.WALL;
+                }
+                // 逃げ回るNORMAL群 + GOLDも混じる
+                const fleeTypes = ['NORMAL','NORMAL','NORMAL','NORMAL','GOLD','NORMAL','NORMAL','GOLD','NORMAL','NORMAL','NORMAL','GOLD','NORMAL','NORMAL','NORMAL','NORMAL','GOLD'];
+                for (const type of fleeTypes) {
+                    for (let t = 0; t < 80; t++) {
+                        const ex = Math.floor(Math.random()*(COLS-4))+2;
+                        const ey = Math.floor(Math.random()*(ROWS-4))+2;
+                        if (sMap[ey][ex] === SYMBOLS.FLOOR && !sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                            const hp = type === 'GOLD' ? 5+floorLevel : 3+floorLevel;
+                            const exp = type === 'GOLD' ? 10 : 5;
+                            sEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0, flee:true });
+                            break;
+                        }
+                    }
+                }
+
+            // ---- CIRCLE_SIEGE: 同心円状に敵が配置 ----
+            } else if (bizType === 'CIRCLE_SIEGE') {
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.FLOOR;
+                const cx = Math.floor(COLS/2), cy = Math.floor(ROWS/2);
+                rooms.push({ x:1, y:1, w:COLS-2, h:ROWS-2, cx, cy });
+
+                // 中心: TURRET
+                const tHp = 80+floorLevel*4;
+                sEnemies.push({ type:'TURRET', x:cx, y:cy, dir:0, hp:tHp, maxHp:tHp, flashUntil:0, offsetX:0, offsetY:0, expValue:50, stunTurns:0 });
+
+                // リングヘルパー: 半径r、count体を等間隔に配置
+                const placeRing = (radius, count, type, hp, exp) => {
+                    for (let j = 0; j < count; j++) {
+                        const angle = (2 * Math.PI * j) / count;
+                        const ex = Math.round(cx + radius * Math.cos(angle));
+                        const ey = Math.round(cy + radius * Math.sin(angle) * 0.7); // 縦方向を少し圧縮
+                        if (ex >= 2 && ex < COLS-2 && ey >= 2 && ey < ROWS-2
+                            && sMap[ey][ex] === SYMBOLS.FLOOR
+                            && !sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                            sEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0 });
+                        }
+                    }
+                };
+                // Ring 1: NORMALが内側を守る
+                placeRing(3, 8, 'NORMAL', 3+floorLevel, 5);
+                // Ring 2: ORCが中間
+                placeRing(6, 8, 'ORC', 40+floorLevel*5, 40);
+                // Ring 3: BREAKERが外側を構成
+                placeRing(10, 10, 'BREAKER', 50+floorLevel*4, 45);
             }
 
             // 全タイプ共通: 通路を開けて床まで掘る
@@ -2256,7 +2317,7 @@ function initMap() {
                     screenGrid.wisps[sy][sx] = result.sWisps;
                     screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
                     allRooms[`${sx},${sy}`] = result.rooms;
-                    const bizNames = { MONSTER_FLOOD:'Monster Flood', LAVA_SEA:'Sea of Lava', FROZEN_PRISON:'Frozen Prison', VOID_CELLS:'Void Cells', CHAOS_ALTAR:'Chaos Altar', FACTION_WAR:'⚔️ FACTION WAR' };
+                    const bizNames = { MONSTER_FLOOD:'Monster Flood', LAVA_SEA:'Sea of Lava', FROZEN_PRISON:'Frozen Prison', VOID_CELLS:'Void Cells', CHAOS_ALTAR:'Chaos Altar', FACTION_WAR:'⚔️ FACTION WAR', FLEEING_HORDE:'🏃 FLEEING PREY', CIRCLE_SIEGE:'🔵 CIRCLE SIEGE' };
                     addLog(`⚠️ A strange aura... "${bizNames[result.bizType] || '???'}"`);
                     continue;
                 }
@@ -11036,6 +11097,36 @@ async function enemyTurn() {
                 if (factionTarget.hp <= 0) handleEnemyDeath(factionTarget, false);
                 continue;
             }
+        }
+
+        // 逃走行動（FLEEING_HORDE）: プレイヤーから遠ざかる。追い詰められたら反撃
+        if (e.flee && !e.isAlly) {
+            const fDist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
+            if (fDist > 1) {
+                const fDirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+                const fValid = fDirs.filter(d => {
+                    const nx = e.x+d.x, ny = e.y+d.y;
+                    return canEnemyMove(nx, ny, e) && !enemies.some(t=>t!==e && t.x===nx && t.y===ny);
+                });
+                if (fValid.length > 0) {
+                    // 最もプレイヤーから遠くなる方向を選ぶ（ランダム性も少し加える）
+                    fValid.sort((a,b) => {
+                        const dA = Math.abs((e.x+a.x)-player.x)+Math.abs((e.y+a.y)-player.y);
+                        const dB = Math.abs((e.x+b.x)-player.x)+Math.abs((e.y+b.y)-player.y);
+                        return dB - dA;
+                    });
+                    // 同距離の場合は少しランダムに
+                    const topDist = Math.abs((e.x+fValid[0].x)-player.x)+Math.abs((e.y+fValid[0].y)-player.y);
+                    const candidates = fValid.filter(d => Math.abs((e.x+d.x)-player.x)+Math.abs((e.y+d.y)-player.y) === topDist);
+                    const chosen = candidates[Math.floor(Math.random()*candidates.length)];
+                    e.offsetX = chosen.x * 8; e.offsetY = chosen.y * 8;
+                    e.x += chosen.x; e.y += chosen.y;
+                    await new Promise(r => setTimeout(r, 50));
+                    e.offsetX = 0; e.offsetY = 0;
+                }
+                continue; // 攻撃しない
+            }
+            // dist === 1: コーナリングされた → 以降の通常攻撃処理へ落ちる
         }
 
         // ミミック固有AI（味方になった場合は通常の味方AIに任せる）
