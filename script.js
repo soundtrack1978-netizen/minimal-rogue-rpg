@@ -5551,7 +5551,7 @@ async function startFloorTransition() {
                 for (let fy = 0; fy < ROWS; fy++) {
                     for (let fx = 0; fx < COLS; fx++) {
                         if (m[fy][fx] === SYMBOLS.FAIRY) {
-                            movingFairies.push({ x: fx, y: fy, screenX: sx, screenY: sy, underTile: SYMBOLS.FLOOR });
+                            movingFairies.push({ x: fx, y: fy, screenX: sx, screenY: sy, underTile: SYMBOLS.FLOOR, surrounded: true, waitTurns: 0 });
                         }
                     }
                 }
@@ -9732,9 +9732,9 @@ function useFairy() {
     player.fairyRemainingCharms = Math.min(player.fairyRemainingCharms, player.fairyCount);
 
     if (multiScreenMode && screenGrid) {
-        movingFairies.push({ x: fx, y: fy, screenX: currentScreen.x, screenY: currentScreen.y, underTile: under });
+        movingFairies.push({ x: fx, y: fy, screenX: currentScreen.x, screenY: currentScreen.y, underTile: under, surrounded: false, waitTurns: 0 });
     } else {
-        movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under });
+        movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under, surrounded: false, waitTurns: 0 });
     }
 
     addLog("🧚 You released a FAIRY! It heads toward the KEY.");
@@ -9764,6 +9764,22 @@ function moveFairies() {
             updateUI();
             continue;
         }
+
+        // 壁解放検出: 四方が壁→通路が開いた瞬間に数ターン待機
+        {
+            const dirs4 = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+            const passNeighbors = dirs4.filter(d => {
+                const nx = f.x + d.x, ny = f.y + d.y;
+                return nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && map[ny][nx] !== SYMBOLS.WALL;
+            }).length;
+            if (passNeighbors === 0) {
+                f.surrounded = true;
+            } else if (f.surrounded) {
+                f.surrounded = false;
+                f.waitTurns = 4;
+            }
+        }
+        if (f.waitTurns > 0) { f.waitTurns--; continue; }
 
         // 目標を探す（KEY優先、次にSTAIRS）
         let goalX = -1, goalY = -1, goalSym = null;
@@ -9899,6 +9915,25 @@ function moveFairies() {
             updateUI();
             continue;
         }
+
+        // ---- 壁解放検出: 四方が壁→通路が開いた瞬間に数ターン待機 ----
+        {
+            const checkMap = isCurrentScreen ? map : screenGrid.maps[f.screenY][f.screenX];
+            if (checkMap) {
+                const dirs4 = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+                const passNeighbors = dirs4.filter(d => {
+                    const nx = f.x + d.x, ny = f.y + d.y;
+                    return nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && checkMap[ny][nx] !== SYMBOLS.WALL;
+                }).length;
+                if (passNeighbors === 0) {
+                    f.surrounded = true;
+                } else if (f.surrounded) {
+                    f.surrounded = false;
+                    f.waitTurns = 4;
+                }
+            }
+        }
+        if (f.waitTurns > 0) { f.waitTurns--; continue; }
 
         // ---- 1マス移動: 壁以外はすべてすり抜ける ----
         const curFMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
