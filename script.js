@@ -1855,13 +1855,14 @@ function initMap() {
             }
 
             // --- アイテムの配置（通常階と同じ種類） ---
+            const noEnemy = (ix, iy) => !sEnemies.some(e => e.x === ix && e.y === iy);
             // 魔導書を1つ配置
             const possibleTomes = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.ESCAPE, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.HEAL_TOME];
             const chosenTome = possibleTomes[Math.floor(Math.random() * possibleTomes.length)];
             for (let tries = 0; tries < 50; tries++) {
                 const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
                 const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
-                if (sMap[iy][ix] === SYMBOLS.FLOOR) { sMap[iy][ix] = chosenTome; break; }
+                if (sMap[iy][ix] === SYMBOLS.FLOOR && noEnemy(ix, iy)) { sMap[iy][ix] = chosenTome; break; }
             }
             // 剣または防具をランダム配置
             if (Math.random() < 0.3) {
@@ -1869,16 +1870,16 @@ function initMap() {
                 for (let tries = 0; tries < 50; tries++) {
                     const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
                     const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
-                    if (sMap[iy][ix] === SYMBOLS.FLOOR) { sMap[iy][ix] = item; break; }
+                    if (sMap[iy][ix] === SYMBOLS.FLOOR && noEnemy(ix, iy)) { sMap[iy][ix] = item; break; }
                 }
             }
 
-            // 深層での妖精出現（15%の確率で床タイルに配置）
+            // 深層での妖精出現（5%の確率で床タイルに配置）
             if (floorLevel >= 101 && Math.random() < 0.05 && rooms.length > 0) {
                 for (let tries = 0; tries < 50; tries++) {
                     const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
                     const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
-                    if (sMap[iy][ix] === SYMBOLS.FLOOR) { sMap[iy][ix] = SYMBOLS.FAIRY; break; }
+                    if (sMap[iy][ix] === SYMBOLS.FLOOR && noEnemy(ix, iy)) { sMap[iy][ix] = SYMBOLS.FAIRY; break; }
                 }
             }
 
