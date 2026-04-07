@@ -9765,9 +9765,6 @@ function moveFairies() {
             continue;
         }
 
-        // プレイヤーが1マス以内なら停止
-        if (Math.abs(f.x - player.x) + Math.abs(f.y - player.y) <= 1) continue;
-
         // 目標を探す（KEY優先、次にSTAIRS）
         let goalX = -1, goalY = -1, goalSym = null;
         outerRF: for (const sym of [SYMBOLS.KEY, SYMBOLS.STAIRS]) {
@@ -9902,9 +9899,6 @@ function moveFairies() {
             updateUI();
             continue;
         }
-
-        // ---- プレイヤーが1マス以内にいれば移動しない（捕まえられないように） ----
-        if (isCurrentScreen && Math.abs(f.x - player.x) + Math.abs(f.y - player.y) <= 1) continue;
 
         // ---- 1マス移動: 壁以外はすべてすり抜ける ----
         const curFMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
