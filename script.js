@@ -1983,6 +1983,7 @@ function initMap() {
             const bizType = _bRoll < 0.005 ? 'FACTION_WAR'
                           : _bRoll < 0.010 ? 'FLEEING_HORDE'
                           : _bRoll < 0.015 ? 'CIRCLE_SIEGE'
+                          : _bRoll < 0.020 ? 'KINGS_COURT'
                           : TYPES[Math.floor(Math.random() * TYPES.length)];
 
             // 共通: 通路入口を開ける
@@ -2260,6 +2261,47 @@ function initMap() {
                 placeRing(6, 8, 'ORC', 40+floorLevel*5, 40);
                 // Ring 3: BREAKERが外側を構成
                 placeRing(10, 10, 'BREAKER', 50+floorLevel*4, 45);
+
+            // ---- KINGS_COURT: 王の間 ----
+            } else if (bizType === 'KINGS_COURT') {
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.FLOOR;
+                const cx = Math.floor(COLS/2), cy = Math.floor(ROWS/2);
+                rooms.push({ x:1, y:1, w:COLS-2, h:ROWS-2, cx, cy });
+                // 玉座の間の柱（左右対称4セット）
+                [[cx-8,cy-4],[cx+7,cy-4],[cx-8,cy+3],[cx+7,cy+3]].forEach(([px,py]) => {
+                    if (px>=1&&px<COLS-2&&py>=1&&py<ROWS-2) {
+                        sMap[py][px]=SYMBOLS.WALL; sMap[py][px+1]=SYMBOLS.WALL;
+                        sMap[py+1][px]=SYMBOLS.WALL; sMap[py+1][px+1]=SYMBOLS.WALL;
+                    }
+                });
+                // KING（玉座）
+                const kingHp = 70 + floorLevel * 3;
+                sEnemies.push({ type:'KING', x:cx, y:cy, hp:kingHp, maxHp:kingHp, flashUntil:0, offsetX:0, offsetY:0, expValue:120, stunTurns:0 });
+                // 近衛騎士（ORC）を周囲に固定配置
+                [{x:-3,y:-1},{x:3,y:-1},{x:-3,y:1},{x:3,y:1},{x:-5,y:0},{x:5,y:0}].forEach(d => {
+                    const ex = cx+d.x, ey = cy+d.y;
+                    if (ex>=1&&ex<COLS-1&&ey>=1&&ey<ROWS-1&&sMap[ey][ex]===SYMBOLS.FLOOR&&!sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                        const hp = 40+floorLevel*5;
+                        sEnemies.push({ type:'NORMAL', x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:20, stunTurns:0 });
+                    }
+                });
+                // 兵士（ランダム配置）
+                const soldierPool = ['NORMAL','NORMAL','ORC','NORMAL','BLAZE','NORMAL','NORMAL','BREAKER','NORMAL','FROST'];
+                for (const type of soldierPool) {
+                    for (let t = 0; t < 60; t++) {
+                        const ex = Math.floor(Math.random()*(COLS-4))+2;
+                        const ey = Math.floor(Math.random()*(ROWS-4))+2;
+                        if (sMap[ey][ex]===SYMBOLS.FLOOR&&!sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                            let hp,exp;
+                            if(type==='ORC'){hp=40+floorLevel*5;exp=40;}
+                            else if(type==='BREAKER'){hp=50+floorLevel*4;exp=45;}
+                            else if(type==='BLAZE'||type==='FROST'){hp=15+floorLevel*2;exp=15;}
+                            else{hp=3+floorLevel;exp=5;}
+                            sEnemies.push({type,x:ex,y:ey,hp,maxHp:hp,flashUntil:0,offsetX:0,offsetY:0,expValue:exp,stunTurns:0});
+                            break;
+                        }
+                    }
+                }
             }
 
             // 全タイプ共通: 通路を開けて床まで掘る
@@ -2317,7 +2359,7 @@ function initMap() {
                     screenGrid.wisps[sy][sx] = result.sWisps;
                     screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
                     allRooms[`${sx},${sy}`] = result.rooms;
-                    const bizNames = { MONSTER_FLOOD:'Monster Flood', LAVA_SEA:'Sea of Lava', FROZEN_PRISON:'Frozen Prison', VOID_CELLS:'Void Cells', CHAOS_ALTAR:'Chaos Altar', FACTION_WAR:'⚔️ FACTION WAR', FLEEING_HORDE:'🏃 FLEEING PREY', CIRCLE_SIEGE:'🔵 CIRCLE SIEGE' };
+                    const bizNames = { MONSTER_FLOOD:'Monster Flood', LAVA_SEA:'Sea of Lava', FROZEN_PRISON:'Frozen Prison', VOID_CELLS:'Void Cells', CHAOS_ALTAR:'Chaos Altar', FACTION_WAR:'⚔️ FACTION WAR', FLEEING_HORDE:'🏃 FLEEING PREY', CIRCLE_SIEGE:'🔵 CIRCLE SIEGE', KINGS_COURT:'👑 KING\'S COURT' };
                     addLog(`⚠️ A strange aura... "${bizNames[result.bizType] || '???'}"`);
                     continue;
                 }
@@ -7509,10 +7551,21 @@ function draw(now) {
                     eChar = 'G';
                     ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 16;
                 }
+                else if (e.type === 'KING') {
+                    // 王: ゆっくり輝く金色の王冠
+                    const kPhase = Math.floor(now / 400) % 2;
+                    eColor = kPhase === 0 ? '#fbbf24' : '#f59e0b';
+                    eChar = '♛';
+                    ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 20;
+                }
                 if (e.isAlly) eColor = '#60a5fa';
                 // 派閥グロー
                 if (e.faction === 'CRIMSON' && !e.isAlly) { ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 14; }
                 else if (e.faction === 'COBALT' && !e.isAlly) { ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 14; }
+                // 王の加護グロー（KINGが生存中は全非KING敵が金色にほんのり光る）
+                if (e.type !== 'KING' && !e.isAlly && enemies.some(k => k.type === 'KING' && k.hp > 0 && !k._dead)) {
+                    ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = Math.max(ctx.shadowBlur, 8);
+                }
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
             }
@@ -10244,6 +10297,22 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
         });
     }
 
+    // KINGが死んだ場合: 残存する全ての敵がパニックになって逃げ出す
+    if (enemy.type === 'KING') {
+        playMelody([
+            { f: 880, d: 0.12 }, { f: 740, d: 0.12 }, { f: 622, d: 0.12 },
+            { f: 494, d: 0.3 }
+        ]);
+        addLog("👑 The King has fallen! His followers flee in panic!");
+        enemies.forEach(e => {
+            if (!e._dead && e.hp > 0) {
+                e.flee = true;
+                spawnFloatingText(e.x, e.y, "PANIC!", '#fbbf24');
+            }
+        });
+        setScreenShake(12, 400);
+    }
+
     enemies = enemies.filter(e => e !== enemy);
 
     // 88階: 全サモナー撃破で穴の周囲の壁が消滅（演出付き）
@@ -10422,6 +10491,12 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
 
     // 金色敵（メタルスライム風）はダメージを1に固定
     if (enemy.type === 'GOLD') damage = isCritical ? 3 : 1;
+
+    // KING's aura: KINGが生存中は非KING敵へのダメージを軽減（王の守護）
+    if (enemy.type !== 'KING' && enemies.some(e => e.type === 'KING' && e.hp > 0 && !e._dead)) {
+        damage = Math.max(1, damage - 2);
+        spawnFloatingText(enemy.x, enemy.y, "GUARD!", '#fbbf24');
+    }
 
     // ミミックの正体暴露
     if (enemy.type === 'MIMIC' && enemy.disguised) {
@@ -12355,7 +12430,8 @@ async function enemyTurn() {
                 e.offsetX = (bestTarget.x - e.x) * 10; e.offsetY = (bestTarget.y - e.y) * 10;
                 spawnSlash(bestTarget.x, bestTarget.y);
                 SOUNDS.ENEMY_ATTACK();
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 3) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                const _kingAura = enemies.some(k => k.type === 'KING' && k.hp > 0 && !k._dead);
+                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 3 + (_kingAura ? 3 : 0)) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.4));
@@ -12365,7 +12441,7 @@ async function enemyTurn() {
                     SOUNDS.DAMAGE();
                     player.hp -= damage; player.flashUntil = performance.now() + 200;
                     if (player.hp > 0) animateBounce(player);
-                    spawnDamageText(player.x, player.y, damage, '#ffffff');
+                    spawnDamageText(player.x, player.y, damage, _kingAura ? '#fbbf24' : '#ffffff');
                     if (player.hp <= 0) { player.hp = 0; updateUI(); }
                 }
                 if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
