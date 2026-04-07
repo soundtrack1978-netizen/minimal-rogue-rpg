@@ -757,6 +757,7 @@ let player = {
     itemInHand: null,
     fairyCount: 0,
     fairyRemainingCharms: 0,
+    poisonStagger: false,
     isInfiniteStamina: false,
     breakerTomes: 0,
     isBreaker: false,
@@ -8756,6 +8757,29 @@ async function handleAction(dx, dy) {
     if (dx > 0) player.facing = 'RIGHT';
     else if (dx < 0) player.facing = 'LEFT';
 
+    // 毒沼スロー: 2ターンに1回のみ行動可能
+    if (map[player.y][player.x] === SYMBOLS.POISON) {
+        if (player.poisonStagger) {
+            player.poisonStagger = false;
+            isProcessing = true;
+            addLog("The poison swamp slows your movement...");
+            turnCount++;
+            updateUI();
+            await windGustSlide();
+            await enemyTurn();
+            await moveWisps();
+            moveFairies();
+            moveMadmen();
+            isProcessing = false;
+            if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
+            return;
+        } else {
+            player.poisonStagger = true;
+        }
+    } else {
+        player.poisonStagger = false;
+    }
+
     // ブロック設置モード
     if (isSpacePressed && (dx !== 0 || dy !== 0)) {
         if (tryPlaceBlock(dx, dy)) {
@@ -10919,7 +10943,12 @@ async function enemyTurn() {
                 spawnDamageText(e.x, e.y, damage, '#a855f7');
                 SOUNDS.DAMAGE();
                 if (e.hp <= 0) { handleEnemyDeath(e); continue; }
+                // 毒沼スロー: 2ターンに1回のみ行動
+                if (e.poisonStagger) { e.poisonStagger = false; continue; }
+                else { e.poisonStagger = true; }
             }
+        } else {
+            e.poisonStagger = false;
         }
 
         if (e.stunTurns > 0) {
