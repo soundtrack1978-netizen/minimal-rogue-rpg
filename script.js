@@ -7144,26 +7144,6 @@ function draw(now) {
             }
         }
 
-        // 1.5. 移動中妖精の聖域オーラ（4マス以内の床タイルを薄く白く塗る）
-        if (multiScreenMode) {
-            const AURA_RANGE = 4;
-            const wallSyms = new Set([SYMBOLS.WALL]);
-            ctx.save();
-            ctx.fillStyle = 'rgba(255,255,255,0.18)';
-            for (const f of movingFairies) {
-                if (f.screenX !== currentScreen.x || f.screenY !== currentScreen.y) continue;
-                for (let dy = -AURA_RANGE; dy <= AURA_RANGE; dy++) {
-                    for (let dx = -AURA_RANGE; dx <= AURA_RANGE; dx++) {
-                        if (Math.abs(dx) + Math.abs(dy) > AURA_RANGE) continue;
-                        const tx = f.x + dx, ty = f.y + dy;
-                        if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) continue;
-                        if (wallSyms.has(map[ty][tx])) continue;
-                        ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    }
-                }
-            }
-            ctx.restore();
-        }
 
         // 2. 設置ブロック
         tempWalls.forEach(w => {
@@ -12146,9 +12126,9 @@ async function enemyTurn() {
                     }
                 }
             }
-        } else if (!e.isAlly && movingFairies.some(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 4)) {
+        } else if (!e.isAlly && movingFairies.some(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 10)) {
             // 妖精の聖なるオーラを恐れて逃げる
-            const nearFairy = movingFairies.find(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 4);
+            const nearFairy = movingFairies.find(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 10);
             const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
             dirs.sort((a, b) => {
                 const distA = Math.abs(nearFairy.x - (e.x + a.x)) + Math.abs(nearFairy.y - (e.y + a.y));
