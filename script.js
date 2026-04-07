@@ -1384,15 +1384,21 @@ function initMap() {
                     }
                 }
 
-                // アイテムを壁の中に閉じ込める
+                // アイテムを壁の中に閉じ込める（妖精は通行可能な床に配置）
                 const trappedItems = [
-                    SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.FAIRY,
+                    SYMBOLS.SWORD, SYMBOLS.ARMOR,
                     SYMBOLS.SPEED, SYMBOLS.HEAL_TOME
                 ];
                 for (const item of trappedItems) {
                     const pos = findTrappedCell(3);
                     if (!pos) continue;
                     sMap[pos.y][pos.x] = item;
+                }
+                // 妖精は通路端の床に配置（壁に閉じ込めない）
+                for (let tries = 0; tries < 100; tries++) {
+                    const fx2 = Math.floor(Math.random() * (COLS - 4)) + 2;
+                    const fy2 = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                    if (sMap[fy2][fx2] === SYMBOLS.FLOOR) { sMap[fy2][fx2] = SYMBOLS.FAIRY; break; }
                 }
 
                 // BREAKER を配置（入口付近に1体 + 壁の中にランダム3体）
@@ -9661,8 +9667,8 @@ async function checkWispDamage(w) {
 // 妖精は飛行しているため、氷・溶岩・毒沼も1マスずつ通過可能（壁のみ通過不可）
 function fairyBFS(fMap, startX, startY, targetX, targetY) {
     if (startX === targetX && startY === targetY) return { dx: 0, dy: 0 };
-    // 妖精は飛行＆魔法存在のため壁を含む全タイルを通過可能（マップ範囲内のみ）
-    const fairyWall = new Set([]);
+    // 妖精が通過できない「壁扱い」タイルのセット（壁は通過不可）
+    const fairyWall = new Set([SYMBOLS.WALL]);
     const visited = new Uint8Array(ROWS * COLS);
     visited[startY * COLS + startX] = 1;
     const queue = [];
@@ -9704,7 +9710,7 @@ function moveFairies() {
     // 妖精が新しいタイルへ到着: 氷・溶岩・毒沼などの上も飛行でそのまま通過
     const _fairyPassable = new Set([
         SYMBOLS.FLOOR, SYMBOLS.ICE, SYMBOLS.LAVA, SYMBOLS.POISON,
-        SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS, SYMBOLS.WALL,
+        SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS,
     ]);
     const fairyArrive = (fMap, fx, fy) => {
         if (!fMap) return SYMBOLS.FLOOR;
