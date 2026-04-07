@@ -6087,6 +6087,15 @@ async function triggerFairyEvent() {
             "",
             "各階層で最初に遭遇したモンスターを、",
             "仲間にしてくれるようだ"
+        ],
+        [
+            "Press [8] or [F] to release",
+            "the fairy as a guide.",
+            "She will move toward",
+            "the KEY or exit.",
+            "",
+            "[8] または [F] キーで妖精を放つと、",
+            "鍵や出口に向かって移動してくれる"
         ]
     ]);
     isProcessing = false;
@@ -9427,7 +9436,7 @@ async function handleAction(dx, dy) {
                 } else if (nextTile === SYMBOLS.FAIRY) {
                     map[ny][nx] = SYMBOLS.FLOOR;
                     // 自律移動妖精リストからも除去
-                    movingFairies = movingFairies.filter(f => !(f.x === nx && f.y === ny && f.screenX === currentScreen.x && f.screenY === currentScreen.y));
+                    movingFairies = movingFairies.filter(f => !(f.x === nx && f.y === ny && (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y))));
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.FAIRY);
@@ -9700,8 +9709,110 @@ function fairyBFS(fMap, startX, startY, targetX, targetY) {
 }
 
 // 敵の落下処理を非同期で実行（ターン進行をブロックしない）
+function useFairy() {
+    if (player.fairyCount <= 0) { addLog("You have no fairy to release."); return; }
+
+    // プレイヤー周辺（8方向）の通行可能タイルを探す
+    const passable = new Set([SYMBOLS.FLOOR, SYMBOLS.ICE, SYMBOLS.LAVA, SYMBOLS.POISON, SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS]);
+    const dirs8 = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:1,y:-1},{x:1,y:1},{x:-1,y:1},{x:-1,y:-1}];
+    let fx = -1, fy = -1;
+    for (const d of dirs8) {
+        const nx = player.x + d.x, ny = player.y + d.y;
+        if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+        if (!passable.has(map[ny][nx])) continue;
+        if (enemies.some(e => e.x === nx && e.y === ny)) continue;
+        if (movingFairies.some(f => f.x === nx && f.y === ny && f.screenX === -1)) continue;
+        fx = nx; fy = ny; break;
+    }
+    if (fx < 0) { addLog("No space nearby to release the fairy!"); return; }
+
+    const under = map[fy][fx];
+    map[fy][fx] = SYMBOLS.FAIRY;
+    player.fairyCount--;
+    player.fairyRemainingCharms = Math.min(player.fairyRemainingCharms, player.fairyCount);
+
+    if (multiScreenMode && screenGrid) {
+        movingFairies.push({ x: fx, y: fy, screenX: currentScreen.x, screenY: currentScreen.y, underTile: under });
+    } else {
+        movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under });
+    }
+
+    addLog("🧚 You released a FAIRY! It heads toward the KEY.");
+    spawnFloatingText(fx, fy, "FAIRY RELEASED", "#f472b6");
+    SOUNDS.GET_ITEM();
+    updateUI();
+}
+
 function moveFairies() {
-    if (!multiScreenMode || !screenGrid || movingFairies.length === 0) return;
+    if (movingFairies.length === 0) return;
+
+    // ===== 通常フロア妖精（screenX === -1）の処理 =====
+    const _passable = new Set([SYMBOLS.FLOOR, SYMBOLS.ICE, SYMBOLS.LAVA, SYMBOLS.POISON, SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS]);
+    for (let i = movingFairies.length - 1; i >= 0; i--) {
+        const f = movingFairies[i];
+        if (f.screenX !== -1) continue;
+
+        // プレイヤーと重なったら再取得
+        if (f.x === player.x && f.y === player.y) {
+            if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
+            movingFairies.splice(i, 1);
+            player.fairyCount++;
+            player.fairyRemainingCharms++;
+            SOUNDS.GET_ITEM();
+            spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
+            addLog("✨ A FAIRY returned to you! ✨");
+            updateUI();
+            continue;
+        }
+
+        // プレイヤーが1マス以内なら停止
+        if (Math.abs(f.x - player.x) + Math.abs(f.y - player.y) <= 1) continue;
+
+        // 目標を探す（KEY優先、次にSTAIRS）
+        let goalX = -1, goalY = -1, goalSym = null;
+        outerRF: for (const sym of [SYMBOLS.KEY, SYMBOLS.STAIRS]) {
+            for (let gy = 0; gy < ROWS; gy++) {
+                for (let gx = 0; gx < COLS; gx++) {
+                    if (map[gy][gx] === sym && !(gx === f.x && gy === f.y)) {
+                        goalX = gx; goalY = gy; goalSym = sym; break outerRF;
+                    }
+                }
+            }
+        }
+        if (goalX < 0) continue;
+
+        // 目標の1マス手前で停止
+        if (Math.abs(f.x - goalX) + Math.abs(f.y - goalY) <= 1) continue;
+
+        // BFSで次の一歩を計算
+        const { dx: bestDX, dy: bestDY } = fairyBFS(map, f.x, f.y, goalX, goalY);
+
+        // 目標タイル自体への踏み込みは避ける
+        if (f.x + bestDX === goalX && f.y + bestDY === goalY) continue;
+
+        if (bestDX !== 0 || bestDY !== 0) {
+            if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
+            f.x += bestDX; f.y += bestDY;
+            const prev = map[f.y][f.x];
+            if (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS && prev !== SYMBOLS.FAIRY)
+                map[f.y][f.x] = SYMBOLS.FAIRY;
+            f.underTile = _passable.has(prev) ? prev : SYMBOLS.FLOOR;
+
+            // 移動後にプレイヤーと重なったら即取得
+            if (f.x === player.x && f.y === player.y) {
+                if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile;
+                movingFairies.splice(i, 1);
+                player.fairyCount++;
+                player.fairyRemainingCharms++;
+                SOUNDS.GET_ITEM();
+                spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
+                addLog("✨ A FAIRY returned to you! ✨");
+                updateUI();
+            }
+        }
+    }
+
+    if (!multiScreenMode || !screenGrid) return;
 
     // 妖精がマップタイルを上書きするとき、元のタイルを退避して後で復元するヘルパー
     const fairyLeave = (fMap, fx, fy, underTile) => {
@@ -13259,6 +13370,13 @@ window.addEventListener('keydown', async e => {
     if (e.key === '7' || e.key.toLowerCase() === 'b') {
         if (gameState === 'PLAYING' && !isProcessing && player.breakerTomes > 0 && !player.isBreaker) {
             useBreakerTome();
+        }
+        return;
+    }
+
+    if (e.key === '8' || e.key.toLowerCase() === 'f') {
+        if (gameState === 'PLAYING' && !isProcessing && player.fairyCount > 0) {
+            useFairy();
         }
         return;
     }
