@@ -12886,11 +12886,13 @@ async function startGame(startFloor = 1, isTestMode = false) {
     player.hp = player.maxHp;
     player.nextExp = player.level <= 5 ? player.level * 7 : player.level * 10;
 
-    // テストプレイ（ステージセレクト）用：壁破壊の魔導書を所持 & ゴールド大量 & 全指輪所持
+    // テストプレイ（ステージセレクト）用：壁破壊の魔導書を所持 & ゴールド大量 & 全指輪所持 & 妖精3匹
     if (isTestMode) {
         player.breakerTomes = 3;
         player.gold = 9999;
         player.ownedRings = RINGS.map(r => r.id);
+        player.fairyCount = 3;
+        player.fairyRemainingCharms = 3;
     }
 
     // テストプレイ(Floor 100)用のデバッグバフ
