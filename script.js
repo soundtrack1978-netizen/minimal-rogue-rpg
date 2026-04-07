@@ -6,7 +6,9 @@ const lvElement = document.getElementById('lv');
 const staminaBar = document.getElementById('stamina-bar');
 const floorElement = document.getElementById('floor');
 const statsBar = document.querySelector('.stats-bar');
+const logRow = document.querySelector('.log-row');
 statsBar.style.display = 'none';
+logRow.style.display = 'none';
 
 // 設定
 const TILE_SIZE = 20;
@@ -724,10 +726,14 @@ let ringScrollOffset = 0; // 指輪リストのスクロールオフセット
 let nextSlideAction = null; // 氷の上で滑っている最中の入力を保持
 let isIceFloor = false; // 現在のフロアが氷のフロアかどうか
 let isWindFloor = false; // 突風の間
+let isSanctuaryFloor = false; // 深層：聖域の階（全敵が友好的）
 let windTimer = 0;
 let windGustEndTime = 0; // 突風エフェクト終了時刻
 let testFloor = 1;    // テストプレイ用の開始階層
 let deepTestFloor = 101; // ディープテスト用の開始階層（101〜999）
+let testModeVisible = false; // テストメニューの表示フラグ（秘密キーで解除）
+let titleSecretBuffer = []; // 秘密キーシーケンス入力バッファ
+const TITLE_SECRET_SEQ = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown']; // ↑↑↓↓
 let familyIdCounter = 0; // 敵ファミリーID採番用
 let map = [];
 let player = {
@@ -1152,6 +1158,7 @@ function initMap() {
     bombs = []; // 爆弾をリセット
     blastEffects = []; // 爆風エフェクトをリセット
     isWindFloor = false; windTimer = 0;
+    isSanctuaryFloor = false;
     wisps = []; // ウィルをリセット
     movingFairies = []; // 妖精をリセット
     movingMadmen = []; // 狂人をリセット
@@ -1227,6 +1234,11 @@ function initMap() {
                 [0.03, 0.68, 0.73], // ORC軍団
                 [0.10, 0.30, 0.55], // バランス型
             ][_eStyle];
+            // 迷路複雑度: 壁スキップ率（低いほど狭く複雑、高いほど広く単純）
+            const _mc = Math.random();
+            const _mazeWallSkip = _mc < 0.33 ? 0.04 + Math.random() * 0.06   // 0.04〜0.10: 高密度迷路
+                                : _mc < 0.66 ? 0.12 + Math.random() * 0.08   // 0.12〜0.20: 標準
+                                :              0.25 + Math.random() * 0.20;   // 0.25〜0.45: 開放的
             deepTheme = {
                 screenTypeWeights: _tw,
                 bizarreChance:     0.05 + Math.random() * 0.50,
@@ -1240,8 +1252,42 @@ function initMap() {
                 eT1: _eT[0], eT2: _eT[1], eT3: _eT[2],
                 familyChance: 0.01 + Math.random() * 0.20,
                 madmanChance: 0.05 + Math.random() * 0.85,
-                windChance:   Math.random() * 0.60,
+                windChance:   Math.random() * 0.12,
+                mazeWallSkip: _mazeWallSkip,
+                isSanctuaryFloor: Math.random() < 0.001, // 0.1%の確率で聖域フロア
             };
+        }
+        // 画面ごとに異なる生成パラメータ（4種類のバリエーション）を事前生成
+        let screenThemes = null;
+        if (deepTheme) {
+            screenThemes = Array.from({ length: 4 }, () => {
+                const _rs = Math.random(), _ss = Math.random();
+                const _eStyle = Math.floor(Math.random() * 5);
+                const _eT = [
+                    [0.30, 0.60, 0.80], // 強敵混合
+                    [0.03, 0.08, 0.73], // BREAKER支配
+                    [0.50, 0.55, 0.60], // TURRET要塞
+                    [0.03, 0.68, 0.73], // ORC軍団
+                    [0.10, 0.30, 0.55], // バランス型
+                ][_eStyle];
+                const _mc = Math.random();
+                const _mwSkip = _mc < 0.33 ? 0.04 + Math.random() * 0.06
+                              : _mc < 0.66 ? 0.12 + Math.random() * 0.08
+                              :              0.25 + Math.random() * 0.20;
+                return Object.assign({}, deepTheme, {
+                    bizarreChance:     0.05 + Math.random() * 0.50,
+                    roomCountMin: _rs < 0.33 ? 3  : _rs < 0.66 ? 7  : 13,
+                    roomCountMax: _rs < 0.33 ? 6  : _rs < 0.66 ? 11 : 19,
+                    roomWMin: _ss < 0.33 ? 3 : _ss < 0.66 ? 4 : 7,
+                    roomWMax: _ss < 0.33 ? 6 : _ss < 0.66 ? 9 : 14,
+                    roomHMin: _ss < 0.33 ? 2 : _ss < 0.66 ? 4 : 5,
+                    roomHMax: _ss < 0.33 ? 4 : _ss < 0.66 ? 7 : 10,
+                    monsterRoomChance: 0.10 + Math.random() * 0.65,
+                    eT1: _eT[0], eT2: _eT[1], eT3: _eT[2],
+                    familyChance: 0.01 + Math.random() * 0.20,
+                    mazeWallSkip: _mwSkip,
+                });
+            });
         }
         // 各画面ごとに突風を発生させる（60〜69階は75%、101F+はテーマで変動、それ以外は3%）
         const multiWindChance = (floorLevel >= 101 && deepTheme) ? deepTheme.windChance
@@ -1257,7 +1303,7 @@ function initMap() {
         }
 
         // ヘルパー: 1画面分のダンジョンを生成（screenType: 'maze'=迷路型, 'dungeon'=通常ダンジョン型, 'breaker'=壁掘り型）
-        function generateOneScreen(sx, sy, screenType) {
+        function generateOneScreen(sx, sy, screenType, screenTheme) {
             const sMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
             const sEnemies = [];
             const sWisps = [];
@@ -1386,10 +1432,10 @@ function initMap() {
                     }
                 }
                 // 部屋の生成（迷路の中の開けた空間）
-                const _mRCMin = deepTheme ? deepTheme.roomCountMin : 5;
-                const _mRCMax = deepTheme ? deepTheme.roomCountMax : 7;
-                const _mRWMin = deepTheme ? deepTheme.roomWMin : 4, _mRWMax = deepTheme ? deepTheme.roomWMax : 8;
-                const _mRHMin = deepTheme ? deepTheme.roomHMin : 4, _mRHMax = deepTheme ? deepTheme.roomHMax : 6;
+                const _mRCMin = screenTheme ? screenTheme.roomCountMin : 5;
+                const _mRCMax = screenTheme ? screenTheme.roomCountMax : 7;
+                const _mRWMin = screenTheme ? screenTheme.roomWMin : 4, _mRWMax = screenTheme ? screenTheme.roomWMax : 8;
+                const _mRHMin = screenTheme ? screenTheme.roomHMin : 4, _mRHMax = screenTheme ? screenTheme.roomHMax : 6;
                 const roomCount = _mRCMin + Math.floor(Math.random() * (_mRCMax - _mRCMin + 1));
                 for (let i = 0; i < roomCount; i++) {
                     const w = _mRWMin + Math.floor(Math.random() * (_mRWMax - _mRWMin + 1));
@@ -1408,7 +1454,7 @@ function initMap() {
                         const nearHPassage = (y >= 11 && y <= 13) && (x <= 4 || x >= COLS - 5);
                         const nearVPassage = (x >= 18 && x <= 21) && (y <= 4 || y >= ROWS - 5);
                         if (nearHPassage || nearVPassage) continue;
-                        if (Math.random() < 0.15) continue;
+                        if (Math.random() < (screenTheme ? screenTheme.mazeWallSkip : 0.15)) continue;
                         sMap[y][x] = SYMBOLS.WALL;
                         const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
                         const d = dirs[Math.floor(Math.random() * (y === 3 ? 4 : 3))];
@@ -1426,9 +1472,9 @@ function initMap() {
                 const MIN_SEP = 2; // 部屋間の最小壁間隔
                 const castleRooms = [];
 
-                const _cRMax = deepTheme ? deepTheme.roomCountMax : 10;
-                const _cRWMin = deepTheme ? deepTheme.roomWMin : 4, _cRWMax = deepTheme ? deepTheme.roomWMax : 10;
-                const _cRHMin = deepTheme ? deepTheme.roomHMin : 3, _cRHMax = deepTheme ? deepTheme.roomHMax : 7;
+                const _cRMax = screenTheme ? screenTheme.roomCountMax : 10;
+                const _cRWMin = screenTheme ? screenTheme.roomWMin : 4, _cRWMax = screenTheme ? screenTheme.roomWMax : 10;
+                const _cRHMin = screenTheme ? screenTheme.roomHMin : 3, _cRHMax = screenTheme ? screenTheme.roomHMax : 7;
                 for (let attempt = 0; attempt < 400 && castleRooms.length < _cRMax; attempt++) {
                     const rw = _cRWMin + Math.floor(Math.random() * (_cRWMax - _cRWMin + 1));
                     const rh = _cRHMin + Math.floor(Math.random() * (_cRHMax - _cRHMin + 1));
@@ -1490,13 +1536,13 @@ function initMap() {
                 // 各部屋にモンスター配置（一部はモンスタールーム）
                 for (let ri = 0; ri < castleRooms.length; ri++) {
                     const cr = castleRooms[ri];
-                    const _cMRC = deepTheme ? deepTheme.monsterRoomChance : 0.35;
+                    const _cMRC = screenTheme ? screenTheme.monsterRoomChance : 0.35;
                     const isMonsterRoom = Math.random() < _cMRC;
                     const count = isMonsterRoom
                         ? 3 + Math.floor(Math.random() * 3)  // 3〜5体
                         : Math.random() < 0.5 ? 0 : 1;       // 通常は0か1体
                     // 家族グループの判定（101F以上・テーマで変動）
-                    const _cFC = deepTheme ? deepTheme.familyChance : 0.05;
+                    const _cFC = screenTheme ? screenTheme.familyChance : 0.05;
                     const roomFamilyId = (floorLevel >= 101 && Math.random() < _cFC) ? familyIdCounter++ : null;
                     for (let ei = 0; ei < count; ei++) {
                         // 部屋内のランダムな床タイルを探す
@@ -1508,9 +1554,9 @@ function initMap() {
                         }
                         if (!found) continue;
                         const roll = Math.random();
-                        const _ct1 = deepTheme ? deepTheme.eT1 : 0.10;
-                        const _ct2 = deepTheme ? deepTheme.eT2 : 0.25;
-                        const _ct3 = deepTheme ? deepTheme.eT3 : 0.38;
+                        const _ct1 = screenTheme ? screenTheme.eT1 : 0.10;
+                        const _ct2 = screenTheme ? screenTheme.eT2 : 0.25;
+                        const _ct3 = screenTheme ? screenTheme.eT3 : 0.38;
                         if (roll < _ct1) {
                             let bestDir = 0, maxDist = -1;
                             for (let d = 0; d < 4; d++) {
@@ -1519,7 +1565,7 @@ function initMap() {
                                 while (tx2>=0&&tx2<COLS&&ty2>=0&&ty2<ROWS&&sMap[ty2][tx2]!==SYMBOLS.WALL){dist++;tx2+=ddx;ty2+=ddy;}
                                 if (dist > maxDist) { maxDist = dist; bestDir = d; }
                             }
-                            const _cTType = (deepTheme && Math.random() < 0.30) ? 'HOPPER_TURRET' : 'TURRET';
+                            const _cTType = (screenTheme && Math.random() < 0.30) ? 'HOPPER_TURRET' : 'TURRET';
                             sEnemies.push({ type:_cTType, x:ex, y:ey, dir:bestDir, hp:100+floorLevel*5, maxHp:100+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0, hopTimer:1+Math.floor(Math.random()*3) });
                         } else if (roll < _ct2) {
                             sEnemies.push({ type:'ORC', x:ex, y:ey, hp:40+floorLevel*5, maxHp:40+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
@@ -1567,10 +1613,10 @@ function initMap() {
 
             } else {
                 // === 通常ダンジョン型（部屋+通路） ===
-                const _dRCMin = deepTheme ? deepTheme.roomCountMin : 8;
-                const _dRCMax = deepTheme ? deepTheme.roomCountMax : 11;
-                const _dRWMin = deepTheme ? deepTheme.roomWMin : 4, _dRWMax = deepTheme ? deepTheme.roomWMax : 9;
-                const _dRHMin = deepTheme ? deepTheme.roomHMin : 4, _dRHMax = deepTheme ? deepTheme.roomHMax : 7;
+                const _dRCMin = screenTheme ? screenTheme.roomCountMin : 8;
+                const _dRCMax = screenTheme ? screenTheme.roomCountMax : 11;
+                const _dRWMin = screenTheme ? screenTheme.roomWMin : 4, _dRWMax = screenTheme ? screenTheme.roomWMax : 9;
+                const _dRHMin = screenTheme ? screenTheme.roomHMin : 4, _dRHMax = screenTheme ? screenTheme.roomHMax : 7;
                 const roomCount = _dRCMin + Math.floor(Math.random() * (_dRCMax - _dRCMin + 1));
                 for (let i = 0; i < roomCount; i++) {
                     const w = _dRWMin + Math.floor(Math.random() * (_dRWMax - _dRWMin + 1));
@@ -1745,7 +1791,7 @@ function initMap() {
                 if (Math.random() < 0.2) continue; // 一部の部屋はスキップ
                 const numEnemies = Math.floor(Math.random() * 2) + 1;
                 // 家族グループの判定（101F以上・テーマで変動）
-                const _dFC = deepTheme ? deepTheme.familyChance : 0.05;
+                const _dFC = screenTheme ? screenTheme.familyChance : 0.05;
                 const roomFamilyId2 = (floorLevel >= 101 && Math.random() < _dFC) ? familyIdCounter++ : null;
                 const roomCenter2 = rooms[i];
                 for (let j = 0; j < numEnemies; j++) {
@@ -1759,9 +1805,9 @@ function initMap() {
                         sEnemies.push({ type: 'BLAZE', x: ex, y: ey, hp: 15 + floorLevel * 2, maxHp: 15 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 15, stunTurns: 0 });
                     } else {
                         const enemyRoll = Math.random();
-                        const _dt1 = deepTheme ? deepTheme.eT1 : 0.12;
-                        const _dt2 = deepTheme ? deepTheme.eT2 : 0.25;
-                        const _dt3 = deepTheme ? deepTheme.eT3 : (floorLevel <= 49 ? 0.35 : 0.28);
+                        const _dt1 = screenTheme ? screenTheme.eT1 : 0.12;
+                        const _dt2 = screenTheme ? screenTheme.eT2 : 0.25;
+                        const _dt3 = screenTheme ? screenTheme.eT3 : (floorLevel <= 49 ? 0.35 : 0.28);
                         if (enemyRoll < _dt1) {
                             // 最も広い方向にビームを向ける
                             let bestDir = 0, maxDist = -1;
@@ -1771,13 +1817,13 @@ function initMap() {
                                 while (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS && sMap[ty][tx] !== SYMBOLS.WALL) { dist++; tx += dx_c; ty += dy_c; }
                                 if (dist > maxDist) { maxDist = dist; bestDir = d; }
                             }
-                            const _dTType = (deepTheme && Math.random() < 0.30) ? 'HOPPER_TURRET' : 'TURRET';
+                            const _dTType = (screenTheme && Math.random() < 0.30) ? 'HOPPER_TURRET' : 'TURRET';
                             sEnemies.push({ type: _dTType, x: ex, y: ey, dir: bestDir, hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0, hopTimer: 1 + Math.floor(Math.random() * 3) });
                         } else if (enemyRoll < _dt2) {
                             sEnemies.push({ type: 'ORC', x: ex, y: ey, hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0 });
                         } else if (floorLevel >= 4 && enemyRoll < _dt3 + sBreakerBonus) {
                             sEnemies.push({ type: 'BREAKER', x: ex, y: ey, hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0 });
-                        } else if (!deepTheme && floorLevel >= 40 && floorLevel <= 49 && enemyRoll < 0.37 + sBreakerBonus) {
+                        } else if (!screenTheme && floorLevel >= 40 && floorLevel <= 49 && enemyRoll < 0.37 + sBreakerBonus) {
                             sEnemies.push({ type: 'LAYER', x: ex, y: ey, hp: 20 + floorLevel * 2, maxHp: 20 + floorLevel * 2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 25, stunTurns: 0 });
                         } else {
                             const newEnemy = { type: 'NORMAL', x: ex, y: ey, hp: 3 + floorLevel, maxHp: 3 + floorLevel, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0 };
@@ -1949,19 +1995,28 @@ function initMap() {
             if (bizType === 'MONSTER_FLOOD') {
                 for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.FLOOR;
                 rooms.push({ x:1, y:1, w:COLS-2, h:ROWS-2, cx:Math.floor(COLS/2), cy:Math.floor(ROWS/2) });
-                const spawnArea = [];
-                for (let y = 3; y < ROWS-3; y++) for (let x = 3; x < COLS-3; x++) spawnArea.push({x,y});
-                spawnArea.sort(() => Math.random()-0.5);
-                const count = 30 + Math.floor(Math.random()*10);
-                for (let i = 0; i < Math.min(count, spawnArea.length); i++) {
-                    const {x, y} = spawnArea[i];
-                    const roll = Math.random();
-                    let type, hp, exp;
-                    if (roll < 0.55) { type='NORMAL'; hp=3+floorLevel; exp=5; }
-                    else if (roll < 0.72) { type='BLAZE'; hp=15+floorLevel*2; exp=15; }
-                    else if (roll < 0.88) { type='FROST'; hp=15+floorLevel*2; exp=15; }
-                    else { type='ORC'; hp=40+floorLevel*5; exp=40; }
-                    sEnemies.push({ type, x, y, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0 });
+                // グリッド状（2マス間隔）に配置して画面を完全に埋め尽くす
+                for (let y = 2; y < ROWS-2; y += 2) {
+                    for (let x = 2; x < COLS-2; x += 2) {
+                        // プレイヤーのスポーン地点（画面左上）は空ける
+                        if (x <= 4 && y <= 4) continue;
+                        const roll = Math.random();
+                        if (roll < 0.30) {
+                            sEnemies.push({ type:'NORMAL', x, y, hp:3+floorLevel, maxHp:3+floorLevel, flashUntil:0, offsetX:0, offsetY:0, expValue:5, stunTurns:0 });
+                        } else if (roll < 0.45) {
+                            sEnemies.push({ type:'ORC', x, y, hp:40+floorLevel*5, maxHp:40+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0 });
+                        } else if (roll < 0.58) {
+                            sEnemies.push({ type:'BLAZE', x, y, hp:15+floorLevel*2, maxHp:15+floorLevel*2, flashUntil:0, offsetX:0, offsetY:0, expValue:15, stunTurns:0 });
+                        } else if (roll < 0.70) {
+                            sEnemies.push({ type:'FROST', x, y, hp:15+floorLevel*2, maxHp:15+floorLevel*2, flashUntil:0, offsetX:0, offsetY:0, expValue:15, stunTurns:0 });
+                        } else if (roll < 0.83) {
+                            const dir = Math.floor(Math.random()*4);
+                            const ttype = Math.random() < 0.40 ? 'HOPPER_TURRET' : 'TURRET';
+                            sEnemies.push({ type:ttype, x, y, dir, hp:100+floorLevel*5, maxHp:100+floorLevel*5, flashUntil:0, offsetX:0, offsetY:0, expValue:40, stunTurns:0, hopTimer:1+Math.floor(Math.random()*3) });
+                        } else {
+                            sWisps.push({ x, y, dir:Math.floor(Math.random()*4), mode:'STRAIGHT' });
+                        }
+                    }
                 }
 
             // ---- LAVA_SEA: 9割が溶岩、細い道だけ ----
@@ -2115,8 +2170,12 @@ function initMap() {
             for (let sx = 0; sx < screenGridSize; sx++) {
                 let screenType;
                 const isSpecial = specialScreens.has(`${sx},${sy}`);
+                // 画面ごとにランダムなバリエーションテーマを選択
+                const _sTheme = (screenThemes && screenThemes.length > 0)
+                    ? screenThemes[Math.floor(Math.random() * screenThemes.length)]
+                    : deepTheme;
                 // 奇妙な場所（101F以上・特殊画面以外・テーマで変動）
-                if (floorLevel >= 101 && !isSpecial && Math.random() < (deepTheme ? deepTheme.bizarreChance : 0.25)) {
+                if (floorLevel >= 101 && !isSpecial && Math.random() < (_sTheme ? _sTheme.bizarreChance : 0.25)) {
                     const result = generateBizarreScreen(sx, sy);
                     screenGrid.maps[sy][sx] = result.sMap;
                     screenGrid.enemies[sy][sx] = result.sEnemies;
@@ -2128,7 +2187,7 @@ function initMap() {
                     continue;
                 }
                 if (deepTheme) {
-                    // テーマの重みに基づいてスクリーンタイプを選択
+                    // フロアテーマの重みに基づいてスクリーンタイプを選択（タイプ分布はフロア全体で統一）
                     const _w = deepTheme.screenTypeWeights;
                     const _r = Math.random();
                     const _t1 = _w.maze, _t2 = _t1 + _w.dungeon, _t3 = _t2 + _w.castle;
@@ -2139,18 +2198,31 @@ function initMap() {
                     const r = Math.random();
                     screenType = r < 0.15 ? 'maze' : r < 0.35 ? 'dungeon' : 'castle';
                 }
-                const result = generateOneScreen(sx, sy, screenType);
+                const result = generateOneScreen(sx, sy, screenType, _sTheme);
                 screenGrid.maps[sy][sx] = result.sMap;
                 screenGrid.enemies[sy][sx] = result.sEnemies;
                 screenGrid.wisps[sy][sx] = result.sWisps;
                 screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
                 allRooms[`${sx},${sy}`] = result.rooms;
 
+                // ===== いかれたG (3%: 101F以上・スタート画面以外) =====
+                if (floorLevel >= 101 && !(sx === 0 && sy === 0) && Math.random() < 0.03 && result.rooms.length >= 1) {
+                    const gRoom = result.rooms[Math.floor(Math.random() * result.rooms.length)];
+                    const gHp = 500 + floorLevel * 10;
+                    screenGrid.enemies[sy][sx].push({
+                        type: 'CRAZY_G', x: gRoom.cx, y: gRoom.cy,
+                        hp: gHp, maxHp: gHp,
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 200, stunTurns: 0
+                    });
+                }
+
                 // ===== サモナールーム (1%: 101F以上・スタート画面以外) =====
                 if (floorLevel >= 101 && !(sx === 0 && sy === 0) && Math.random() < 0.01 && result.rooms.length >= 2) {
-                    // スタート部屋(index0)以外からランダム選択
-                    const srIdx = 1 + Math.floor(Math.random() * (result.rooms.length - 1));
-                    const sr = result.rooms[srIdx];
+                    // 十分広い部屋（8x6以上）のみ候補にする
+                    const largeRooms = result.rooms.slice(1).filter(r => r.w >= 8 && r.h >= 6);
+                    if (largeRooms.length === 0) { /* 大きな部屋がなければスキップ */ }
+                    else {
+                    const sr = largeRooms[Math.floor(Math.random() * largeRooms.length)];
                     const sMap2 = screenGrid.maps[sy][sx];
 
                     // 部屋をきれいな床に整える（最低8x6確保）
@@ -2231,6 +2303,7 @@ function initMap() {
                     }
 
                     addLog("⚠️ A Summoner's Sanctum lurks nearby...");
+                    } // end largeRooms check
                 }
             }
         }
@@ -2357,6 +2430,18 @@ function initMap() {
                 }
             }
         }
+        // 聖域フロア: 全スクリーンの敵を友好的に（青色、攻撃しない）
+        if (deepTheme && deepTheme.isSanctuaryFloor) {
+            isSanctuaryFloor = true;
+            for (let sy = 0; sy < screenGridSize; sy++)
+                for (let sx = 0; sx < screenGridSize; sx++)
+                    screenGrid.enemies[sy][sx].forEach(e => { e.isAlly = true; });
+            movingMadmen.forEach(m => { m.isAlly = true; });
+            addLog("Something feels different here...");
+            addLog("All is silent. / すべてが静かだ。");
+            addLog("The creatures here are at peace. / この階の者たちは、おだやかだ。");
+        }
+
         // スタート画面(0,0)のmovingMadmenは即座にenemiesへ（ただしプレイヤーから遠ければ）
         enemies = screenGrid.enemies[0][0];
         const startMadmen = movingMadmen.filter(m => m.screenX === 0 && m.screenY === 0 &&
@@ -6174,6 +6259,7 @@ function drawOpening(now) {
 function gameLoop(now) {
     const hideStates = ['TITLE', 'OPENING', 'GAMEOVER', 'GAMEOVER_SEQ', 'ENDING', 'ENDING_SEQ'];
     statsBar.style.display = hideStates.includes(gameState) ? 'none' : '';
+    logRow.style.display = hideStates.includes(gameState) ? 'none' : '';
 
     if (gameState === 'TITLE') {
         drawTitle();
@@ -6237,7 +6323,9 @@ function drawTitle() {
     const menuY = canvas.height / 2 + 30;
     ctx.font = '24px Courier New';
     const hasSave = localStorage.getItem('minimal_rogue_save') !== null;
-    const options = ['START NEW GAME', 'CONTINUE', 'TEST PLAY', 'DEEP TEST'];
+    const allOptions = ['START NEW GAME', 'CONTINUE', 'TEST PLAY', 'DEEP TEST'];
+    const visibleCount = testModeVisible ? 4 : 2;
+    const options = allOptions.slice(0, visibleCount);
     options.forEach((opt, i) => {
         const isSelected = titleSelection === i;
         let isDisabled = i === 1 && !hasSave && !deepUnlocked;
@@ -6246,13 +6334,21 @@ function drawTitle() {
             text = 'DESCEND INTO THE ABYSS';
             ctx.fillStyle = isSelected ? '#38bdf8' : '#1e6fa8';
         } else {
-            ctx.fillStyle = isDisabled ? '#333' : (isSelected ? '#fff' : '#666');
+            ctx.fillStyle = isSelected ? '#fff' : (isDisabled ? '#333' : '#666');
         }
         if (i === 2) text = `TEST: FLOOR ${testFloor}`;
         if (i === 3) text = `DEEP TEST: FLOOR ${deepTestFloor}`;
         if (isSelected) {
             text = `> ${text} <`;
-            if (i === 1 && deepUnlocked) {
+            if (i === 1 && !hasSave && !deepUnlocked) {
+                // セーブなし・深層未解放時のヒント（2行）
+                ctx.font = '11px Courier New';
+                ctx.fillStyle = '#555';
+                ctx.fillText('Auto-save only. Resume from where you died.  /  オートセーブのみ。死んだ階層から再開します。', canvas.width / 2, menuY + i * 40 + 22);
+                ctx.fillText('No save data yet.  /  まだデータがありません。', canvas.width / 2, menuY + i * 40 + 36);
+                ctx.font = '24px Courier New';
+                ctx.fillStyle = '#fff'; // CONTINUE本文の色を白に戻す
+            } else if (i === 1 && deepUnlocked) {
                 ctx.font = '12px Courier New';
                 ctx.fillStyle = '#38bdf8';
                 ctx.fillText('Beyond floor 100 lies the unknown...', canvas.width / 2, menuY + i * 40 + 25);
@@ -6274,6 +6370,12 @@ function drawTitle() {
         }
         ctx.fillText(text, canvas.width / 2, menuY + i * 40);
     });
+    // テストモード表示中インジケーター
+    if (testModeVisible) {
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = '#f97316';
+        ctx.fillText('[TEST MODE]', canvas.width / 2, menuY + 4 * 40 + 15);
+    }
     ctx.font = '14px Courier New';
     ctx.fillStyle = '#444';
     ctx.fillText('[Arrows] to Select  [Enter] to Decide', canvas.width / 2, canvas.height - 40);
@@ -7042,6 +7144,27 @@ function draw(now) {
             }
         }
 
+        // 1.5. 移動中妖精の聖域オーラ（4マス以内の床タイルを薄く白く塗る）
+        if (multiScreenMode) {
+            const AURA_RANGE = 4;
+            const wallSyms = new Set([SYMBOLS.WALL]);
+            ctx.save();
+            ctx.fillStyle = 'rgba(255,255,255,0.18)';
+            for (const f of movingFairies) {
+                if (f.screenX !== currentScreen.x || f.screenY !== currentScreen.y) continue;
+                for (let dy = -AURA_RANGE; dy <= AURA_RANGE; dy++) {
+                    for (let dx = -AURA_RANGE; dx <= AURA_RANGE; dx++) {
+                        if (Math.abs(dx) + Math.abs(dy) > AURA_RANGE) continue;
+                        const tx = f.x + dx, ty = f.y + dy;
+                        if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) continue;
+                        if (wallSyms.has(map[ty][tx])) continue;
+                        ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+            ctx.restore();
+        }
+
         // 2. 設置ブロック
         tempWalls.forEach(w => {
             const wx = w.x * TILE_SIZE;
@@ -7249,6 +7372,13 @@ function draw(now) {
                     eChar = SYMBOLS.PLAYER;
                     ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 8;
                 }
+                else if (e.type === 'CRAZY_G') {
+                    // いかれたG: 紫色で激しく明滅
+                    const gPhase = Math.floor(now / 55) % 3;
+                    eColor = gPhase === 0 ? '#a855f7' : gPhase === 1 ? '#d8b4fe' : '#7c3aed';
+                    eChar = 'G';
+                    ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 16;
+                }
                 if (e.isAlly) eColor = '#60a5fa';
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
@@ -7278,10 +7408,12 @@ function draw(now) {
             }
             if (endX !== startX || endY !== startY) {
                 ctx.save();
+                const laserColor = e.isAlly ? '#60a5fa' : '#ef4444';
+                const laserGlow = e.isAlly ? 'rgba(96, 165, 250, 0.3)' : 'rgba(239, 68, 68, 0.3)';
                 // グロー（太い半透明の線）
-                ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
+                ctx.strokeStyle = laserGlow;
                 ctx.lineWidth = 6;
-                ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 15;
+                ctx.shadowColor = laserColor; ctx.shadowBlur = 15;
                 ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
                 // コア（細い明るい線）
                 ctx.strokeStyle = '#fff';
@@ -9026,7 +9158,8 @@ async function handleAction(dx, dy) {
         if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRing('STAMINA_RING') ? 12 : 20));
         player.offsetX = 0; player.offsetY = 0;
     } else {
-        player.stamina = Math.min(100, player.stamina + 20);
+        // 防御(dx=0,dy=0)は+50、移動は+20
+        player.stamina = Math.min(100, player.stamina + (dx === 0 && dy === 0 ? 50 : 20));
 
         // 商人への接触（壁扱いだが、隣接してEnterの代わりに方向キーで話しかける）
         if (map[ny][nx] === SYMBOLS.MERCHANT && !(merchantState && merchantState.dyingUntil)) {
@@ -9539,8 +9672,8 @@ async function checkWispDamage(w) {
 // 妖精は飛行しているため、氷・溶岩・毒沼も1マスずつ通過可能（壁のみ通過不可）
 function fairyBFS(fMap, startX, startY, targetX, targetY) {
     if (startX === targetX && startY === targetY) return { dx: 0, dy: 0 };
-    // 妖精が通過できない「壁扱い」タイルのセット
-    const fairyWall = new Set([SYMBOLS.WALL]);
+    // 妖精は飛行＆魔法存在のため壁を含む全タイルを通過可能（マップ範囲内のみ）
+    const fairyWall = new Set([]);
     const visited = new Uint8Array(ROWS * COLS);
     visited[startY * COLS + startX] = 1;
     const queue = [];
@@ -9582,7 +9715,7 @@ function moveFairies() {
     // 妖精が新しいタイルへ到着: 氷・溶岩・毒沼などの上も飛行でそのまま通過
     const _fairyPassable = new Set([
         SYMBOLS.FLOOR, SYMBOLS.ICE, SYMBOLS.LAVA, SYMBOLS.POISON,
-        SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS,
+        SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS, SYMBOLS.WALL,
     ]);
     const fairyArrive = (fMap, fx, fy) => {
         if (!fMap) return SYMBOLS.FLOOR;
@@ -9595,22 +9728,29 @@ function moveFairies() {
         return _fairyPassable.has(prev) ? prev : SYMBOLS.FLOOR;
     };
 
-    // 目標のグローバル位置をキー優先、なければ出口で探す
-    let goalGX = -1, goalGY = -1;
-    const searchSymbols = [SYMBOLS.KEY, SYMBOLS.STAIRS];
-    for (const sym of searchSymbols) {
-        if (goalGX >= 0) break;
-        outer: for (let sy = 0; sy < screenGridSize; sy++) {
-            for (let sx = 0; sx < screenGridSize; sx++) {
-                const m = (sx === currentScreen.x && sy === currentScreen.y) ? map : screenGrid.maps[sy][sx];
-                if (!m) continue;
-                for (let fy = 0; fy < ROWS; fy++)
-                    for (let fx = 0; fx < COLS; fx++)
-                        if (m[fy][fx] === sym) { goalGX = sx * COLS + fx; goalGY = sy * ROWS + fy; break outer; }
+    // 妖精ごとに目標を計算するヘルパー（自分の位置を除外してキー優先・なければ出口）
+    const findGoalForFairy = (fairy) => {
+        const searchSymbols = [SYMBOLS.KEY, SYMBOLS.STAIRS];
+        for (const sym of searchSymbols) {
+            let gx = -1, gy = -1;
+            outer: for (let sy = 0; sy < screenGridSize; sy++) {
+                for (let sx = 0; sx < screenGridSize; sx++) {
+                    const m = (sx === currentScreen.x && sy === currentScreen.y) ? map : screenGrid.maps[sy][sx];
+                    if (!m) continue;
+                    for (let fy2 = 0; fy2 < ROWS; fy2++) {
+                        for (let fx2 = 0; fx2 < COLS; fx2++) {
+                            if (m[fy2][fx2] !== sym) continue;
+                            // 自分がすでにそのタイルにいる場合はスキップ（立ち止まり防止）
+                            if (sx === fairy.screenX && sy === fairy.screenY && fx2 === fairy.x && fy2 === fairy.y) continue;
+                            gx = sx * COLS + fx2; gy = sy * ROWS + fy2; break outer;
+                        }
+                    }
+                }
             }
+            if (gx >= 0) return { gx, gy, sym };
         }
-    }
-    if (goalGX < 0) return;
+        return { gx: -1, gy: -1, sym: null };
+    };
 
     const dirs = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
     const PASS_Y = 12, PASS_X = 19;
@@ -9656,14 +9796,29 @@ function moveFairies() {
             continue;
         }
 
+        // ---- プレイヤーが1マス以内にいれば移動しない（捕まえられないように） ----
+        if (isCurrentScreen && Math.abs(f.x - player.x) + Math.abs(f.y - player.y) <= 1) continue;
+
         // ---- 1マス移動: 壁以外はすべてすり抜ける ----
         const curFMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
         if (!curFMap) continue;
 
+        // この妖精専用のゴールを計算（自分の位置は除外して立ち止まり防止）
+        const { gx: goalGX, gy: goalGY, sym: goalSym } = findGoalForFairy(f);
+        if (goalGX < 0) continue; // 目標なし
+
         const goalSX = Math.floor(goalGX / COLS), goalSY = Math.floor(goalGY / ROWS);
+        const goalLocalX = goalGX % COLS, goalLocalY = goalGY % ROWS;
+
+        // KEY・STAIRS が目標かつ同じ画面にいる場合、1マス隣にいれば停止して待機
+        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
+            const distToGoal = Math.abs(f.x - goalLocalX) + Math.abs(f.y - goalLocalY);
+            if (distToGoal <= 1) continue; // 1マス以内なら停止
+        }
+
         let targetX, targetY;
         if (f.screenX === goalSX && f.screenY === goalSY) {
-            targetX = goalGX % COLS; targetY = goalGY % ROWS;
+            targetX = goalLocalX; targetY = goalLocalY;
         } else {
             const dx = goalSX - f.screenX, dy = goalSY - f.screenY;
             if (Math.abs(dx) >= Math.abs(dy)) {
@@ -9675,6 +9830,12 @@ function moveFairies() {
 
         // BFSで障害物（壁）を避けながら最短経路の第一歩を取得
         const { dx: bestDX, dy: bestDY } = fairyBFS(curFMap, f.x, f.y, targetX, targetY);
+
+        // KEY・STAIRSが目標の場合、次の一歩がそのタイル自体なら踏み込まない
+        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
+            const nx = f.x + bestDX, ny = f.y + bestDY;
+            if (nx === goalLocalX && ny === goalLocalY) continue;
+        }
 
         if (bestDX !== 0 || bestDY !== 0) {
             fairyLeave(curFMap, f.x, f.y, f.underTile);
@@ -10805,6 +10966,66 @@ async function enemyTurn() {
             }
             continue;
         }
+
+        // ===== いかれたG: プレイヤー・敵・味方問わず最近傍の存在に突撃 =====
+        if (e.type === 'CRAZY_G') {
+            // 全ターゲット候補（自分以外の全エンティティ）
+            const crazyTargets = [];
+            if (!player.isStealth) crazyTargets.push({ x: player.x, y: player.y, isPlayer: true });
+            for (const other of enemies) {
+                if (other === e || other.hp <= 0 || other._dead) continue;
+                crazyTargets.push({ x: other.x, y: other.y, isEnemy: true, obj: other });
+            }
+            if (crazyTargets.length === 0) continue;
+
+            // 最近傍を選択
+            let crazyBest = crazyTargets[0], crazyMin = Infinity;
+            for (const t of crazyTargets) {
+                const d = Math.abs(t.x - e.x) + Math.abs(t.y - e.y);
+                if (d < crazyMin) { crazyMin = d; crazyBest = t; }
+            }
+
+            if (crazyMin === 1) {
+                // 隣接 → 攻撃
+                e.offsetX = (crazyBest.x - e.x) * 10; e.offsetY = (crazyBest.y - e.y) * 10;
+                spawnSlash(crazyBest.x, crazyBest.y);
+                SOUNDS.ENEMY_ATTACK();
+                if (crazyBest.isPlayer) {
+                    let dmg = Math.max(1, (Math.floor(floorLevel / 2) + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                    if (player.isDefending) dmg = Math.max(1, Math.floor(dmg * 0.4));
+                    SOUNDS.DAMAGE(); setScreenShake(6, 150);
+                    player.hp -= dmg; player.flashUntil = performance.now() + 200;
+                    if (player.hp > 0) animateBounce(player);
+                    spawnDamageText(player.x, player.y, dmg, '#4ade80');
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                    attackOccurred = true;
+                } else if (crazyBest.isEnemy) {
+                    const target = crazyBest.obj;
+                    const dmg = 30 + Math.floor(floorLevel / 2);
+                    target.hp -= dmg; target.flashUntil = performance.now() + 200;
+                    spawnDamageText(target.x, target.y, dmg, '#4ade80');
+                    SOUNDS.HIT();
+                    if (target.hp <= 0) handleEnemyDeath(target);
+                    attackOccurred = true;
+                }
+                await new Promise(r => setTimeout(r, 60));
+                e.offsetX = 0; e.offsetY = 0;
+            } else {
+                // 接近
+                const cdx = crazyBest.x - e.x, cdy = crazyBest.y - e.y;
+                const csx = cdx === 0 ? 0 : cdx / Math.abs(cdx), csy = cdy === 0 ? 0 : cdy / Math.abs(cdy);
+                if (Math.abs(cdx) > Math.abs(cdy)) {
+                    if (canEnemyMove(e.x + csx, e.y, e)) e.x += csx;
+                    else if (canEnemyMove(e.x, e.y + csy, e)) e.y += csy;
+                } else {
+                    if (canEnemyMove(e.x, e.y + csy, e)) e.y += csy;
+                    else if (canEnemyMove(e.x + csx, e.y, e)) e.x += csx;
+                }
+                if (isRealHole(e.x, e.y)) scheduleEnemyFall(e, "The Crazy G fell into the HOLE!");
+            }
+            continue;
+        }
+
         if (e.type === 'DRAGON') {
             // 近接攻撃の判定（頭部または胴体の隣接マス）
             const segments = [{ x: e.x, y: e.y }, ...(e.body || [])];
@@ -11925,6 +12146,34 @@ async function enemyTurn() {
                     }
                 }
             }
+        } else if (!e.isAlly && movingFairies.some(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 4)) {
+            // 妖精の聖なるオーラを恐れて逃げる
+            const nearFairy = movingFairies.find(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 4);
+            const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+            dirs.sort((a, b) => {
+                const distA = Math.abs(nearFairy.x - (e.x + a.x)) + Math.abs(nearFairy.y - (e.y + a.y));
+                const distB = Math.abs(nearFairy.x - (e.x + b.x)) + Math.abs(nearFairy.y - (e.y + b.y));
+                if (distB !== distA) return distB - distA;
+                return Math.random() - 0.5;
+            });
+            let movedFromFairy = false;
+            for (const d of dirs) {
+                if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
+                    e.x += d.x; e.y += d.y; movedFromFairy = true; break;
+                }
+            }
+            if (movedFromFairy && !e._dead) {
+                if (e.type === 'FROST') {
+                    if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.LAVA) {
+                        map[e.y][e.x] = SYMBOLS.ICE; SOUNDS.FREEZE();
+                    }
+                } else if (e.type === 'BLAZE') {
+                    if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.ICE) {
+                        map[e.y][e.x] = SYMBOLS.LAVA; SOUNDS.IGNITE();
+                    }
+                }
+                if (!e._dead && isRealHole(e.x, e.y)) scheduleEnemyFall(e, "An enemy fled into the HOLE!");
+            }
         } else if (minDist <= detectRange) {
             // 接近
             const oldPos = { x: e.x, y: e.y };
@@ -12181,7 +12430,7 @@ async function enemyTurn() {
 
 async function applyLaserDamage() {
     for (const e of enemies) {
-        if ((e.type === 'TURRET' || e.type === 'HOPPER_TURRET') && e.hp > 0 && !e.isFalling) {
+        if ((e.type === 'TURRET' || e.type === 'HOPPER_TURRET') && e.hp > 0 && !e.isFalling && !e.isAlly) {
             const dx = [0, 1, 0, -1][e.dir];
             const dy = [-1, 0, 1, 0][e.dir];
             let lx = e.x + dx, ly = e.y + dy;
@@ -12584,20 +12833,49 @@ async function startGame(startFloor = 1, isTestMode = false) {
 }
 
 async function continueGame() {
-    // 深層解放済みの場合は101Fから深層スタート
-    if (localStorage.getItem('deep_unlocked') === '1') {
+    const deepUnlocked = localStorage.getItem('deep_unlocked') === '1';
+    const saveRaw = localStorage.getItem('minimal_rogue_save');
+
+    // 101F以上のセーブがある → 深層を普通にロード
+    if (saveRaw) {
+        try {
+            const parsed = JSON.parse(saveRaw);
+            if (parsed.floorLevel >= 101) {
+                if (loadGame()) {
+                    screenShake.x = 0; screenShake.y = 0; screenShake.until = 0;
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    isPlayerVisible = false;
+                    gameOverAlpha = 0;
+                    turnCount = 0;
+                    tempWalls = []; wisps = []; bombs = [];
+                    initMap();
+                    updateUI();
+                    transition.active = true;
+                    transition.alpha = 1;
+                    transition.mode = 'FALLING';
+                    gameState = 'PLAYING';
+                    await startFloorTransition();
+                }
+                return;
+            }
+        } catch(e) {}
+    }
+
+    // 深層解放済みで100F以下のセーブ（またはセーブなし）→ 深層スタート
+    if (deepUnlocked) {
         await startDeepRun();
         return;
     }
+
+    // 通常ゲームのセーブをロード
     if (loadGame()) {
-        // startGame() と同様の完全なリセット
         screenShake.x = 0; screenShake.y = 0; screenShake.until = 0;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         isPlayerVisible = false;
         gameOverAlpha = 0;
         turnCount = 0;
         tempWalls = []; wisps = []; bombs = [];
-        initMap(); // 描画エラー防止のための事前初期化
+        initMap();
         updateUI();
         transition.active = true;
         transition.alpha = 1;
@@ -12616,12 +12894,26 @@ async function startDeepRun() {
     transition.alpha = 1.0;
     transition.text = '';
 
-    await showStoryPages([
-        ["You survived the dungeon."],
-        ["But something calls from below."],
-        ["Deeper."],
-        ["Much deeper."],
-    ], false, false, 3000);
+    // 初回のみイントロを表示
+    const deepStorySeen = localStorage.getItem('deep_story_seen') === '1';
+    if (!deepStorySeen) {
+        await showStoryPages([
+            ["You survived the dungeon.", "", "あなたはダンジョンを生き延びた。"],
+            ["But something calls from below.", "", "しかし、何かが下から呼んでいる。"],
+            ["Deeper.", "", "もっと深く。"],
+            ["Much deeper.", "", "はるか深くへ。"],
+        ], false, false, 3000);
+        localStorage.setItem('deep_story_seen', '1');
+    }
+
+    // 100F以下のセーブは深層開始前にクリア
+    const saveData = localStorage.getItem('minimal_rogue_save');
+    if (saveData) {
+        try {
+            const parsed = JSON.parse(saveData);
+            if (parsed.floorLevel <= 100) localStorage.removeItem('minimal_rogue_save');
+        } catch(e) {}
+    }
 
     await new Promise(r => setTimeout(r, 500));
     isProcessing = false;
@@ -12672,7 +12964,21 @@ window.addEventListener('keydown', async e => {
 
     if (e.key === 'ArrowUp' || e.key === 'w') {
         e.preventDefault();
-        if (gameState === 'TITLE') { titleSelection = (titleSelection + 3) % 4; SOUNDS.SELECT(); return; }
+        if (gameState === 'TITLE') {
+            // 秘密シーケンス検出（タイトル画面のみ）
+            titleSecretBuffer.push(e.key === 'ArrowUp' ? 'ArrowUp' : e.key);
+            if (titleSecretBuffer.length > TITLE_SECRET_SEQ.length) titleSecretBuffer.shift();
+            if (titleSecretBuffer.join(',') === TITLE_SECRET_SEQ.join(',')) {
+                testModeVisible = !testModeVisible;
+                titleSecretBuffer = [];
+                if (!testModeVisible && titleSelection >= 2) titleSelection = 0;
+                SOUNDS.SELECT();
+                return;
+            }
+            const count = testModeVisible ? 4 : 2;
+            titleSelection = (titleSelection + count - 1) % count;
+            SOUNDS.SELECT(); return;
+        }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 2) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
             const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes].filter(c => c > 0);
@@ -12692,7 +12998,21 @@ window.addEventListener('keydown', async e => {
     }
     if (e.key === 'ArrowDown' || e.key === 's') {
         e.preventDefault();
-        if (gameState === 'TITLE') { titleSelection = (titleSelection + 1) % 4; SOUNDS.SELECT(); return; }
+        if (gameState === 'TITLE') {
+            // 秘密シーケンス検出（タイトル画面のみ）
+            titleSecretBuffer.push('ArrowDown');
+            if (titleSecretBuffer.length > TITLE_SECRET_SEQ.length) titleSecretBuffer.shift();
+            if (titleSecretBuffer.join(',') === TITLE_SECRET_SEQ.join(',')) {
+                testModeVisible = !testModeVisible;
+                titleSecretBuffer = [];
+                if (!testModeVisible && titleSelection >= 2) titleSelection = 0;
+                SOUNDS.SELECT();
+                return;
+            }
+            const count = testModeVisible ? 4 : 2;
+            titleSelection = (titleSelection + 1) % count;
+            SOUNDS.SELECT(); return;
+        }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
             const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes].filter(c => c > 0);
@@ -13110,7 +13430,7 @@ async function tryCharmEnemy() {
     });
 
     if (targets.size > 0) {
-        const charmImmune = ['DRAGON', 'TURRET', 'HOPPER_TURRET', 'SUMMONER'];
+        const charmImmune = ['DRAGON', 'TURRET', 'HOPPER_TURRET', 'SUMMONER', 'CRAZY_G'];
         targets.forEach(enemy => {
             if (charmImmune.includes(enemy.type)) {
                 spawnFloatingText(enemy.x, enemy.y, "RESIST!", "#ff6b6b");
