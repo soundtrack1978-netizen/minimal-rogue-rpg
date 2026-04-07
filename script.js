@@ -1978,7 +1978,8 @@ function initMap() {
             const rooms = [];
 
             const TYPES = ['MONSTER_FLOOD', 'LAVA_SEA', 'FROZEN_PRISON', 'VOID_CELLS', 'CHAOS_ALTAR'];
-            const bizType = TYPES[Math.floor(Math.random() * TYPES.length)];
+            // FACTION_WAR は低確率で出現（約15%）
+            const bizType = Math.random() < 0.15 ? 'FACTION_WAR' : TYPES[Math.floor(Math.random() * TYPES.length)];
 
             // 共通: 通路入口を開ける
             const openPassages = () => {
@@ -2110,7 +2111,7 @@ function initMap() {
                 }
 
             // ---- CHAOS_ALTAR: 全地形混沌、中央に砲台 ----
-            } else {
+            } else if (bizType !== 'FACTION_WAR') {
                 for (let y=1;y<ROWS-1;y++) for (let x=1;x<COLS-1;x++) {
                     const r=Math.random();
                     if(r<0.12) sMap[y][x]=SYMBOLS.WALL;
@@ -2138,6 +2139,62 @@ function initMap() {
                             else if(type==='BLAZE'||type==='FROST'){hp=15+floorLevel*2;exp=15;}
                             else{hp=3+floorLevel;exp=5;}
                             sEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0 });
+                            break;
+                        }
+                    }
+                }
+
+            // ---- FACTION_WAR: 二派閥の激戦区 ----
+            } else if (bizType === 'FACTION_WAR') {
+                // 全面開放の戦場
+                for (let y = 1; y < ROWS-1; y++) for (let x = 1; x < COLS-1; x++) sMap[y][x] = SYMBOLS.FLOOR;
+                rooms.push({ x:1, y:1, w:COLS-2, h:ROWS-2, cx:Math.floor(COLS/2), cy:Math.floor(ROWS/2) });
+                // 岩場・瓦礫（遮蔽物）
+                for (let i = 0; i < 10; i++) {
+                    const px = Math.floor(Math.random()*(COLS-8))+4;
+                    const py = Math.floor(Math.random()*(ROWS-6))+3;
+                    sMap[py][px] = SYMBOLS.WALL;
+                    if (Math.random() < 0.6) sMap[py][px+1] = SYMBOLS.WALL;
+                    if (Math.random() < 0.6) sMap[py+1][px] = SYMBOLS.WALL;
+                    if (Math.random() < 0.35) sMap[py+1][px+1] = SYMBOLS.WALL;
+                }
+                // 中央に縦の境界線（すでに戦闘中なのでわずかに混在）
+                const midX = Math.floor(COLS / 2);
+
+                // --- CRIMSON派閥: ORC + BREAKER + BLAZE ---
+                const crimsonPool = ['ORC','ORC','ORC','BREAKER','BREAKER','BLAZE','ORC','BREAKER','BLAZE','ORC','BREAKER'];
+                for (let i = 0; i < crimsonPool.length; i++) {
+                    for (let t = 0; t < 80; t++) {
+                        // 左60%に多く配置（侵攻中なので一部は右側にも）
+                        const ex = Math.random() < 0.70
+                            ? Math.floor(Math.random() * (midX - 2)) + 2
+                            : Math.floor(Math.random() * (COLS-4)) + 2;
+                        const ey = Math.floor(Math.random() * (ROWS-4)) + 2;
+                        if (sMap[ey][ex] === SYMBOLS.FLOOR && !sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                            const type = crimsonPool[i];
+                            let hp, exp;
+                            if (type==='ORC')     { hp=40+floorLevel*5; exp=40; }
+                            else if (type==='BREAKER'){ hp=50+floorLevel*4; exp=45; }
+                            else                  { hp=15+floorLevel*2; exp=15; } // BLAZE
+                            sEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0, faction:'CRIMSON' });
+                            break;
+                        }
+                    }
+                }
+                // --- COBALT派閥: FROST + NORMAL ---
+                const cobaltPool = ['FROST','NORMAL','FROST','NORMAL','NORMAL','FROST','FROST','NORMAL','FROST','NORMAL','NORMAL'];
+                for (let i = 0; i < cobaltPool.length; i++) {
+                    for (let t = 0; t < 80; t++) {
+                        const ex = Math.random() < 0.70
+                            ? Math.floor(Math.random() * (COLS - midX - 2)) + midX
+                            : Math.floor(Math.random() * (COLS-4)) + 2;
+                        const ey = Math.floor(Math.random() * (ROWS-4)) + 2;
+                        if (sMap[ey][ex] === SYMBOLS.FLOOR && !sEnemies.some(e=>e.x===ex&&e.y===ey)) {
+                            const type = cobaltPool[i];
+                            let hp, exp;
+                            if (type==='FROST'){ hp=15+floorLevel*2; exp=15; }
+                            else              { hp=3+floorLevel;     exp=5;  } // NORMAL
+                            sEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:exp, stunTurns:0, faction:'COBALT' });
                             break;
                         }
                     }
@@ -2199,7 +2256,7 @@ function initMap() {
                     screenGrid.wisps[sy][sx] = result.sWisps;
                     screenGrid.tempWalls[sy][sx] = result.sTempWalls || [];
                     allRooms[`${sx},${sy}`] = result.rooms;
-                    const bizNames = { MONSTER_FLOOD:'Monster Flood', LAVA_SEA:'Sea of Lava', FROZEN_PRISON:'Frozen Prison', VOID_CELLS:'Void Cells', CHAOS_ALTAR:'Chaos Altar' };
+                    const bizNames = { MONSTER_FLOOD:'Monster Flood', LAVA_SEA:'Sea of Lava', FROZEN_PRISON:'Frozen Prison', VOID_CELLS:'Void Cells', CHAOS_ALTAR:'Chaos Altar', FACTION_WAR:'⚔️ FACTION WAR' };
                     addLog(`⚠️ A strange aura... "${bizNames[result.bizType] || '???'}"`);
                     continue;
                 }
@@ -7392,6 +7449,9 @@ function draw(now) {
                     ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 16;
                 }
                 if (e.isAlly) eColor = '#60a5fa';
+                // 派閥グロー
+                if (e.faction === 'CRIMSON' && !e.isAlly) { ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 14; }
+                else if (e.faction === 'COBALT' && !e.isAlly) { ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 14; }
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
             }
@@ -10955,6 +11015,27 @@ async function enemyTurn() {
             e.stunTurns--;
             addLog("Enemy is stunned...");
             continue;
+        }
+
+        // 派閥戦争: 異なる派閥の隣接敵を優先攻撃（プレイヤーは攻撃しない）
+        if (e.faction && !e.isAlly) {
+            const factionTarget = enemies.find(t =>
+                t !== e && !t._dead && t.hp > 0 && t.faction && t.faction !== e.faction &&
+                Math.abs(t.x - e.x) <= 1 && Math.abs(t.y - e.y) <= 1
+            );
+            if (factionTarget) {
+                const atkPow = Math.max(1, (e.type === 'ORC' ? 8 : e.type === 'BREAKER' ? 6 : e.type === 'BLAZE' ? 5 : 3) + Math.floor(floorLevel / 20));
+                factionTarget.hp -= atkPow;
+                factionTarget.flashUntil = performance.now() + 150;
+                e.offsetX = (factionTarget.x - e.x) * 8;
+                e.offsetY = (factionTarget.y - e.y) * 8;
+                spawnDamageText(factionTarget.x, factionTarget.y, atkPow, e.faction === 'CRIMSON' ? '#ef4444' : '#60a5fa');
+                SOUNDS.ENEMY_ATTACK();
+                await new Promise(r => setTimeout(r, 80));
+                e.offsetX = 0; e.offsetY = 0;
+                if (factionTarget.hp <= 0) handleEnemyDeath(factionTarget, false);
+                continue;
+            }
         }
 
         // ミミック固有AI（味方になった場合は通常の味方AIに任せる）
