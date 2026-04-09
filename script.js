@@ -7672,6 +7672,7 @@ function draw(now) {
     damageTexts.forEach(d => {
         const elapsed = (now - d.startTime) / (d.duration ?? 400);
         ctx.save(); ctx.globalAlpha = 1 - elapsed; ctx.fillStyle = d.color;
+        ctx.font = "12px 'Courier New', Courier, monospace";
         ctx.fillText(d.text, d.x * TILE_SIZE + TILE_SIZE, d.y * TILE_SIZE - 5); ctx.restore();
     });
 
@@ -7723,12 +7724,16 @@ function draw(now) {
     // 物語のメッセージ（storyMessage）
     if (storyMessage) {
         const lines = storyMessage.lines;
+        const _isJP = s => /[\u3000-\u9FFF\uFF00-\uFFEF]/.test(s);
+        const FONT_EN = "13px 'Courier New', Courier, monospace";
+        const FONT_JP = '13px "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "HGS Mincho", serif';
+        const LH = 17; // 行の高さ（80%サイズ）
         let totalH = 0;
         lines.forEach(line => {
             if (typeof line === 'object') {
                 const enLines = line.en.split('\n'); const jpLines = line.jp.split('\n');
-                totalH += (enLines.length * 20) + 10 + (jpLines.length * 20) + 10;
-            } else { totalH += 20; }
+                totalH += (enLines.length * LH) + 8 + (jpLines.length * LH) + 8;
+            } else { totalH += LH; }
         });
 
         // テキスト表示位置の決定
@@ -7740,30 +7745,29 @@ function draw(now) {
         }
 
         ctx.save(); ctx.globalAlpha = storyMessage.alpha; ctx.textAlign = 'center';
-        // デフォルトフォント：チュートリアルと同じ（日本語対応）
-        ctx.font = '16px "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", "Courier New", monospace';
         const isWhiteBG = transition.active && (transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT');
 
         lines.forEach(line => {
             if (typeof line === 'object') {
                 const enLines = line.en.split('\n'); const jpLines = line.jp.split('\n');
-                ctx.fillStyle = isWhiteBG ? '#000' : '#fff'; ctx.font = '16px "Courier New"';
-                enLines.forEach(l => { ctx.fillText(l, canvas.width / 2, currentY + 16); currentY += 20; });
-                currentY += 10;
-                ctx.fillStyle = isWhiteBG ? '#333' : '#888'; ctx.font = '14px "Meiryo", sans-serif';
-                jpLines.forEach(l => { ctx.fillText(l, canvas.width / 2, currentY + 14); currentY += 20; });
-                currentY += 10;
+                ctx.fillStyle = isWhiteBG ? '#000' : '#ccc'; ctx.font = FONT_EN;
+                enLines.forEach(l => { ctx.fillText(l, canvas.width / 2, currentY + 13); currentY += LH; });
+                currentY += 8;
+                ctx.fillStyle = isWhiteBG ? '#444' : '#aaa'; ctx.font = FONT_JP;
+                jpLines.forEach(l => { ctx.fillText(l, canvas.width / 2, currentY + 13); currentY += LH; });
+                currentY += 8;
             } else {
-                ctx.fillStyle = isWhiteBG ? '#000' : '#fff';
-                ctx.font = '16px "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", "Courier New", monospace';
-                ctx.fillText(line, canvas.width / 2, currentY + 16); currentY += 20;
+                const isJP = _isJP(line);
+                ctx.fillStyle = isWhiteBG ? (isJP ? '#444' : '#000') : (isJP ? '#aaa' : '#ccc');
+                ctx.font = isJP ? FONT_JP : FONT_EN;
+                ctx.fillText(line, canvas.width / 2, currentY + 13); currentY += LH;
             }
         });
 
         // ▼ 記号：テキストの最終描画位置（currentY）より少し下に表示し、重なりを防止
         if (storyMessage.showNext) {
-            ctx.fillStyle = isWhiteBG ? '#000' : '#fff'; ctx.font = "bold 16px 'Courier New'";
-            ctx.fillText("▼", canvas.width / 2, currentY + 20);
+            ctx.fillStyle = isWhiteBG ? '#000' : '#888'; ctx.font = "12px 'Courier New'";
+            ctx.fillText("▼", canvas.width / 2, currentY + 16);
         }
         ctx.restore();
     }
@@ -8947,6 +8951,11 @@ async function handleAction(dx, dy) {
             if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
+    }
+
+    // 杖なしでスペース+方向キー：移動しない（方向を無視してその場で防御）
+    if (isSpacePressed && !player.hasWand && (dx !== 0 || dy !== 0)) {
+        dx = 0; dy = 0;
     }
 
     isProcessing = true;
