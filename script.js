@@ -408,8 +408,8 @@ const SOUNDS = {
         setTimeout(() => playSound(100, 'sawtooth', 0.1, 0.15), 100);
     },
     BLOCK_PLACE: () => {
-        playSound(800, 'square', 0.08, 0.15);
-        setTimeout(() => playSound(600, 'square', 0.06, 0.1), 40);
+        playSound(800, 'square', 0.18, 0.15);
+        setTimeout(() => playSound(600, 'square', 0.13, 0.1), 40);
     },
     HEAL: () => {
         playMelody([{ f: 523.25, d: 0.1 }, { f: 659.25, d: 0.1 }, { f: 783.99, d: 0.1 }, { f: 1046.50, d: 0.3 }]);
@@ -3434,8 +3434,124 @@ function initMap() {
             wisps.push({ x: wx, y: wy, dir: Math.floor(Math.random() * 4), mode: 'FOLLOW' });
         }
 
-        // 出口 
+        // 出口
         map[ROWS - 4][18] = SYMBOLS.STAIRS;
+        return;
+    }
+
+    if (floorLevel === 23) {
+        addLog("EVENT: The Frozen Vault.");
+        addLog("WARNING: Ice covers the floor — and ancient Golems stand guard!");
+        isIceFloor = true;
+
+        // 全面を氷にする
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                map[y][x] = SYMBOLS.ICE;
+            }
+        }
+
+        // 壁の柱を点在させる（15Fより少なめ・大きめの柱）
+        for (let i = 0; i < 8; i++) {
+            const wx = Math.floor(Math.random() * (COLS - 10)) + 5;
+            const wy = Math.floor(Math.random() * (ROWS - 8)) + 4;
+            if (Math.abs(wx - 3) + Math.abs(wy - 3) > 4) {
+                map[wy][wx] = SYMBOLS.WALL;
+                // 2x2の柱にする（視覚的にわかりやすく）
+                if (wx + 1 < COLS - 1) map[wy][wx + 1] = SYMBOLS.WALL;
+                if (wy + 1 < ROWS - 1) map[wy + 1][wx] = SYMBOLS.WALL;
+                if (wx + 1 < COLS - 1 && wy + 1 < ROWS - 1) map[wy + 1][wx + 1] = SYMBOLS.WALL;
+            }
+        }
+
+        // プレイヤーを左上付近に配置、周囲を床にして滑らないように
+        player.x = 3; player.y = 3;
+        map[player.y][player.x] = SYMBOLS.FLOOR;
+        for (const ad of [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}]) {
+            if (map[player.y + ad.y] && map[player.y + ad.y][player.x + ad.x] !== SYMBOLS.WALL) {
+                map[player.y + ad.y][player.x + ad.x] = SYMBOLS.FLOOR;
+            }
+        }
+
+        // 出口を右下付近に配置
+        const exitX23 = COLS - 4, exitY23 = ROWS - 4;
+        map[exitY23][exitX23] = SYMBOLS.STAIRS;
+        for (const ad of [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}]) {
+            const nx23 = exitX23 + ad.x, ny23 = exitY23 + ad.y;
+            if (nx23 >= 1 && nx23 < COLS - 1 && ny23 >= 1 && ny23 < ROWS - 1 && map[ny23][nx23] !== SYMBOLS.WALL) {
+                map[ny23][nx23] = SYMBOLS.ICE;
+            }
+        }
+
+        // CRAZY_G (ゴーレム) 2体：マップ中央部にバラして配置
+        for (let i = 0; i < 2; i++) {
+            for (let retry = 0; retry < 200; retry++) {
+                const gx = Math.floor(Math.random() * (COLS - 14)) + 7 + i * 8;
+                const gy = Math.floor(Math.random() * (ROWS - 10)) + 5;
+                if ((map[gy][gx] === SYMBOLS.ICE || map[gy][gx] === SYMBOLS.FLOOR) &&
+                    !(gx === player.x && gy === player.y) &&
+                    !enemies.some(e => e.x === gx && e.y === gy) &&
+                    Math.abs(gx - player.x) + Math.abs(gy - player.y) > 8 &&
+                    Math.abs(gx - exitX23) + Math.abs(gy - exitY23) > 4) {
+                    enemies.push({
+                        type: 'CRAZY_G', x: gx, y: gy,
+                        hp: 40 + floorLevel * 2, maxHp: 40 + floorLevel * 2,
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
+                        stunTurns: 0
+                    });
+                    break;
+                }
+            }
+        }
+
+        // LAYER(L) 1体
+        for (let retry = 0; retry < 100; retry++) {
+            const lx = Math.floor(Math.random() * (COLS - 6)) + 3;
+            const ly = Math.floor(Math.random() * (ROWS - 6)) + 3;
+            if ((map[ly][lx] === SYMBOLS.ICE || map[ly][lx] === SYMBOLS.FLOOR) &&
+                !(lx === player.x && ly === player.y) &&
+                !enemies.some(e => e.x === lx && e.y === ly) &&
+                Math.abs(lx - player.x) + Math.abs(ly - player.y) > 5) {
+                enemies.push({
+                    type: 'LAYER', x: lx, y: ly,
+                    hp: 20 + floorLevel * 2, maxHp: 20 + floorLevel * 2,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 25,
+                    stunTurns: 0
+                });
+                break;
+            }
+        }
+
+        // ザコ(E) 8体
+        for (let i = 0; i < 8; i++) {
+            for (let retry = 0; retry < 100; retry++) {
+                const ex = Math.floor(Math.random() * (COLS - 4)) + 2;
+                const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if ((map[ey][ex] === SYMBOLS.ICE || map[ey][ex] === SYMBOLS.FLOOR) &&
+                    !(ex === player.x && ey === player.y) &&
+                    !enemies.some(e => e.x === ex && e.y === ey) &&
+                    Math.abs(ex - player.x) + Math.abs(ey - player.y) > 4) {
+                    enemies.push({
+                        type: 'NORMAL', x: ex, y: ey,
+                        hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5,
+                        stunTurns: 0
+                    });
+                    break;
+                }
+            }
+        }
+
+        // アイテム配置
+        const f23items = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.HEAL_TOME, SYMBOLS.SPEED, SYMBOLS.CHARM];
+        for (const item of f23items) {
+            for (let retry = 0; retry < 50; retry++) {
+                const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
+                const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (map[iy][ix] === SYMBOLS.ICE || map[iy][ix] === SYMBOLS.FLOOR) { map[iy][ix] = item; break; }
+            }
+        }
+
         return;
     }
 
