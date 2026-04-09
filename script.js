@@ -3483,7 +3483,7 @@ function initMap() {
             }
         }
 
-        // CRAZY_G (ゴーレム) 2体：マップ中央部にバラして配置
+        // ORC (ゴーレム G) 2体：マップ中央部にバラして配置
         for (let i = 0; i < 2; i++) {
             for (let retry = 0; retry < 200; retry++) {
                 const gx = Math.floor(Math.random() * (COLS - 14)) + 7 + i * 8;
@@ -3494,7 +3494,7 @@ function initMap() {
                     Math.abs(gx - player.x) + Math.abs(gy - player.y) > 8 &&
                     Math.abs(gx - exitX23) + Math.abs(gy - exitY23) > 4) {
                     enemies.push({
-                        type: 'CRAZY_G', x: gx, y: gy,
+                        type: 'ORC', x: gx, y: gy,
                         hp: 40 + floorLevel * 2, maxHp: 40 + floorLevel * 2,
                         flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40,
                         stunTurns: 0
