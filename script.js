@@ -12522,6 +12522,8 @@ async function enemyTurn() {
                 if (nx <= 0 || nx >= COLS - 1 || ny <= 0 || ny >= ROWS - 1) continue;
                 if (nx === player.x && ny === player.y) continue;
                 if (enemies.some(oe => oe !== e && oe.x === nx && oe.y === ny)) continue;
+                // 穴（STAIRS）には乗らない
+                if (map[ny][nx] === SYMBOLS.STAIRS) continue;
                 // tempWallがあれば壊して進む
                 const twIdx = tempWalls.findIndex(w => w.x === nx && w.y === ny);
                 if (twIdx !== -1) {
