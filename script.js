@@ -7404,10 +7404,13 @@ function draw(now) {
                     }
                     ctx.restore();
                 } else if ([SYMBOLS.WAND, SYMBOLS.KEY, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.ESCAPE, SYMBOLS.BREAKER_TOME, SYMBOLS.GUARDIAN, SYMBOLS.TOME].includes(char)) {
-                    // 魔導書系アイテムはすべて統一アイコンで表示（拾うまで種類不明）
-                    const isTome = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.ESCAPE, SYMBOLS.BREAKER_TOME, SYMBOLS.GUARDIAN].includes(char);
-                    const displayChar = isTome ? SYMBOLS.TOME : char;
-                    ctx.fillStyle = '#fbbf24'; ctx.fillText(displayChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                    // 敵が乗っている場合はアイテムを描画しない（敵が上に来るように）
+                    if (!enemies.some(e => e.hp > 0 && e.x === x && e.y === y)) {
+                        // 魔導書系アイテムはすべて統一アイコンで表示（拾うまで種類不明）
+                        const isTome = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.HEAL_TOME, SYMBOLS.EXPLOSION, SYMBOLS.ESCAPE, SYMBOLS.BREAKER_TOME, SYMBOLS.GUARDIAN].includes(char);
+                        const displayChar = isTome ? SYMBOLS.TOME : char;
+                        ctx.fillStyle = '#fbbf24'; ctx.fillText(displayChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                    }
                 } else {
                     const drawChar = (char === SYMBOLS.FLOOR && isWindFloor) ? '↓' : char;
                     ctx.fillStyle = '#444'; ctx.fillText(drawChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
