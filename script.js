@@ -3451,16 +3451,23 @@ function initMap() {
             }
         }
 
-        // 壁の柱を点在させる（15Fより少なめ・大きめの柱）
-        for (let i = 0; i < 8; i++) {
-            const wx = Math.floor(Math.random() * (COLS - 10)) + 5;
-            const wy = Math.floor(Math.random() * (ROWS - 8)) + 4;
-            if (Math.abs(wx - 3) + Math.abs(wy - 3) > 4) {
+        // ランダムに壁の柱を点在させる（1マス、15Fと同様）
+        for (let i = 0; i < 12; i++) {
+            const wx = Math.floor(Math.random() * (COLS - 8)) + 4;
+            const wy = Math.floor(Math.random() * (ROWS - 6)) + 3;
+            if (Math.abs(wx - 3) + Math.abs(wy - 3) > 3) {
                 map[wy][wx] = SYMBOLS.WALL;
-                // 2x2の柱にする（視覚的にわかりやすく）
-                if (wx + 1 < COLS - 1) map[wy][wx + 1] = SYMBOLS.WALL;
-                if (wy + 1 < ROWS - 1) map[wy + 1][wx] = SYMBOLS.WALL;
-                if (wx + 1 < COLS - 1 && wy + 1 < ROWS - 1) map[wy + 1][wx + 1] = SYMBOLS.WALL;
+            }
+        }
+
+        // 上下の壁からランダムに1マスの出っ張りを作る（左半分のみ）
+        const halfX23 = Math.floor(COLS / 2);
+        for (let x = 3; x < halfX23; x++) {
+            if (Math.random() < 0.2) {
+                map[1][x] = SYMBOLS.WALL;
+            }
+            if (Math.random() < 0.2) {
+                map[ROWS - 2][x] = SYMBOLS.WALL;
             }
         }
 
