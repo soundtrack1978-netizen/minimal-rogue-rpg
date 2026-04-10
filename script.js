@@ -178,6 +178,35 @@ const SOUNDS = {
         playMelody([{ f: 440.00, d: 0.15 }, { f: 554.37, d: 0.15 }, { f: 659.25, d: 0.3 }]);
     },
     SELECT: () => playSound(800, 'square', 0.05, 0.05),
+    PLACE_BLOCK: () => {
+        // ブロック設置音：低めの「ドン」という重い音
+        const duration = 0.18;
+        const bufferSize = audioCtx.sampleRate * duration;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(400, audioCtx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + duration);
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        noise.connect(filter); filter.connect(noiseGain); noiseGain.connect(audioCtx.destination);
+        noise.start();
+        // 低音の「ドン」
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + duration);
+        g.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    },
     GET_ITEM: () => playMelody([{ f: 880, d: 0.1 }, { f: 1760, d: 0.1 }]),
     UNLOCK: () => playSound(300, 'square', 0.4),
     SCREEN_TRANSITION: () => {
@@ -758,7 +787,6 @@ let player = {
     hasWand: false,
     itemInHand: null,
     fairyCount: 0,
-    fairyRemainingCharms: 0,
     poisonStagger: false,
     isInfiniteStamina: false,
     breakerTomes: 0,
@@ -1152,15 +1180,9 @@ function updateUI() {
         armorNode.innerHTML = `<span ${symbolStyle}>${SYMBOLS.ARMOR}</span>x${player.armorCount}`;
     }
 
-    // 妖精の表示 (所持している場合のみ)
+    // 妖精はインベントリ表示に移動したためstats-barには表示しない
     const fairyNode = document.getElementById('fairy-status');
-    if (fairyNode) {
-        if (player.fairyCount > 0) {
-            fairyNode.innerHTML = `<span ${symbolStyle}>${SYMBOLS.FAIRY}</span>x${player.fairyCount}`;
-        } else {
-            fairyNode.innerHTML = "";
-        }
-    }
+    if (fairyNode) fairyNode.innerHTML = "";
 
     // ゴールド表示
     const goldNode = document.getElementById('gold-status');
@@ -1197,7 +1219,6 @@ function initMap() {
     hasShownMerchantEpilogue = false; // エピローグ表示フラグリセット
     merchantPatternIndex = -1; // 会話パターンリセット
     player.isBreaker = false; // フロア移動で解除
-    player.fairyRemainingCharms = player.fairyCount;
     dungeonCore = null;
     hasSpawnedDragon = false;
     hasSpawnedGoldOn100 = false;
@@ -3562,6 +3583,189 @@ function initMap() {
         return;
     }
 
+    if (floorLevel === 27) {
+        addLog("EVENT: The Hall of Forgeries.");
+        addLog("Four exits lie in wait — three are MIMICS in disguise.");
+
+        // 全体を壁で埋める
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                map[y][x] = SYMBOLS.WALL;
+            }
+        }
+
+        // ===== セル型DFS迷路生成 =====
+        // セル(cx, cy) → マップ座標 (cx*2+1, cy*2+1)
+        // cellW=19 (cx:0-18 → mx:1-37), cellH=12 (cy:0-11 → my:1-23)
+        // ※ Math.floor(COLS/2)=20 にすると cx=19→mx=39 で右端の壁が消えるため 19 に固定
+        const cellW27 = 19;
+        const cellH27 = Math.floor(ROWS / 2);   // 12
+        const visited27 = Array.from({length: cellH27}, () => new Array(cellW27).fill(false));
+
+        const cellToMap27 = (cx, cy) => ({ mx: cx * 2 + 1, my: cy * 2 + 1 });
+
+        const carve27 = (cx, cy) => {
+            const {mx, my} = cellToMap27(cx, cy);
+            map[my][mx] = SYMBOLS.FLOOR;
+        };
+        const carveWall27 = (cx1, cy1, cx2, cy2) => {
+            // 隣接セル間の中間壁を通路にする
+            map[cy1 + cy2 + 1][cx1 + cx2 + 1] = SYMBOLS.FLOOR;
+        };
+
+        const dirs27 = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+        const shuffle27 = (arr) => {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        };
+
+        // 中心セルからDFS
+        const startCX27 = 9, startCY27 = 5; // → map (19, 11)
+        const stack27 = [{cx: startCX27, cy: startCY27}];
+        visited27[startCY27][startCX27] = true;
+        carve27(startCX27, startCY27);
+
+        while (stack27.length > 0) {
+            const cur = stack27[stack27.length - 1];
+            const shuffled = shuffle27(dirs27);
+            let found = false;
+            for (const {dx, dy} of shuffled) {
+                const ncx = cur.cx + dx, ncy = cur.cy + dy;
+                if (ncx >= 0 && ncx < cellW27 && ncy >= 0 && ncy < cellH27 && !visited27[ncy][ncx]) {
+                    visited27[ncy][ncx] = true;
+                    carve27(ncx, ncy);
+                    carveWall27(cur.cx, cur.cy, ncx, ncy);
+                    stack27.push({cx: ncx, cy: ncy});
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) stack27.pop();
+        }
+
+        // ループを少し追加して行き止まりを減らす（全壁の約15%）
+        for (let cy = 0; cy < cellH27 - 1; cy++) {
+            for (let cx = 0; cx < cellW27 - 1; cx++) {
+                if (Math.random() < 0.12) {
+                    const dir = Math.random() < 0.5 ? {dx:1,dy:0} : {dx:0,dy:1};
+                    carveWall27(cx, cy, cx + dir.dx, cy + dir.dy);
+                }
+            }
+        }
+
+        // プレイヤーを中心付近に配置
+        player.x = 19; player.y = 11;
+
+        // スタート地点周辺の壁を解放（5×5の広場）
+        for (let py = player.y - 2; py <= player.y + 2; py++) {
+            for (let px = player.x - 2; px <= player.x + 2; px++) {
+                if (px >= 1 && px < COLS - 1 && py >= 1 && py < ROWS - 1) {
+                    map[py][px] = SYMBOLS.FLOOR;
+                }
+            }
+        }
+
+        // ===== 4つの出口位置（コーナー付近のセル）=====
+        // cx=1,cy=1 → map(3,3) / cx=17,cy=1 → map(35,3)
+        // cx=1,cy=10 → map(3,21) / cx=17,cy=10 → map(35,21)
+        const exitDefs27 = [
+            {cx: 1, cy: 1},
+            {cx: 17, cy: 1},
+            {cx: 1, cy: 10},
+            {cx: 17, cy: 10},
+        ];
+
+        // 本物の出口をランダムに1つ選ぶ
+        const realIdx27 = Math.floor(Math.random() * 4);
+        const mimicHp27 = 50 + floorLevel * 3;
+
+        for (let i = 0; i < 4; i++) {
+            const {mx, my} = cellToMap27(exitDefs27[i].cx, exitDefs27[i].cy);
+            // 出口セルとその周辺2マスを確実に床にして到達可能にする
+            map[my][mx] = SYMBOLS.STAIRS;
+            // 隣接する壁が多い場合に向けて隣接通路を保証
+            for (const {dx, dy} of dirs27) {
+                const nx = mx + dx, ny = my + dy;
+                if (nx >= 1 && nx < COLS - 1 && ny >= 1 && ny < ROWS - 1 && map[ny][nx] === SYMBOLS.WALL) {
+                    // 出口に確実にアクセスできるよう最低1方向を開ける（最初にヒットした壁を開ける）
+                    map[ny][nx] = SYMBOLS.FLOOR;
+                    break;
+                }
+            }
+            if (i !== realIdx27) {
+                enemies.push({
+                    type: 'MIMIC', x: mx, y: my,
+                    hp: mimicHp27, maxHp: mimicHp27,
+                    flashUntil: 0, offsetX: 0, offsetY: 0,
+                    expValue: 80, stunTurns: 0,
+                    disguised: true, moveCooldown: 10
+                });
+            }
+        }
+
+        // ===== 敵配置 =====
+        // ORC (ゴーレム) 2体：出口付近に配備
+        const orcPositions27 = [{x: 10, y: 7}, {x: 28, y: 15}];
+        for (const op of orcPositions27) {
+            const tx = map[op.y][op.x] === SYMBOLS.FLOOR ? op.x : op.x + 1;
+            const ty = map[op.y][op.x] === SYMBOLS.FLOOR ? op.y : op.y;
+            // 床を探してORCを配置
+            for (let retry = 0; retry < 100; retry++) {
+                const ex = Math.floor(Math.random() * (COLS - 8)) + 4;
+                const ey = Math.floor(Math.random() * (ROWS - 8)) + 4;
+                if (map[ey][ex] === SYMBOLS.FLOOR &&
+                    !(ex === player.x && ey === player.y) &&
+                    !enemies.some(e => e.x === ex && e.y === ey) &&
+                    Math.abs(ex - player.x) + Math.abs(ey - player.y) > 6) {
+                    enemies.push({
+                        type: 'ORC', x: ex, y: ey,
+                        hp: 40 + floorLevel * 2, maxHp: 40 + floorLevel * 2,
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0
+                    });
+                    break;
+                }
+            }
+        }
+
+        // ザコ敵 10体
+        for (let i = 0; i < 10; i++) {
+            for (let retry = 0; retry < 100; retry++) {
+                const ex = Math.floor(Math.random() * (COLS - 4)) + 2;
+                const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (map[ey][ex] === SYMBOLS.FLOOR &&
+                    !(ex === player.x && ey === player.y) &&
+                    !enemies.some(e => e.x === ex && e.y === ey) &&
+                    Math.abs(ex - player.x) + Math.abs(ey - player.y) > 4) {
+                    enemies.push({
+                        type: 'NORMAL', x: ex, y: ey,
+                        hp: 5 + floorLevel, maxHp: 5 + floorLevel,
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 8, stunTurns: 0
+                    });
+                    break;
+                }
+            }
+        }
+
+        // ===== アイテム配置 =====
+        const f27items = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.HEAL_TOME, SYMBOLS.CHARM, SYMBOLS.ESCAPE];
+        for (const item of f27items) {
+            for (let retry = 0; retry < 100; retry++) {
+                const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
+                const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (map[iy][ix] === SYMBOLS.FLOOR &&
+                    !(ix === player.x && iy === player.y)) {
+                    map[iy][ix] = item; break;
+                }
+            }
+        }
+
+        return;
+    }
+
     if (floorLevel === 30) {
         addLog("EVENT: The Breaker's Lair.");
         addLog("WARNING: The walls tremble... Breakers prowl within!");
@@ -5839,9 +6043,7 @@ async function processPickedItems(items) {
         } else if (item.symbol === SYMBOLS.FAIRY) {
             await animateItemGet(SYMBOLS.FAIRY);
             player.fairyCount++;
-            player.fairyRemainingCharms++;
             addLog("✨ You were joined by a FAIRY! ✨");
-            addLog("The fairy will charm enemies you encounter on each floor.");
             spawnFloatingText(item.x, item.y, "FAIRY JOINED", "#f472b6");
         }
         updateUI();
@@ -6986,7 +7188,8 @@ function drawInventoryScreen() {
         { name: `${SYMBOLS.EXPLOSION} Explosion Tome`, count: player.explosionTomes, desc: "Release a powerful blast around you." },
         { name: `${SYMBOLS.SPEED} Haste Tome`, count: player.hasteTomes, desc: "Recite to accelerate time." },
         { name: `${SYMBOLS.HEAL_TOME} Heal Tome`, count: player.healTomes, desc: "Fully restore HP." },
-        { name: `${SYMBOLS.STEALTH} Stealth Tome`, count: player.stealthTomes, desc: "Recite to vanish from sight." }
+        { name: `${SYMBOLS.STEALTH} Stealth Tome`, count: player.stealthTomes, desc: "Recite to vanish from sight." },
+        { name: `${SYMBOLS.FAIRY} Fairy`, count: player.fairyCount, desc: "Release nearby. Heads toward the KEY. Enemies flee from it (5 tiles)." }
     ];
     const items = fullItems.filter(it => it.count > 0);
 
@@ -7052,7 +7255,8 @@ function drawInventoryScreen() {
                 "Explosion Tome": "爆発の魔導書。自分の周囲に強力な爆発を引き起こす。",
                 "Guardian Tome": "守護の魔導書。この階の間、地形とレーザーのダメージを無効化する。",
                 "Escape Tome": "脱出の魔導書。クリア済みの階層(1F〜現在-1F)へワープする。",
-                "Heal Tome": "回復の魔導書。HPを全回復する。"
+                "Heal Tome": "回復の魔導書。HPを全回復する。",
+                "Fairy": "妖精を解き放つ。鍵もしくは出口へ向かう。周囲5マスの敵を遠ざける。"
             };
             const itemName = selected.name.split(' ').slice(1).join(' ');
 
@@ -7411,9 +7615,25 @@ function draw(now) {
                         const displayChar = isTome ? SYMBOLS.TOME : char;
                         ctx.fillStyle = '#fbbf24'; ctx.fillText(displayChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                     }
+                } else if (char === SYMBOLS.FAIRY) {
+                    // 配置直後の妖精は点滅（waitTurns > 0 の間、200ms間隔で点滅）
+                    const mf = movingFairies.find(f => f.x === x && f.y === y &&
+                        (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y)));
+                    const isBlinking = mf && mf.waitTurns > 0 && Math.floor(now / 200) % 2 === 1;
+                    if (!isBlinking) {
+                        ctx.fillStyle = '#f472b6';
+                        ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                    }
                 } else {
                     const drawChar = (char === SYMBOLS.FLOOR && isWindFloor) ? '↓' : char;
-                    ctx.fillStyle = '#444'; ctx.fillText(drawChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                    let tileColor = '#444';
+                    if (char === SYMBOLS.FLOOR && movingFairies.some(f =>
+                        (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y)) &&
+                        Math.abs(f.x - x) + Math.abs(f.y - y) <= 3
+                    )) {
+                        tileColor = '#bbb';
+                    }
+                    ctx.fillStyle = tileColor; ctx.fillText(drawChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                 }
             }
         }
@@ -8025,49 +8245,42 @@ function tryPlaceBlock(dx, dy) {
         if (hasRing('STAR_RING') && hasRing('ICE_BLOCK_RING')) {
             tempWalls.push({ x: bx, y: by, hp: 1, type: 'ICE_STAR_BLOCK' });
             addLog("❄★ Placed an ice star block!");
-            SOUNDS.SELECT();
-            SOUNDS.MOVE();
+            SOUNDS.PLACE_BLOCK();
             return true;
         }
         if (hasRing('STAR_RING') && hasRing('BOMB_RING')) {
             tempWalls.push({ x: bx, y: by, hp: 1, type: 'BOMB_STAR_BLOCK' });
             addLog("💣* Placed a bomb star block!");
-            SOUNDS.SELECT();
-            SOUNDS.MOVE();
+            SOUNDS.PLACE_BLOCK();
             return true;
         }
         if (hasRing('STAR_RING')) {
             tempWalls.push({ x: bx, y: by, hp: 2, type: 'FIRE_BLOCK' });
             addLog("★ Placed a star block!");
-            SOUNDS.SELECT();
-            SOUNDS.MOVE();
+            SOUNDS.PLACE_BLOCK();
             return true;
         }
         if (hasRing('BOMB_RING') && hasRing('ICE_BLOCK_RING')) {
             bombs.push({ x: bx, y: by, timer: 5, hp: 2, isIce: true });
             addLog("Placed an ice bomb! (slides + explodes in 5 turns)");
-            SOUNDS.SELECT();
-            SOUNDS.MOVE();
+            SOUNDS.PLACE_BLOCK();
             return true;
         }
         if (hasRing('BOMB_RING')) {
             bombs.push({ x: bx, y: by, timer: 5, hp: 2 });
             addLog("Placed a bomb!");
-            SOUNDS.SELECT();
-            SOUNDS.MOVE();
+            SOUNDS.PLACE_BLOCK();
             return true;
         }
         if (hasRing('ICE_BLOCK_RING')) {
             tempWalls.push({ x: bx, y: by, hp: 2, type: 'ICE_BLOCK' });
             addLog("Placed an ice block!");
-            SOUNDS.SELECT();
-            SOUNDS.MOVE();
+            SOUNDS.PLACE_BLOCK();
             return true;
         }
         tempWalls.push({ x: bx, y: by, hp: 2, type: 'BLOCK' });
         addLog("Constructed a block!");
-        SOUNDS.SELECT();
-        SOUNDS.MOVE();
+        SOUNDS.PLACE_BLOCK();
         return true;
     }
     return false;
@@ -9048,12 +9261,17 @@ async function handleAction(dx, dy) {
             addLog("The poison swamp slows your movement...");
             turnCount++;
             updateUI();
-            await windGustSlide();
-            await enemyTurn();
-            await moveWisps();
-            moveFairies();
-            moveMadmen();
-            isProcessing = false;
+            try {
+                await windGustSlide();
+                await enemyTurn();
+            } catch(err) {
+                console.error('[turn ERROR]', err);
+            } finally {
+                try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); }
+                moveFairies();
+                moveMadmen();
+                isProcessing = false;
+            }
             if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             return;
         } else {
@@ -9070,9 +9288,17 @@ async function handleAction(dx, dy) {
             isProcessing = true;
             turnCount++;
             updateUI();
-            await windGustSlide();
-            await enemyTurn();
-            isProcessing = false;
+            try {
+                await windGustSlide();
+                await enemyTurn();
+            } catch(err) {
+                console.error('[block turn ERROR]', err);
+            } finally {
+                try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); }
+                moveFairies();
+                moveMadmen();
+                isProcessing = false;
+            }
             if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
@@ -9242,9 +9468,17 @@ async function handleAction(dx, dy) {
         if (!transition.active) {
             turnCount++;
             updateUI();
-            await windGustSlide();
-            await enemyTurn();
-            isProcessing = false;
+            try {
+                await windGustSlide();
+                await enemyTurn();
+            } catch(err) {
+                console.error('[turn ERROR]', err);
+            } finally {
+                try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); }
+                moveFairies();
+                moveMadmen();
+                isProcessing = false;
+            }
             if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
@@ -9280,9 +9514,8 @@ async function handleAction(dx, dy) {
             await new Promise(r => setTimeout(r, 100));
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
-                turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
-                isProcessing = false;
+                turnCount++; updateUI();
+                try { await windGustSlide(); await applyLaserDamage(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; }
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
             return;
@@ -9308,9 +9541,8 @@ async function handleAction(dx, dy) {
             await new Promise(r => setTimeout(r, 100));
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
-                turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
-                isProcessing = false;
+                turnCount++; updateUI();
+                try { await windGustSlide(); await applyLaserDamage(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; }
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
             return;
@@ -9326,9 +9558,8 @@ async function handleAction(dx, dy) {
             await new Promise(r => setTimeout(r, 100));
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
-                turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
-                isProcessing = false;
+                turnCount++; updateUI();
+                try { await windGustSlide(); await applyLaserDamage(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; }
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
             return;
@@ -9352,9 +9583,8 @@ async function handleAction(dx, dy) {
             await new Promise(r => setTimeout(r, 200));
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
-                turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
-                isProcessing = false;
+                turnCount++; updateUI();
+                try { await windGustSlide(); await applyLaserDamage(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; }
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
             return;
@@ -9376,11 +9606,18 @@ async function handleAction(dx, dy) {
         if (!transition.active) {
             turnCount++;
             updateUI();
-            await windGustSlide();
-            // ブロックが壊れた瞬間にレーザーが通る可能性があるので判定
-            await applyLaserDamage();
-            await enemyTurn();
-            isProcessing = false;
+            try {
+                await windGustSlide();
+                // ブロックが壊れた瞬間にレーザーが通る可能性があるので判定
+                await applyLaserDamage();
+                await enemyTurn();
+            } catch(err) {
+                console.error('[turn ERROR]', err);
+            } finally {
+                moveFairies();
+                moveMadmen();
+                isProcessing = false;
+            }
             if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
@@ -9402,9 +9639,8 @@ async function handleAction(dx, dy) {
             await new Promise(r => setTimeout(r, 100));
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
-                turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
-                isProcessing = false;
+                turnCount++; updateUI();
+                try { await windGustSlide(); await applyLaserDamage(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; }
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
             return;
@@ -9425,9 +9661,8 @@ async function handleAction(dx, dy) {
             await new Promise(r => setTimeout(r, 100));
             player.offsetX = 0; player.offsetY = 0;
             if (!transition.active) {
-                turnCount++; updateUI(); await windGustSlide();
-                await applyLaserDamage(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen();
-                isProcessing = false;
+                turnCount++; updateUI();
+                try { await windGustSlide(); await applyLaserDamage(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; }
                 if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
             }
             return;
@@ -9449,10 +9684,17 @@ async function handleAction(dx, dy) {
         if (!transition.active) {
             turnCount++;
             updateUI();
-            await windGustSlide();
-            await applyLaserDamage();
-            await enemyTurn();
-            isProcessing = false;
+            try {
+                await windGustSlide();
+                await applyLaserDamage();
+                await enemyTurn();
+            } catch(err) {
+                console.error('[turn ERROR]', err);
+            } finally {
+                moveFairies();
+                moveMadmen();
+                isProcessing = false;
+            }
             if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
         }
         return;
@@ -9556,7 +9798,7 @@ async function handleAction(dx, dy) {
             if (isXWallStage && Math.random() < 0.75) {
                 spawnXFromWall(nx, ny);
             }
-            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+            if (!transition.active) { turnCount++; updateUI(); try { await windGustSlide(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; } if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall && player.isBreaker && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
             // 壁破壊の魔導書効果: 壁を壊して進む
@@ -9571,7 +9813,7 @@ async function handleAction(dx, dy) {
             if (isXWallStage && Math.random() < 0.75) {
                 spawnXFromWall(nx, ny);
             }
-            if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+            if (!transition.active) { turnCount++; updateUI(); try { await windGustSlide(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; } if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
         } else if (isBlockedByWall || isBlockedByTempWall || isBlockedByBomb) {
             player.offsetX = dx * 5; player.offsetY = dy * 5;
@@ -9590,14 +9832,14 @@ async function handleAction(dx, dy) {
                     await new Promise(r => setTimeout(r, 200));
                     player.offsetX = 0; player.offsetY = 0;
                     // 以降の処理（player.x = nx など）をスキップして、敵のターンへ
-                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+                    if (!transition.active) { turnCount++; updateUI(); try { await windGustSlide(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; } if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 } else {
                     addLog("The door is locked.");
                     player.offsetX = dx * 5; player.offsetY = dy * 5;
                     await new Promise(r => setTimeout(r, 50));
                     player.offsetX = 0; player.offsetY = 0;
-                    if (!transition.active) { turnCount++; updateUI(); await windGustSlide(); await enemyTurn(); await moveWisps(); moveFairies(); moveMadmen(); isProcessing = false; if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
+                    if (!transition.active) { turnCount++; updateUI(); try { await windGustSlide(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; } if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
                     return;
                 }
             } else if (nextTile === SYMBOLS.SWORD) {
@@ -9765,22 +10007,27 @@ async function handleAction(dx, dy) {
                     }
                     spawnFloatingText(nx, ny, "GUARDIAN TOME IDENTIFIED", "#facc15", 1500);
                 } else if (nextTile === SYMBOLS.FAIRY) {
-                    map[ny][nx] = SYMBOLS.FLOOR;
-                    // 自律移動妖精リストからも除去
-                    movingFairies = movingFairies.filter(f => !(f.x === nx && f.y === ny && (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y))));
-                    player.x = nx; player.y = ny;
-                    updateUI();
-                    await animateItemGet(SYMBOLS.FAIRY);
-                    SOUNDS.GET_ITEM();
-                    player.fairyCount++;
-                    player.fairyRemainingCharms++;
-                    if (!hasShownFairyTut) {
-                        await triggerFairyEvent();
+                    const mf = movingFairies.find(f => f.x === nx && f.y === ny && (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y)));
+                    // waitTurns > 0: 置いた直後は拾えない（氷上で滑って即回収される問題を防ぐ）
+                    if (mf && mf.waitTurns > 0) {
+                        // 拾わずそのまま通過（移動だけする）
                     } else {
-                        addLog("✨ You were joined by a FAIRY! ✨");
-                        addLog("The fairy will charm enemies you encounter on each floor.");
+                        // Bug2修正: underTileを復元（ICEならICEに戻す）
+                        map[ny][nx] = (mf && mf.underTile != null) ? mf.underTile : SYMBOLS.FLOOR;
+                        // 自律移動妖精リストからも除去
+                        movingFairies = movingFairies.filter(f => !(f.x === nx && f.y === ny && (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y))));
+                        player.x = nx; player.y = ny;
+                        updateUI();
+                        await animateItemGet(SYMBOLS.FAIRY);
+                        SOUNDS.GET_ITEM();
+                        player.fairyCount++;
+                        if (!hasShownFairyTut) {
+                            await triggerFairyEvent();
+                        } else {
+                            addLog("✨ You were joined by a FAIRY! ✨");
+                        }
+                        spawnFloatingText(nx, ny, "FAIRY JOINED", "#f472b6");
                     }
-                    spawnFloatingText(nx, ny, "FAIRY JOINED", "#f472b6");
                 }
             }
             // 移動音
@@ -9888,12 +10135,18 @@ async function handleAction(dx, dy) {
 
         turnCount++;
         updateUI();
-        await windGustSlide();
-        await enemyTurn();
-        // 敵の移動後に再度妖精のチャームをチェック（近づいてきた敵を即座に仲間にする）
-        // enemyTurnの最後で呼ぶのも良いが、ここでは個別の処理を完結させる
-        await moveWisps();
-        isProcessing = false;
+        try {
+            await windGustSlide();
+            await enemyTurn();
+        } catch(err) {
+            console.error('[turn ERROR]', err);
+        } finally {
+            // moveWisps/moveFairies/moveMadmen は例外が起きても必ず実行する
+            try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); }
+            moveFairies();
+            moveMadmen();
+            isProcessing = false;
+        }
         // バッファされた入力があれば即座に次のターンを実行
         if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
     }
@@ -10069,12 +10322,11 @@ function useFairy() {
     const under = map[fy][fx];
     map[fy][fx] = SYMBOLS.FAIRY;
     player.fairyCount--;
-    player.fairyRemainingCharms = Math.min(player.fairyRemainingCharms, player.fairyCount);
 
     if (multiScreenMode && screenGrid) {
-        movingFairies.push({ x: fx, y: fy, screenX: currentScreen.x, screenY: currentScreen.y, underTile: under, surrounded: false, waitTurns: 0 });
+        movingFairies.push({ x: fx, y: fy, screenX: currentScreen.x, screenY: currentScreen.y, underTile: under, surrounded: false, waitTurns: 3 });
     } else {
-        movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under, surrounded: false, waitTurns: 0 });
+        movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under, surrounded: false, waitTurns: 3 });
     }
 
     addLog("🧚 You released a FAIRY! It heads toward the KEY.");
@@ -10092,12 +10344,11 @@ function moveFairies() {
         const f = movingFairies[i];
         if (f.screenX !== -1) continue;
 
-        // プレイヤーと重なったら再取得
-        if (f.x === player.x && f.y === player.y) {
+        // プレイヤーと重なったら再取得（waitTurns > 0 の直後は拾わない）
+        if (f.x === player.x && f.y === player.y && f.waitTurns === 0) {
             if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
             movingFairies.splice(i, 1);
             player.fairyCount++;
-            player.fairyRemainingCharms++;
             SOUNDS.GET_ITEM();
             spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
             addLog("✨ A FAIRY returned to you! ✨");
@@ -10119,14 +10370,18 @@ function moveFairies() {
                 f.waitTurns = 4;
             }
         }
-        if (f.waitTurns > 0) { f.waitTurns--; continue; }
+        // waitTurns中でも移動する（点滅しながらキー/穴へ向かう）
+        const canPickup = f.waitTurns === 0;
+        if (f.waitTurns > 0) f.waitTurns--;
 
-        // 目標を探す（KEY優先、次にSTAIRS）
+        // 目標を探す（KEY優先、次にDOOR（解錠前の穴）、次にSTAIRS）
+        // MIMICが擬態しているSTAIRSは除外して本物の穴だけを目標にする
         let goalX = -1, goalY = -1, goalSym = null;
-        outerRF: for (const sym of [SYMBOLS.KEY, SYMBOLS.STAIRS]) {
+        outerRF: for (const sym of [SYMBOLS.KEY, SYMBOLS.DOOR, SYMBOLS.STAIRS]) {
             for (let gy = 0; gy < ROWS; gy++) {
                 for (let gx = 0; gx < COLS; gx++) {
-                    if (map[gy][gx] === sym && !(gx === f.x && gy === f.y)) {
+                    if (map[gy][gx] === sym && !(gx === f.x && gy === f.y) &&
+                        !enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === gx && e.y === gy)) {
                         goalX = gx; goalY = gy; goalSym = sym; break outerRF;
                     }
                 }
@@ -10151,14 +10406,15 @@ function moveFairies() {
             const prev = map[f.y][f.x];
             if (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS && prev !== SYMBOLS.FAIRY)
                 map[f.y][f.x] = SYMBOLS.FAIRY;
-            f.underTile = _passable.has(prev) ? prev : SYMBOLS.FLOOR;
+            // アイテム（剣・鎧・魔導書等）も underTile に正しく保存する
+            // 壁と妖精自身以外はすべて保存（_passable に限定しない）
+            f.underTile = (prev !== SYMBOLS.WALL && prev !== SYMBOLS.FAIRY) ? prev : SYMBOLS.FLOOR;
 
-            // 移動後にプレイヤーと重なったら即取得
-            if (f.x === player.x && f.y === player.y) {
-                if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile;
+            // 移動後にプレイヤーと重なったら即取得（点滅中は取得しない）
+            if (canPickup && f.x === player.x && f.y === player.y) {
+                if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
                 movingFairies.splice(i, 1);
                 player.fairyCount++;
-                player.fairyRemainingCharms++;
                 SOUNDS.GET_ITEM();
                 spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
                 addLog("✨ A FAIRY returned to you! ✨");
@@ -10185,14 +10441,14 @@ function moveFairies() {
         // KEY・STAIRS・FAIRY 以外のタイルはFAIRYで上書き（通過可能タイル全て対応）
         if (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS && prev !== SYMBOLS.FAIRY)
             fMap[fy][fx] = SYMBOLS.FAIRY;
-        // underTileとして保存するのはFAIRYでない場合のみ（多重配置防止）
+        // underTileとして保存: 壁・FAIRY以外はアイテム含めてすべて保存（消失防止）
         if (prev === SYMBOLS.KEY || prev === SYMBOLS.STAIRS) return SYMBOLS.FLOOR;
-        return _fairyPassable.has(prev) ? prev : SYMBOLS.FLOOR;
+        return (prev !== SYMBOLS.WALL && prev !== SYMBOLS.FAIRY) ? prev : SYMBOLS.FLOOR;
     };
 
     // 妖精ごとに目標を計算するヘルパー（自分の位置を除外してキー優先・なければ出口）
     const findGoalForFairy = (fairy) => {
-        const searchSymbols = [SYMBOLS.KEY, SYMBOLS.STAIRS];
+        const searchSymbols = [SYMBOLS.KEY, SYMBOLS.DOOR, SYMBOLS.STAIRS];
         for (const sym of searchSymbols) {
             let gx = -1, gy = -1;
             outer: for (let sy = 0; sy < screenGridSize; sy++) {
@@ -10204,6 +10460,9 @@ function moveFairies() {
                             if (m[fy2][fx2] !== sym) continue;
                             // 自分がすでにそのタイルにいる場合はスキップ（立ち止まり防止）
                             if (sx === fairy.screenX && sy === fairy.screenY && fx2 === fairy.x && fy2 === fairy.y) continue;
+                            // MIMICが擬態しているSTAIRSは除外（現在画面のみ判定）
+                            if (sx === currentScreen.x && sy === currentScreen.y &&
+                                enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === fx2 && e.y === fy2)) continue;
                             gx = sx * COLS + fx2; gy = sy * ROWS + fy2; break outer;
                         }
                     }
@@ -10245,12 +10504,11 @@ function moveFairies() {
             f.underTile = fairyArrive(nMap, f.x, f.y);
         }
 
-        // ---- プレイヤーと重なったら取得 ----
-        if (isCurrentScreen && f.x === player.x && f.y === player.y) {
+        // ---- プレイヤーと重なったら取得（waitTurns > 0 直後は拾わない）----
+        if (isCurrentScreen && f.x === player.x && f.y === player.y && f.waitTurns === 0) {
             fairyLeave(fMap, f.x, f.y, f.underTile);
             movingFairies.splice(i, 1);
             player.fairyCount++;
-            player.fairyRemainingCharms++;
             SOUNDS.GET_ITEM();
             spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
             addLog("✨ You were joined by a FAIRY! ✨");
@@ -10275,7 +10533,9 @@ function moveFairies() {
                 }
             }
         }
-        if (f.waitTurns > 0) { f.waitTurns--; continue; }
+        // waitTurns中でも移動する（点滅しながらキー/穴へ向かう）
+        const canPickupMS = f.waitTurns === 0;
+        if (f.waitTurns > 0) f.waitTurns--;
 
         // ---- 1マス移動: 壁以外はすべてすり抜ける ----
         const curFMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
@@ -10288,8 +10548,8 @@ function moveFairies() {
         const goalSX = Math.floor(goalGX / COLS), goalSY = Math.floor(goalGY / ROWS);
         const goalLocalX = goalGX % COLS, goalLocalY = goalGY % ROWS;
 
-        // KEY・STAIRS が目標かつ同じ画面にいる場合、1マス隣にいれば停止して待機
-        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
+        // KEY・DOOR・STAIRS が目標かつ同じ画面にいる場合、1マス隣にいれば停止して待機
+        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.DOOR || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
             const distToGoal = Math.abs(f.x - goalLocalX) + Math.abs(f.y - goalLocalY);
             if (distToGoal <= 1) continue; // 1マス以内なら停止
         }
@@ -10309,8 +10569,8 @@ function moveFairies() {
         // BFSで障害物（壁）を避けながら最短経路の第一歩を取得
         const { dx: bestDX, dy: bestDY } = fairyBFS(curFMap, f.x, f.y, targetX, targetY);
 
-        // KEY・STAIRSが目標の場合、次の一歩がそのタイル自体なら踏み込まない
-        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
+        // KEY・DOOR・STAIRSが目標の場合、次の一歩がそのタイル自体なら踏み込まない
+        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.DOOR || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
             const nx = f.x + bestDX, ny = f.y + bestDY;
             if (nx === goalLocalX && ny === goalLocalY) continue;
         }
@@ -10321,12 +10581,11 @@ function moveFairies() {
             const newMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
             f.underTile = fairyArrive(newMap, f.x, f.y);
 
-            // 移動後にプレイヤーと重なったら即取得
-            if (f.screenX === currentScreen.x && f.screenY === currentScreen.y && f.x === player.x && f.y === player.y) {
+            // 移動後にプレイヤーと重なったら即取得（点滅中は取得しない）
+            if (canPickupMS && f.screenX === currentScreen.x && f.screenY === currentScreen.y && f.x === player.x && f.y === player.y) {
                 fairyLeave(newMap, f.x, f.y, f.underTile);
                 movingFairies.splice(i, 1);
                 player.fairyCount++;
-                player.fairyRemainingCharms++;
                 SOUNDS.GET_ITEM();
                 spawnFloatingText(player.x, player.y, "FAIRY JOINED", "#f472b6");
                 addLog("✨ You were joined by a FAIRY! ✨");
@@ -10408,10 +10667,12 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
         map[enemy.y][enemy.x] = SYMBOLS.FLOOR;
     }
 
-    // BOMBERが死んだ場合: 死体が3ターン後に爆発
+    // BOMBERが死んだ場合: 死体が3ターン後に爆発（穴落下時はそのまま消える）
     if (enemy.type === 'BOMBER') {
-        bombs.push({ x: enemy.x, y: enemy.y, timer: 3, hp: 3, isCorpse: true });
-        addLog("💀 BOMBER's corpse will explode in 3 turns!");
+        if (!enemy.isFalling && !isRealHole(enemy.x, enemy.y)) {
+            bombs.push({ x: enemy.x, y: enemy.y, timer: 3, hp: 3, isCorpse: true });
+            addLog("💀 BOMBER's corpse will explode in 3 turns!");
+        }
     }
 
     // ドラゴン撃破時にBGMを停止
@@ -11204,48 +11465,6 @@ async function knockbackEnemy(e, kx, ky, damage) {
 }
 
 async function enemyTurn() {
-    // 妖精の効果：隣接した敵を1体ずつ仲間にする
-    const processFairyCharm = () => {
-        if (player.fairyCount > 0 && player.fairyRemainingCharms > 0) {
-            const adjacentEnemy = enemies.find(e => {
-                if (e.isAlly || e.hp <= 0) return false;
-                if (e.type === 'DRAGON' || e.type === 'TURRET' || e.type === 'HOPPER_TURRET' || e.type === 'SUMMONER') return false;
-                if (e.type === 'MIMIC' && e.disguised) return false;
-
-                const dx = Math.abs(e.x - player.x);
-                const dy = Math.abs(e.y - player.y);
-                const isNear = dx <= 1 && dy <= 1;
-                if (isNear) return true;
-
-                if (e.type === 'SNAKE' && e.body) {
-                    return e.body.some(b => Math.abs(b.x - player.x) <= 1 && Math.abs(b.y - player.y) <= 1);
-                }
-                return false;
-            });
-
-            if (adjacentEnemy) {
-                adjacentEnemy.isAlly = true;
-                // ミミックが仲間になったら擬態を解除
-                if (adjacentEnemy.type === 'MIMIC' && adjacentEnemy.disguised) {
-                    adjacentEnemy.disguised = false;
-                    map[adjacentEnemy.y][adjacentEnemy.x] = SYMBOLS.FLOOR;
-                    adjacentEnemy.mimicTransitionEnd = performance.now() + 500;
-                    SOUNDS.MIMIC_REVEAL();
-                }
-                player.fairyRemainingCharms--;
-                addLog(`✨ The Fairy's blessing charmed an adjacent enemy! (Remaining: ${player.fairyRemainingCharms}) ✨`);
-                spawnFloatingText(adjacentEnemy.x, adjacentEnemy.y, "CHARMED!!", "#f472b6");
-                SOUNDS.CHARM();
-                updateUI();
-                if (player.fairyRemainingCharms === 0) {
-                    addLog("The Fairy is exhausted for this floor...");
-                }
-            }
-        }
-    };
-
-    // 自分のターン開始時にチェック
-    processFairyCharm();
 
     let attackOccurred = false;
     for (let i = enemies.length - 1; i >= 0; i--) {
@@ -12133,114 +12352,17 @@ async function enemyTurn() {
         const detectRange = (e.type !== 'ORC' && hasRing('STEALTH_RING')) ? 5 : baseDetect;
 
         if (e.type === 'GOLD' && minDist <= detectRange) {
-            // GOLDは出口（STAIRS）へ向かう道案内役。なければプレイヤーから逃げる
+            // GOLDはとにかくプレイヤーから逃げ回る
             const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-
-            // ---- 目標地点の決定 ----
-            // マルチスクリーン: 全画面から階段スクリーンを探してグローバル方向を計算
-            let targetX = -1, targetY = -1; // 現画面座標系での目標
-
-            if (multiScreenMode && screenGrid) {
-                // 全スクリーンを検索して階段のあるスクリーン位置を特定
-                let exitSX = -1, exitSY = -1;
-                outer: for (let sy = 0; sy < screenGridSize; sy++) {
-                    for (let sx = 0; sx < screenGridSize; sx++) {
-                        const m = (sx === currentScreen.x && sy === currentScreen.y) ? map : screenGrid.maps[sy][sx];
-                        if (!m) continue;
-                        for (let my = 0; my < ROWS; my++)
-                            for (let mx = 0; mx < COLS; mx++)
-                                if (m[my][mx] === SYMBOLS.STAIRS) { exitSX = sx; exitSY = sy; break outer; }
-                    }
+            let bestMove = { x: e.x, y: e.y, score: minDist };
+            dirs.forEach(d => {
+                if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
+                    const nd = Math.abs(player.x - (e.x + d.x)) + Math.abs(player.y - (e.y + d.y));
+                    if (nd > bestMove.score) bestMove = { x: e.x + d.x, y: e.y + d.y, score: nd };
                 }
-                if (exitSX >= 0) {
-                    const dsx = exitSX - currentScreen.x; // 出口スクリーンが右なら正
-                    const dsy = exitSY - currentScreen.y; // 出口スクリーンが下なら正
-                    if (exitSX === currentScreen.x && exitSY === currentScreen.y) {
-                        // 同じ画面: 直接向かう
-                        for (let sy = 0; sy < ROWS; sy++)
-                            for (let sx = 0; sx < COLS; sx++)
-                                if (isRealHole(sx, sy)) { targetX = sx; targetY = sy; }
-                    } else if (Math.abs(dsx) >= Math.abs(dsy)) {
-                        // 横方向が支配的 → 左右の通路（y=12付近）を目指す
-                        targetX = dsx > 0 ? COLS - 1 : 0;
-                        targetY = 12;
-                    } else {
-                        // 縦方向が支配的 → 上下の通路（x=19付近）を目指す
-                        targetX = 19;
-                        targetY = dsy > 0 ? ROWS - 1 : 0;
-                    }
-                }
-            } else {
-                // 通常画面: 階段を直接探す
-                for (let sy = 0; sy < ROWS; sy++)
-                    for (let sx = 0; sx < COLS; sx++)
-                        if (isRealHole(sx, sy)) { targetX = sx; targetY = sy; }
-            }
-
-            // ---- 移動先の決定 ----
-            if (targetX >= 0) {
-                // 目標へ近づく
-                const curDist = Math.abs(e.x - targetX) + Math.abs(e.y - targetY);
-                let bestMove = null, bestDist = curDist;
-                dirs.forEach(d => {
-                    const nx = e.x + d.x, ny = e.y + d.y;
-                    if (!canEnemyMove(nx, ny, e)) return;
-                    const nd = Math.abs(nx - targetX) + Math.abs(ny - targetY);
-                    if (nd < bestDist) { bestDist = nd; bestMove = { x: nx, y: ny }; }
-                });
-                if (bestMove) { SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y; }
-
-                // 同画面の階段に到達したら脱出
-                if (!multiScreenMode || (targetX !== COLS - 1 && targetX !== 0 && targetY !== ROWS - 1 && targetY !== 0)) {
-                    if (e.x === targetX && e.y === targetY) {
-                        spawnFloatingText(e.x, e.y, "ESCAPED!", '#fbbf24');
-                        addLog("✨ The Gold enemy slipped into the hole!");
-                        e._dead = true;
-                        enemies = enemies.filter(en => en !== e);
-                    }
-                }
-
-                // マルチスクリーン: 通路端に達したら隣画面へ転送
-                if (multiScreenMode && screenGrid && !e._dead) {
-                    const ey = e.y, ex = e.x;
-                    if (ex === 0 && currentScreen.x > 0 && ey >= 11 && ey <= 13) {
-                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
-                        e.x = COLS - 1;
-                        screenGrid.enemies[currentScreen.y][currentScreen.x - 1].push(e);
-                        enemies = enemies.filter(en => en !== e);
-                        SOUNDS.GOLD_FLIGHT();
-                    } else if (ex === COLS - 1 && currentScreen.x < screenGridSize - 1 && ey >= 11 && ey <= 13) {
-                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
-                        e.x = 0;
-                        screenGrid.enemies[currentScreen.y][currentScreen.x + 1].push(e);
-                        enemies = enemies.filter(en => en !== e);
-                        SOUNDS.GOLD_FLIGHT();
-                    } else if (ey === 0 && currentScreen.y > 0 && ex >= 18 && ex <= 21) {
-                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
-                        e.y = ROWS - 1;
-                        screenGrid.enemies[currentScreen.y - 1][currentScreen.x].push(e);
-                        enemies = enemies.filter(en => en !== e);
-                        SOUNDS.GOLD_FLIGHT();
-                    } else if (ey === ROWS - 1 && currentScreen.y < screenGridSize - 1 && ex >= 18 && ex <= 21) {
-                        screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies.filter(en => en !== e);
-                        e.y = 0;
-                        screenGrid.enemies[currentScreen.y + 1][currentScreen.x].push(e);
-                        enemies = enemies.filter(en => en !== e);
-                        SOUNDS.GOLD_FLIGHT();
-                    }
-                }
-            } else {
-                // 目標なし: プレイヤーから逃げる（従来動作）
-                let bestMove = { x: e.x, y: e.y, score: minDist };
-                dirs.forEach(d => {
-                    if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
-                        const nd = Math.abs(player.x - (e.x + d.x)) + Math.abs(player.y - (e.y + d.y));
-                        if (nd > bestMove.score) bestMove = { x: e.x + d.x, y: e.y + d.y, score: nd };
-                    }
-                });
-                if (bestMove.x !== e.x || bestMove.y !== e.y) { SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y; }
-            }
-            if (e._dead || !enemies.includes(e)) continue;
+            });
+            if (bestMove.x !== e.x || bestMove.y !== e.y) { SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y; }
+            if (!enemies.includes(e)) continue;
         } else if (e.type === 'BREAKER') {
             // BREAKERの移動AI: 直進優先で遠くまで掘り進む
             const allDirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
@@ -12576,7 +12698,7 @@ async function enemyTurn() {
                         map[oldY][oldX] !== SYMBOLS.WALL && map[oldY][oldX] !== SYMBOLS.STAIRS &&
                         !(oldX === player.x && oldY === player.y)) {
                         tempWalls.push({ x: oldX, y: oldY, hp: 2 });
-                        SOUNDS.BLOCK_PLACE();
+                        SOUNDS.SELECT(); SOUNDS.MOVE();
                         spawnFloatingText(oldX, oldY, "BLOCK!", '#a78bfa');
                     }
                 }
@@ -12725,34 +12847,14 @@ async function enemyTurn() {
                     }
                 }
             }
-        } else if (!e.isAlly && movingFairies.some(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 10)) {
-            // 妖精の聖なるオーラを恐れて逃げる
-            const nearFairy = movingFairies.find(f => f.screenX === currentScreen.x && f.screenY === currentScreen.y && Math.abs(f.x - e.x) + Math.abs(f.y - e.y) <= 10);
-            const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-            dirs.sort((a, b) => {
-                const distA = Math.abs(nearFairy.x - (e.x + a.x)) + Math.abs(nearFairy.y - (e.y + a.y));
-                const distB = Math.abs(nearFairy.x - (e.x + b.x)) + Math.abs(nearFairy.y - (e.y + b.y));
-                if (distB !== distA) return distB - distA;
-                return Math.random() - 0.5;
-            });
-            let movedFromFairy = false;
-            for (const d of dirs) {
-                if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
-                    e.x += d.x; e.y += d.y; movedFromFairy = true; break;
-                }
-            }
-            if (movedFromFairy && !e._dead) {
-                if (e.type === 'FROST') {
-                    if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.LAVA) {
-                        map[e.y][e.x] = SYMBOLS.ICE; SOUNDS.FREEZE();
-                    }
-                } else if (e.type === 'BLAZE') {
-                    if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.ICE) {
-                        map[e.y][e.x] = SYMBOLS.LAVA; SOUNDS.IGNITE();
-                    }
-                }
-                if (!e._dead && isRealHole(e.x, e.y)) scheduleEnemyFall(e, "An enemy fled into the HOLE!");
-            }
+        } else if (!e.isAlly && movingFairies.some(f => {
+            const screenOk = f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y);
+            const distE = Math.abs(f.x - e.x) + Math.abs(f.y - e.y);
+            const distT = Math.abs(f.x - bestTarget.x) + Math.abs(f.y - bestTarget.y);
+            return screenOk && distE <= 3 && distT <= 3;
+        })) {
+            // 妖精守護範囲の手前で停止（敵もターゲットも守護ゾーン付近にいる間だけ）
+            // ターゲットがゾーン外に出ると distT > 3 になり、解除されて追跡再開
         } else if (minDist <= detectRange) {
             // 接近
             const oldPos = { x: e.x, y: e.y };
@@ -12760,13 +12862,19 @@ async function enemyTurn() {
             let sx = dx === 0 ? 0 : dx / Math.abs(dx), sy = dy === 0 ? 0 : dy / Math.abs(dy);
             let moved = false;
 
+            // 妖精守護ゾーン（距離2以内）には踏み込まない
+            const inFairyZone = (nx, ny) => movingFairies.some(f =>
+                (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y)) &&
+                Math.abs(f.x - nx) + Math.abs(f.y - ny) <= 2
+            );
+
             // 通常の移動
             if (Math.abs(dx) > Math.abs(dy)) {
-                if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
-                else if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
+                if (canEnemyMove(e.x + sx, e.y, e) && !inFairyZone(e.x + sx, e.y)) { e.x += sx; moved = true; }
+                else if (canEnemyMove(e.x, e.y + sy, e) && !inFairyZone(e.x, e.y + sy)) { e.y += sy; moved = true; }
             } else {
-                if (canEnemyMove(e.x, e.y + sy, e)) { e.y += sy; moved = true; }
-                else if (canEnemyMove(e.x + sx, e.y, e)) { e.x += sx; moved = true; }
+                if (canEnemyMove(e.x, e.y + sy, e) && !inFairyZone(e.x, e.y + sy)) { e.y += sy; moved = true; }
+                else if (canEnemyMove(e.x + sx, e.y, e) && !inFairyZone(e.x + sx, e.y)) { e.x += sx; moved = true; }
             }
 
 
@@ -13348,7 +13456,6 @@ async function startGame(startFloor = 1, isTestMode = false) {
         hasWand: (startFloor >= 2),
         itemInHand: null,
         fairyCount: 0,
-        fairyRemainingCharms: 0,
         isInfiniteStamina: false,
         gold: 0,
         ownedRings: [],
@@ -13366,7 +13473,6 @@ async function startGame(startFloor = 1, isTestMode = false) {
         player.gold = 9999;
         player.ownedRings = RINGS.map(r => r.id);
         player.fairyCount = 3;
-        player.fairyRemainingCharms = 3;
     }
 
     // テストプレイ(Floor 100)用のデバッグバフ
@@ -13566,7 +13672,7 @@ window.addEventListener('keydown', async e => {
         }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 2) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
-            const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes].filter(c => c > 0);
+            const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes, player.fairyCount].filter(c => c > 0);
             const count = Math.max(1, items.length);
             inventorySelection = (inventorySelection + count - 1) % count;
             SOUNDS.SELECT(); return;
@@ -13600,7 +13706,7 @@ window.addEventListener('keydown', async e => {
         }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 3; SOUNDS.SELECT(); return; }
         if (gameState === 'INVENTORY') {
-            const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes].filter(c => c > 0);
+            const items = [player.breakerTomes, player.charmTomes, player.escapeTomes, player.explosionTomes, player.guardianTomes, player.hasteTomes, player.healTomes, player.stealthTomes, player.fairyCount].filter(c => c > 0);
             const count = Math.max(1, items.length);
             inventorySelection = (inventorySelection + 1) % count;
             SOUNDS.SELECT(); return;
@@ -13824,7 +13930,8 @@ window.addEventListener('keydown', async e => {
                 { id: 'EXPLOSION', count: player.explosionTomes },
                 { id: 'HASTE', count: player.hasteTomes },
                 { id: 'HEAL', count: player.healTomes },
-                { id: 'STEALTH', count: player.stealthTomes }
+                { id: 'STEALTH', count: player.stealthTomes },
+                { id: 'FAIRY', count: player.fairyCount }
             ];
             const items = fullItems.filter(it => it.count > 0);
             const selectedItem = items[inventorySelection];
@@ -13852,6 +13959,9 @@ window.addEventListener('keydown', async e => {
                 } else if (selectedItem.id === 'BREAKER' && !player.isBreaker) {
                     gameState = 'PLAYING';
                     useBreakerTome();
+                } else if (selectedItem.id === 'FAIRY') {
+                    gameState = 'PLAYING';
+                    useFairy();
                 }
             }
             return;
