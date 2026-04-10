@@ -7617,11 +7617,10 @@ function draw(now) {
                     ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 8;
                 }
                 else if (e.type === 'CRAZY_G') {
-                    // いかれたG: 紫色で激しく明滅
-                    const gPhase = Math.floor(now / 55) % 3;
-                    eColor = gPhase === 0 ? '#a855f7' : gPhase === 1 ? '#d8b4fe' : '#7c3aed';
+                    // いかれたG: 紫色（点滅なし）
+                    eColor = '#a855f7';
                     eChar = 'G';
-                    ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 16;
+                    ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 10;
                 }
                 else if (e.type === 'KING') {
                     // 王: ゆっくり輝く金色の王冠
@@ -9845,7 +9844,7 @@ async function handleAction(dx, dy) {
     }
 
     // ゴーレム（G）接近チュートリアル（5マス以内に初めて接近した時）
-    if (!hasShownGolemTut && enemies.some(e => e.type === 'CRAZY_G' && e.hp > 0 &&
+    if (!hasShownGolemTut && enemies.some(e => e.type === 'ORC' && e.hp > 0 &&
         Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 5)) {
         await triggerGolemEvent();
     }
