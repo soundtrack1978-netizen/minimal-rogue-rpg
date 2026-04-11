@@ -4139,6 +4139,15 @@ function initMap() {
         const stairsY38 = Math.floor(ROWS / 2) + (Math.random() < 0.5 ? -4 : 4);
         map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
 
+        // ===== 出口の下に広い溶岩の沼 =====
+        // 幅：x=stairsX38-7〜stairsX38+2、高さ：stairsY38+1〜ROWS-2
+        for (let ly = stairsY38 + 1; ly < ROWS - 1; ly++) {
+            for (let lx = stairsX38 - 7; lx <= stairsX38 + 2; lx++) {
+                if (lx < 1 || lx >= COLS - 1) continue;
+                map[ly][lx] = SYMBOLS.LAVA;
+            }
+        }
+
         // ===== 溶岩帯（横方向に伸びる）=====
         const lavaCount38 = 8 + Math.floor(Math.random() * 5); // 8〜12本
         for (let i = 0; i < lavaCount38; i++) {
