@@ -4130,28 +4130,81 @@ function initMap() {
         isWindFloor = true;
         windTimer = 4;
 
-        // プレイヤー開始位置：左側中央
-        player.x = 4;
-        player.y = Math.floor(ROWS / 2);
+        // プレイヤー開始位置：左上
+        player.x = 3;
+        player.y = 3;
 
-        // 出口：右端付近
-        const stairsX38 = COLS - 4;
-        const stairsY38 = Math.floor(ROWS / 2) + (Math.random() < 0.5 ? -4 : 4);
+        // 出口：右上
+        const stairsX38 = COLS - 4; // 36
+        const stairsY38 = 3;
         map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
+
+        // ===== 四方の壁に洞窟らしい出っ張り =====
+        // 北壁（y=0→内側）：不規則な歯を下向きに
+        for (let x = 2; x < COLS - 2; x += Math.floor(Math.random() * 4) + 2) {
+            const depth = Math.floor(Math.random() * 3) + 1; // 1〜3マス突出
+            const width = Math.floor(Math.random() * 3) + 1; // 幅1〜3
+            for (let dx = 0; dx < width && x + dx < COLS - 2; dx++) {
+                for (let dy = 1; dy <= depth; dy++) {
+                    map[dy][x + dx] = SYMBOLS.WALL;
+                }
+            }
+        }
+        // 南壁（y=ROWS-1→内側）：不規則な歯を上向きに
+        for (let x = 2; x < COLS - 2; x += Math.floor(Math.random() * 4) + 2) {
+            const depth = Math.floor(Math.random() * 3) + 1;
+            const width = Math.floor(Math.random() * 3) + 1;
+            for (let dx = 0; dx < width && x + dx < COLS - 2; dx++) {
+                for (let dy = 1; dy <= depth; dy++) {
+                    map[ROWS - 1 - dy][x + dx] = SYMBOLS.WALL;
+                }
+            }
+        }
+        // 西壁（x=0→内側）：不規則な歯を右向きに
+        for (let y = 2; y < ROWS - 2; y += Math.floor(Math.random() * 4) + 2) {
+            const depth = Math.floor(Math.random() * 3) + 1;
+            const height = Math.floor(Math.random() * 3) + 1;
+            for (let dy = 0; dy < height && y + dy < ROWS - 2; dy++) {
+                for (let dx = 1; dx <= depth; dx++) {
+                    map[y + dy][dx] = SYMBOLS.WALL;
+                }
+            }
+        }
+        // 東壁（x=COLS-1→内側）：不規則な歯を左向きに
+        for (let y = 2; y < ROWS - 2; y += Math.floor(Math.random() * 4) + 2) {
+            const depth = Math.floor(Math.random() * 3) + 1;
+            const height = Math.floor(Math.random() * 3) + 1;
+            for (let dy = 0; dy < height && y + dy < ROWS - 2; dy++) {
+                for (let dx = 1; dx <= depth; dx++) {
+                    map[y + dy][COLS - 1 - dx] = SYMBOLS.WALL;
+                }
+            }
+        }
+
+        // ===== 北壁中央から下に伸びる長い仕切り壁（Vの字ガイド）=====
+        // x=18〜21の3マス幅、y=1からROWS/2+2まで
+        const wallCenterX38 = Math.floor(COLS / 2) - 1; // x=19
+        const wallBottomY38 = Math.floor(ROWS / 2) + 2;  // y=14
+        for (let y = 1; y <= wallBottomY38; y++) {
+            for (let dx = 0; dx < 3; dx++) {
+                map[y][wallCenterX38 + dx] = SYMBOLS.WALL;
+            }
+        }
 
         // ===== 溶岩帯（横方向に伸びる）=====
         const lavaCount38 = 8 + Math.floor(Math.random() * 5); // 8〜12本
         for (let i = 0; i < lavaCount38; i++) {
-            const ly = Math.floor(Math.random() * (ROWS - 6)) + 3;
+            const ly = Math.floor(Math.random() * (ROWS - 8)) + 4;
             const lStartX = Math.floor(Math.random() * 6) + 2;
             const lLen = 8 + Math.floor(Math.random() * 15); // 横8〜22マス
-            const lHeight = Math.random() < 0.35 ? 2 : 1; // 35%の確率で2行
+            const lHeight = Math.random() < 0.35 ? 2 : 1;
             for (let dy = 0; dy < lHeight; dy++) {
                 for (let dx = 0; dx < lLen; dx++) {
                     const lx = lStartX + dx;
                     const ry = ly + dy;
                     if (lx < 1 || lx >= COLS - 1 || ry < 1 || ry >= ROWS - 1) continue;
-                    if (Math.random() < 0.12) continue; // 12%でギャップ
+                    if (map[ry][lx] === SYMBOLS.WALL) continue;
+                    if (Math.random() < 0.12) continue;
                     map[ry][lx] = SYMBOLS.LAVA;
                 }
             }
@@ -4161,52 +4214,52 @@ function initMap() {
         const iceCount38 = 8 + Math.floor(Math.random() * 5); // 8〜12本
         for (let i = 0; i < iceCount38; i++) {
             const ix = Math.floor(Math.random() * (COLS - 8)) + 4;
-            const iStartY = Math.floor(Math.random() * 4) + 2;
-            const iLen = 5 + Math.floor(Math.random() * 11); // 縦5〜15マス
-            const iWidth = Math.random() < 0.3 ? 2 : 1; // 30%の確率で2列
+            const iStartY = Math.floor(Math.random() * 4) + 5; // 上部（プレイヤー付近）は避ける
+            const iLen = 5 + Math.floor(Math.random() * 11);
+            const iWidth = Math.random() < 0.3 ? 2 : 1;
             for (let dx = 0; dx < iWidth; dx++) {
                 for (let dy = 0; dy < iLen; dy++) {
                     const rx = ix + dx;
                     const ry = iStartY + dy;
                     if (rx < 1 || rx >= COLS - 1 || ry < 1 || ry >= ROWS - 1) continue;
-                    if (Math.random() < 0.12) continue; // 12%でギャップ
-                    if (map[ry][rx] === SYMBOLS.LAVA) continue; // 溶岩は上書きしない
+                    if (map[ry][rx] === SYMBOLS.WALL || map[ry][rx] === SYMBOLS.LAVA) continue;
+                    if (Math.random() < 0.12) continue;
                     map[ry][rx] = SYMBOLS.ICE;
                 }
             }
         }
 
-        // プレイヤー開始地点周辺（5×5）をFLOORに
-        for (let dy = -2; dy <= 2; dy++) {
-            for (let dx = -2; dx <= 2; dx++) {
-                const cx = player.x + dx, cy = player.y + dy;
+        // プレイヤー開始地点周辺（4×4）をFLOORに（北壁出っ張りを上書きしないよう y>=1 のみ）
+        for (let dy = 0; dy <= 3; dy++) {
+            for (let dx = 0; dx <= 3; dx++) {
+                const cx = player.x + dx - 1, cy = player.y + dy - 1;
                 if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1)
                     map[cy][cx] = SYMBOLS.FLOOR;
             }
         }
 
-        // 出口付近の溶岩を除去（踏めるように）
-        map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
+        // 出口周辺（3×3）の溶岩・氷・出っ張り壁を除去してFLOORに
         for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
                 const cx = stairsX38 + dx, cy = stairsY38 + dy;
                 if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1
-                    && map[cy][cx] === SYMBOLS.LAVA)
+                    && map[cy][cx] !== SYMBOLS.STAIRS)
                     map[cy][cx] = SYMBOLS.FLOOR;
             }
         }
+        map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
 
-        // 風避けの壁（横2〜4マス）を数本配置
+        // 風避けの壁（横2〜4マス）を数本配置（仕切り壁の左右に分散）
         const wallCount38 = 5 + Math.floor(Math.random() * 4);
         for (let i = 0; i < wallCount38; i++) {
             for (let t = 0; t < 60; t++) {
                 const wx = Math.floor(Math.random() * (COLS - 10)) + 5;
-                const wy = Math.floor(Math.random() * (ROWS - 6)) + 3;
+                const wy = Math.floor(Math.random() * (ROWS - 10)) + wallBottomY38 - 2;
                 const wlen = 2 + Math.floor(Math.random() * 3);
                 if (Math.abs(wx - player.x) + Math.abs(wy - player.y) < 5) continue;
                 let ok = true;
                 for (let d = 0; d < wlen; d++) {
-                    if (wx + d >= COLS - 1 || map[wy][wx + d] === SYMBOLS.STAIRS) { ok = false; break; }
+                    if (wx + d >= COLS - 1 || map[wy][wx + d] !== SYMBOLS.FLOOR) { ok = false; break; }
                 }
                 if (!ok) continue;
                 for (let d = 0; d < wlen; d++) map[wy][wx + d] = SYMBOLS.WALL;
@@ -4218,12 +4271,11 @@ function initMap() {
         const placeEnemy38 = (type, hp, expValue) => {
             for (let t = 0; t < 100; t++) {
                 const ex = Math.floor(Math.random() * (COLS - 6)) + 3;
-                const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                const ey = Math.floor(Math.random() * (ROWS - 8)) + 5; // 上部を避ける
                 if (map[ey][ex] !== SYMBOLS.FLOOR && map[ey][ex] !== SYMBOLS.ICE && map[ey][ex] !== SYMBOLS.LAVA) continue;
-                if (map[ey][ex] === SYMBOLS.STAIRS) continue;
                 if (ex === player.x && ey === player.y) continue;
                 if (enemies.some(e => e.x === ex && e.y === ey)) continue;
-                if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 6) continue;
+                if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 7) continue;
                 const hp2 = hp + floorLevel * 2;
                 enemies.push({ type, x: ex, y: ey, hp: hp2, maxHp: hp2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue, stunTurns: 0 });
                 return true;
@@ -4231,21 +4283,17 @@ function initMap() {
             return false;
         };
 
-        // BLAZE × 3（溶岩と相性よい）
         for (let i = 0; i < 3; i++) placeEnemy38('BLAZE', 15, 30);
-        // FROST × 3（氷と相性よい）
         for (let i = 0; i < 3; i++) placeEnemy38('FROST', 15, 25);
-        // NORMAL × 8
         for (let i = 0; i < 8; i++) placeEnemy38('NORMAL', 5, 8);
-        // ORC × 2
         for (let i = 0; i < 2; i++) placeEnemy38('ORC', 40, 50);
 
-        // ===== アイテム配置 =====
+        // ===== アイテム配置（下半分に集中）=====
         const items38 = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.HEAL_TOME, SYMBOLS.STEALTH, SYMBOLS.ESCAPE];
         for (const item of items38) {
             for (let t = 0; t < 100; t++) {
                 const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
-                const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                const iy = Math.floor(Math.random() * (ROWS - wallBottomY38 - 3)) + wallBottomY38;
                 if (map[iy][ix] !== SYMBOLS.FLOOR) continue;
                 if (ix === player.x && iy === player.y) continue;
                 map[iy][ix] = item;
