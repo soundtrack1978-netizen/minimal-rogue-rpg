@@ -10580,7 +10580,7 @@ async function checkWispDamage(w) {
             // BOMBERはウィルに触れると即死 → 連鎖爆発
             e.hp = 0; e.flashUntil = performance.now() + 200;
             spawnFloatingText(w.x, w.y, "ZAP!", "#fff");
-            await handleEnemyDeath(e, false);
+            await handleEnemyDeath(e, false, true);
             continue;
         }
         let hit = (e.x === w.x && e.y === w.y);
@@ -10598,7 +10598,7 @@ async function checkWispDamage(w) {
                 e.mimicWispFlashUntil = performance.now() + 350;
             }
             if (e.hp <= 0) {
-                await handleEnemyDeath(e, false);
+                await handleEnemyDeath(e, false, true);
             }
         }
     }
@@ -11000,7 +11000,7 @@ function scheduleEnemyFall(enemy, msg, killedByPlayer = false) {
     setTimeout(() => { handleEnemyDeath(enemy, killedByPlayer); }, 400);
 }
 
-async function handleEnemyDeath(enemy, killedByPlayer = false) {
+async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = false) {
     if (enemy._dead) return; // 二重処理防止
     enemy._dead = true;
 
@@ -11091,8 +11091,8 @@ async function handleEnemyDeath(enemy, killedByPlayer = false) {
         }
     }
 
-    if (killedByPlayer) {
-        player.totalKills++;
+    if (killedByPlayer || killedByWisp) {
+        if (killedByPlayer) player.totalKills++;
         const _baseExp = enemy.type === 'NORMAL'
             ? (enemy.expValue || 5) * 2   // E(通常敵)は基本経験値2倍
             : (enemy.expValue || 5);
