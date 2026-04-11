@@ -2386,8 +2386,11 @@ function initMap() {
                 const _sTheme = (screenThemes && screenThemes.length > 0)
                     ? screenThemes[Math.floor(Math.random() * screenThemes.length)]
                     : deepTheme;
-                // 奇妙な場所（101F以上・特殊画面以外・テーマで変動）
-                if (floorLevel >= 101 && !isSpecial && Math.random() < (_sTheme ? _sTheme.bizarreChance : 0.25)) {
+                // 奇妙な場所（50F以上・特殊画面以外。101F+はテーマで変動、50〜99Fは低確率固定）
+                const _bizChance = floorLevel >= 101
+                    ? (_sTheme ? _sTheme.bizarreChance : 0.25)
+                    : 0.06; // 50〜99F: 画面ごとに6%
+                if (!isSpecial && Math.random() < _bizChance) {
                     const result = generateBizarreScreen(sx, sy);
                     screenGrid.maps[sy][sx] = result.sMap;
                     screenGrid.enemies[sy][sx] = result.sEnemies;
