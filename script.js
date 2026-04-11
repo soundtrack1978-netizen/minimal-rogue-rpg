@@ -10732,7 +10732,9 @@ function moveFairies() {
             if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
             f.x += bestDX; f.y += bestDY;
             const prev = map[f.y][f.x];
-            if (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS && prev !== SYMBOLS.FAIRY)
+            const isDisguisedMimicTile = prev === SYMBOLS.STAIRS &&
+                enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === f.x && e.y === f.y);
+            if (prev !== SYMBOLS.KEY && (prev !== SYMBOLS.STAIRS || isDisguisedMimicTile) && prev !== SYMBOLS.FAIRY)
                 map[f.y][f.x] = SYMBOLS.FAIRY;
             // アイテム（剣・鎧・魔導書等）も underTile に正しく保存する
             // 壁と妖精自身以外はすべて保存（_passable に限定しない）
@@ -12623,6 +12625,7 @@ async function enemyTurn() {
                     if (bomberCanMove(e.x + d.dx, e.y + d.dy)) { e.x += d.dx; e.y += d.dy; break; }
                 }
             }
+            if (isRealHole(e.x, e.y)) scheduleEnemyFall(e, "The BOMBER fell into the HOLE!");
             continue;
         }
 
