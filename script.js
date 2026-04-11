@@ -4157,21 +4157,20 @@ function initMap() {
             }
         }
 
-        // ===== 氷帯（縦方向に伸びる）=====
-        const iceCount38 = 8 + Math.floor(Math.random() * 5); // 8〜12本
-        for (let i = 0; i < iceCount38; i++) {
-            const ix = Math.floor(Math.random() * (COLS - 8)) + 4;
-            const iStartY = Math.floor(Math.random() * 4) + 2;
-            const iLen = 5 + Math.floor(Math.random() * 11); // 縦5〜15マス
-            const iWidth = Math.random() < 0.3 ? 2 : 1; // 30%の確率で2列
-            for (let dx = 0; dx < iWidth; dx++) {
-                for (let dy = 0; dy < iLen; dy++) {
-                    const rx = ix + dx;
-                    const ry = iStartY + dy;
+        // ===== 追加溶岩帯（縦方向に伸びる）=====
+        const lavaVCount38 = 6 + Math.floor(Math.random() * 4); // 6〜9本
+        for (let i = 0; i < lavaVCount38; i++) {
+            const vx = Math.floor(Math.random() * (COLS - 8)) + 4;
+            const vStartY = Math.floor(Math.random() * 4) + 2;
+            const vLen = 4 + Math.floor(Math.random() * 10); // 縦4〜13マス
+            const vWidth = Math.random() < 0.3 ? 2 : 1;
+            for (let dx = 0; dx < vWidth; dx++) {
+                for (let dy = 0; dy < vLen; dy++) {
+                    const rx = vx + dx;
+                    const ry = vStartY + dy;
                     if (rx < 1 || rx >= COLS - 1 || ry < 1 || ry >= ROWS - 1) continue;
-                    if (Math.random() < 0.12) continue; // 12%でギャップ
-                    if (map[ry][rx] === SYMBOLS.LAVA) continue; // 溶岩は上書きしない
-                    map[ry][rx] = SYMBOLS.ICE;
+                    if (Math.random() < 0.12) continue;
+                    map[ry][rx] = SYMBOLS.LAVA;
                 }
             }
         }
@@ -4232,10 +4231,8 @@ function initMap() {
             return false;
         };
 
-        // BLAZE × 3（溶岩と相性よい）
-        for (let i = 0; i < 3; i++) placeEnemy38('BLAZE', 15, 30);
-        // FROST × 3（氷と相性よい）
-        for (let i = 0; i < 3; i++) placeEnemy38('FROST', 15, 25);
+        // BLAZE × 5（溶岩と相性よい）
+        for (let i = 0; i < 5; i++) placeEnemy38('BLAZE', 15, 30);
         // NORMAL × 8
         for (let i = 0; i < 8; i++) placeEnemy38('NORMAL', 5, 8);
         // ORC × 2
