@@ -7946,10 +7946,10 @@ function draw(now) {
                         ctx.fillStyle = '#fbbf24'; ctx.fillText(displayChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                     }
                 } else if (char === SYMBOLS.FAIRY) {
-                    // 配置直後の妖精は点滅（waitTurns > 0 の間、200ms間隔で点滅）
+                    // 移動中の妖精は点滅（stopped になるまでずっと点滅）
                     const mf = movingFairies.find(f => f.x === x && f.y === y &&
                         (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y)));
-                    const isBlinking = mf && mf.waitTurns > 0 && Math.floor(now / 200) % 2 === 1;
+                    const isBlinking = mf && !mf.stopped && Math.floor(now / 200) % 2 === 1;
                     if (!isBlinking) {
                         ctx.fillStyle = '#f472b6';
                         ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
@@ -10358,8 +10358,8 @@ async function handleAction(dx, dy) {
                     spawnFloatingText(nx, ny, "GUARDIAN TOME IDENTIFIED", "#facc15", 1500);
                 } else if (nextTile === SYMBOLS.FAIRY) {
                     const mf = movingFairies.find(f => f.x === nx && f.y === ny && (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y)));
-                    // waitTurns > 0: 置いた直後は拾えない（氷上で滑って即回収される問題を防ぐ）
-                    if (mf && mf.waitTurns > 0) {
+                    // 移動中（stopped=false）は拾えない
+                    if (mf && !mf.stopped) {
                         // 拾わずそのまま通過（移動だけする）
                     } else {
                         // Bug2修正: underTileを復元（ICEならICEに戻す）
@@ -10705,9 +10705,9 @@ function useFairy() {
     player.fairyCount--;
 
     if (multiScreenMode && screenGrid) {
-        movingFairies.push({ x: fx, y: fy, screenX: currentScreen.x, screenY: currentScreen.y, underTile: under, surrounded: false, waitTurns: 3 });
+        movingFairies.push({ x: fx, y: fy, screenX: currentScreen.x, screenY: currentScreen.y, underTile: under, surrounded: false, waitTurns: 3, stopped: false });
     } else {
-        movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under, surrounded: false, waitTurns: 3 });
+        movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under, surrounded: false, waitTurns: 3, stopped: false });
     }
 
     addLog("🧚 You released a FAIRY! It heads toward the KEY.");
@@ -10725,8 +10725,8 @@ function moveFairies() {
         const f = movingFairies[i];
         if (f.screenX !== -1) continue;
 
-        // プレイヤーと重なったら再取得（waitTurns > 0 の直後は拾わない）
-        if (f.x === player.x && f.y === player.y && f.waitTurns === 0) {
+        // プレイヤーと重なったら再取得（停止済みのみ取得可能）
+        if (f.x === player.x && f.y === player.y && f.stopped) {
             if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
             movingFairies.splice(i, 1);
             player.fairyCount++;
@@ -10751,8 +10751,6 @@ function moveFairies() {
                 f.waitTurns = 4;
             }
         }
-        // waitTurns中でも移動する（点滅しながらキー/穴へ向かう）
-        const canPickup = f.waitTurns === 0;
         if (f.waitTurns > 0) f.waitTurns--;
 
         // 目標を探す（KEY優先、次にDOOR（解錠前の穴）、次にSTAIRS）
@@ -10770,8 +10768,13 @@ function moveFairies() {
         }
         if (goalX < 0) continue;
 
-        // 目標の1マス手前で停止
-        if (Math.abs(f.x - goalX) + Math.abs(f.y - goalY) <= 1) continue;
+        // 目標の1マス手前で停止（stopped = true → 取得可能・点滅終了）
+        if (Math.abs(f.x - goalX) + Math.abs(f.y - goalY) <= 1) {
+            f.stopped = true;
+            continue;
+        }
+        // まだ移動中（stopped = false → 取得不可・点滅中）
+        f.stopped = false;
 
         // BFSで次の一歩を計算
         const { dx: bestDX, dy: bestDY } = fairyBFS(map, f.x, f.y, goalX, goalY);
@@ -10793,8 +10796,8 @@ function moveFairies() {
             // 壁と妖精自身以外はすべて保存（_passable に限定しない）
             f.underTile = (prev !== SYMBOLS.WALL && prev !== SYMBOLS.FAIRY) ? prev : SYMBOLS.FLOOR;
 
-            // 移動後にプレイヤーと重なったら即取得（点滅中は取得しない）
-            if (canPickup && f.x === player.x && f.y === player.y) {
+            // 移動後にプレイヤーと重なったら即取得（移動直後はstopped=falseなので取得不可）
+            if (f.stopped && f.x === player.x && f.y === player.y) {
                 if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
                 movingFairies.splice(i, 1);
                 player.fairyCount++;
@@ -10887,8 +10890,8 @@ function moveFairies() {
             f.underTile = fairyArrive(nMap, f.x, f.y);
         }
 
-        // ---- プレイヤーと重なったら取得（waitTurns > 0 直後は拾わない）----
-        if (isCurrentScreen && f.x === player.x && f.y === player.y && f.waitTurns === 0) {
+        // ---- プレイヤーと重なったら取得（停止済みのみ取得可能）----
+        if (isCurrentScreen && f.x === player.x && f.y === player.y && f.stopped) {
             fairyLeave(fMap, f.x, f.y, f.underTile);
             movingFairies.splice(i, 1);
             player.fairyCount++;
@@ -10916,8 +10919,6 @@ function moveFairies() {
                 }
             }
         }
-        // waitTurns中でも移動する（点滅しながらキー/穴へ向かう）
-        const canPickupMS = f.waitTurns === 0;
         if (f.waitTurns > 0) f.waitTurns--;
 
         // ---- 1マス移動: 壁以外はすべてすり抜ける ----
@@ -10934,8 +10935,9 @@ function moveFairies() {
         // KEY・DOOR・STAIRS が目標かつ同じ画面にいる場合、1マス隣にいれば停止して待機
         if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.DOOR || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
             const distToGoal = Math.abs(f.x - goalLocalX) + Math.abs(f.y - goalLocalY);
-            if (distToGoal <= 1) continue; // 1マス以内なら停止
+            if (distToGoal <= 1) { f.stopped = true; continue; } // 停止 → 取得可能・点滅終了
         }
+        f.stopped = false; // 移動中 → 取得不可・点滅中
 
         let targetX, targetY;
         if (f.screenX === goalSX && f.screenY === goalSY) {
@@ -10964,8 +10966,8 @@ function moveFairies() {
             const newMap = (f.screenX === currentScreen.x && f.screenY === currentScreen.y) ? map : screenGrid.maps[f.screenY][f.screenX];
             f.underTile = fairyArrive(newMap, f.x, f.y);
 
-            // 移動後にプレイヤーと重なったら即取得（点滅中は取得しない）
-            if (canPickupMS && f.screenX === currentScreen.x && f.screenY === currentScreen.y && f.x === player.x && f.y === player.y) {
+            // 移動後にプレイヤーと重なったら即取得（移動直後はstopped=falseなので取得不可）
+            if (f.stopped && f.screenX === currentScreen.x && f.screenY === currentScreen.y && f.x === player.x && f.y === player.y) {
                 fairyLeave(newMap, f.x, f.y, f.underTile);
                 movingFairies.splice(i, 1);
                 player.fairyCount++;
