@@ -4130,21 +4130,31 @@ function initMap() {
         isWindFloor = true;
         windTimer = 4;
 
-        // プレイヤー開始位置：左側中央
+        // プレイヤー開始位置：左下
         player.x = 4;
-        player.y = Math.floor(ROWS / 2);
+        player.y = ROWS - 4;
 
-        // 出口：右端付近
-        const stairsX38 = COLS - 4;
-        const stairsY38 = Math.floor(ROWS / 2) + (Math.random() < 0.5 ? -4 : 4);
+        // 出口：右上（固定）
+        const stairsX38 = COLS - 4; // 36
+        const stairsY38 = 3;
         map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
 
-        // ===== 出口の下に広い溶岩の沼 =====
-        // 幅：x=stairsX38-7〜stairsX38+2、高さ：stairsY38+1〜ROWS-2
-        for (let ly = stairsY38 + 1; ly < ROWS - 1; ly++) {
-            for (let lx = stairsX38 - 7; lx <= stairsX38 + 2; lx++) {
-                if (lx < 1 || lx >= COLS - 1) continue;
-                map[ly][lx] = SYMBOLS.LAVA;
+        // ===== 出口に接する不定形の溶岩の沼（右上エリア）=====
+        // 中心=(stairsX38-4, stairsY38+4)、小さめの楕円
+        const poolCX38 = stairsX38 - 4; // x=32
+        const poolCY38 = stairsY38 + 4; // y=7
+        for (let ly = 1; ly < ROWS - 1; ly++) {
+            for (let lx = 1; lx < COLS - 1; lx++) {
+                if (lx === stairsX38 && ly === stairsY38) continue; // 出口は除く
+                const ndx = (lx - poolCX38) / 7; // 横スケール
+                const ndy = (ly - poolCY38) / 5; // 縦スケール
+                const dist = Math.sqrt(ndx * ndx + ndy * ndy);
+                // 外縁をランダムにギザギザにする
+                const threshold = 0.75 + Math.random() * 0.4;
+                if (dist < threshold) {
+                    // 溶岩の中に床を少し点在させる（8%の確率でFLOORのまま）
+                    map[ly][lx] = Math.random() < 0.08 ? SYMBOLS.FLOOR : SYMBOLS.LAVA;
+                }
             }
         }
 
@@ -4184,7 +4194,7 @@ function initMap() {
             }
         }
 
-        // プレイヤー開始地点周辺（5×5）をFLOORに
+        // プレイヤー開始地点周辺（5×5）をFLOORに（左下）
         for (let dy = -2; dy <= 2; dy++) {
             for (let dx = -2; dx <= 2; dx++) {
                 const cx = player.x + dx, cy = player.y + dy;
@@ -4193,16 +4203,8 @@ function initMap() {
             }
         }
 
-        // 出口付近の溶岩を除去（踏めるように）
+        // 出口タイルだけ確実にSTAIRSに（沼は出口に接したままにする）
         map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
-        for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-                const cx = stairsX38 + dx, cy = stairsY38 + dy;
-                if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1
-                    && map[cy][cx] === SYMBOLS.LAVA)
-                    map[cy][cx] = SYMBOLS.FLOOR;
-            }
-        }
 
         // 風避けの壁（横2〜4マス）を数本配置
         const wallCount38 = 5 + Math.floor(Math.random() * 4);
