@@ -9316,8 +9316,7 @@ async function handleAction(dx, dy) {
     if (floorLevel === 100 && !hasSpawnedDragon && dungeonCore) {
         const dist = Math.abs(player.x - dungeonCore.x) + Math.abs(player.y - dungeonCore.y);
         if (dist <= 8) {
-            await triggerDragonSpawn();
-            isProcessing = false;
+            try { await triggerDragonSpawn(); } catch(err) { console.error('[dragon spawn ERROR]', err); } finally { isProcessing = false; }
             return;
         }
     }
@@ -9764,20 +9763,27 @@ async function handleAction(dx, dy) {
             addLog("A stranded adventurer offers to trade!");
             updateUI();
             const showOnTop = player.y >= Math.floor(ROWS / 2);
-            if (floorLevel === 10) {
-                // 10F: 固定テキスト
-                await showStoryPages([
-                    ["傷ついた冒険者の男がいる。", "あなたを見て、おどろいた様子で話しかけてきた。"],
-                    ["「おまえも、迷ったのか？", "なあ、金をくれよ。", "指輪と交換しようぜ」"]
-                ], false, showOnTop);
-            } else {
-                // 他の階: ランダム会話パターン
-                merchantPatternIndex = Math.floor(Math.random() * MERCHANT_PATTERNS.length);
-                await showStoryPages(MERCHANT_PATTERNS[merchantPatternIndex].intro, false, showOnTop);
+            try {
+                if (floorLevel === 10) {
+                    // 10F: 固定テキスト
+                    await showStoryPages([
+                        ["傷ついた冒険者の男がいる。", "あなたを見て、おどろいた様子で話しかけてきた。"],
+                        ["「おまえも、迷ったのか？", "なあ、金をくれよ。", "指輪と交換しようぜ」"]
+                    ], false, showOnTop);
+                } else {
+                    // 他の階: ランダム会話パターン
+                    merchantPatternIndex = Math.floor(Math.random() * MERCHANT_PATTERNS.length);
+                    await showStoryPages(MERCHANT_PATTERNS[merchantPatternIndex].intro, false, showOnTop);
+                }
+                gameState = 'SHOP';
+                shopSelection = 0;
+            } catch(err) {
+                console.error('[merchant story ERROR]', err);
+                gameState = 'SHOP';
+                shopSelection = 0;
+            } finally {
+                isProcessing = false;
             }
-            gameState = 'SHOP';
-            shopSelection = 0;
-            isProcessing = false;
             return;
         }
 
@@ -10238,7 +10244,8 @@ async function checkWispDamage(w) {
     }
 
     // 敵との接触
-    for (const e of enemies) {
+    for (const e of [...enemies]) { // コピーを取る: handleEnemyDeath が enemies を再代入しても安全
+        if (e._dead) continue; // 既に死亡処理済みならスキップ
         if (e.type === 'BREAKER') continue; // BREAKERはウィスプの影響を受けない
         if (e.type === 'BOMBER' && e.x === w.x && e.y === w.y) {
             // BOMBERはウィルに触れると即死 → 連鎖爆発
@@ -10257,7 +10264,7 @@ async function checkWispDamage(w) {
             e.flashUntil = performance.now() + 200;
             spawnDamageText(w.x, w.y, dmg, '#fff');
             if (e.hp <= 0) {
-                await handleEnemyDeath(e, false); // Wisps are not the protagonist
+                await handleEnemyDeath(e, false);
             }
         }
     }
