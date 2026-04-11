@@ -6753,22 +6753,6 @@ async function triggerFairyEvent() {
             "",
             "おそるおそる、その手に触れた"
         ],
-        [
-            "It seems she will charm the first",
-            "monster you meet on each floor.",
-            "",
-            "各階層で最初に遭遇したモンスターを、",
-            "仲間にしてくれるようだ"
-        ],
-        [
-            "Press [8] or [F] to release",
-            "the fairy as a guide.",
-            "She will move toward",
-            "the KEY or exit.",
-            "",
-            "[8] または [F] キーで妖精を放つと、",
-            "鍵や出口に向かって移動してくれる"
-        ]
     ]);
     isProcessing = false;
 }
@@ -8945,7 +8929,7 @@ async function slidePlayer(dx, dy) {
 
         // 通過タイトルのアイテム回収判定
         const nextTile = map[ny][nx];
-        const itemSymbols = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.KEY, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.WAND, SYMBOLS.EXPLOSION, SYMBOLS.BREAKER_TOME];
+        const itemSymbols = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.KEY, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.WAND, SYMBOLS.EXPLOSION, SYMBOLS.BREAKER_TOME, SYMBOLS.HEAL_TOME, SYMBOLS.ESCAPE, SYMBOLS.GUARDIAN, SYMBOLS.FAIRY];
         if (itemSymbols.includes(nextTile)) {
             pickedDuringSlide.push({ symbol: nextTile, x: nx, y: ny });
             map[ny][nx] = SYMBOLS.FLOOR; // 即座に消す
@@ -11656,7 +11640,7 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
         }
 
         const nextTile = map[ny][nx];
-        const itemSymbols = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.KEY, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.WAND, SYMBOLS.EXPLOSION, SYMBOLS.BREAKER_TOME];
+        const itemSymbols = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.KEY, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.WAND, SYMBOLS.EXPLOSION, SYMBOLS.BREAKER_TOME, SYMBOLS.HEAL_TOME, SYMBOLS.ESCAPE, SYMBOLS.GUARDIAN, SYMBOLS.FAIRY];
         if (itemSymbols.includes(nextTile)) {
             pickedDuringSlide.push({ symbol: nextTile, x: nx, y: ny });
             map[ny][nx] = SYMBOLS.FLOOR;
@@ -13430,6 +13414,7 @@ async function enemyTurn() {
                 if (map[ny][nx] !== SYMBOLS.FLOOR) continue;
                 if (enemies.some(e => e.x === nx && e.y === ny && e.hp > 0)) continue;
                 if (wisps.some(w => w.x === nx && w.y === ny)) continue;
+                if (isTileInLaser(nx, ny)) continue;
                 map[my][mx] = SYMBOLS.FLOOR;
                 map[ny][nx] = SYMBOLS.MERCHANT;
                 merchantState.x = nx;
