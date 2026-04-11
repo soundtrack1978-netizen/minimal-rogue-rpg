@@ -13087,7 +13087,11 @@ async function enemyTurn() {
             // 移動後、元いた場所にtempWallを設置（壊して進んだ場合は置かない＝同じ場所の往復を防ぐ）
             if (moved && !crushedWall) {
                 if (oldX > 1 && oldX < COLS - 2 && oldY > 1 && oldY < ROWS - 2) {
-                    if (!tempWalls.some(w => w.x === oldX && w.y === oldY) &&
+                    // 仲間が隣接している場合はブロックを置かない（仲間を封鎖しないため）
+                    const allyNearby = enemies.some(ae => ae.isAlly && ae.hp > 0 &&
+                        Math.abs(ae.x - oldX) <= 1 && Math.abs(ae.y - oldY) <= 1);
+                    if (!allyNearby &&
+                        !tempWalls.some(w => w.x === oldX && w.y === oldY) &&
                         map[oldY][oldX] !== SYMBOLS.WALL && map[oldY][oldX] !== SYMBOLS.STAIRS &&
                         !(oldX === player.x && oldY === player.y)) {
                         tempWalls.push({ x: oldX, y: oldY, hp: 2 });
@@ -13196,8 +13200,8 @@ async function enemyTurn() {
                 }
                 if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
             } else {
-                // 味方への攻撃
-                const dmg = 4 + floorLevel;
+                // 味方への攻撃（ダメージは控えめにして仲間が即死しにくくする）
+                const dmg = Math.max(1, 2 + Math.floor(floorLevel / 3));
                 bestTarget.obj.hp -= dmg;
                 bestTarget.obj.flashUntil = performance.now() + 100;
                 spawnDamageText(bestTarget.x, bestTarget.y, dmg, '#f87171');
