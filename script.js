@@ -4139,6 +4139,12 @@ function initMap() {
         const stairsY38 = 3;
         map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
 
+        // ===== 北壁中央の小さな出っ張り（5マス下向き）=====
+        const northBumpX = Math.floor(COLS / 2) - 1; // x=19（中央付近）
+        for (let dy = 1; dy <= 5; dy++) {
+            map[dy][northBumpX] = SYMBOLS.WALL;
+        }
+
         // ===== 出口に接する不定形の溶岩の沼（右上エリア）=====
         // 中心=(stairsX38-4, stairsY38+4)、小さめの楕円
         const poolCX38 = stairsX38 - 4; // x=32
