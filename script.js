@@ -4158,6 +4158,26 @@ function initMap() {
             }
         }
 
+        // ===== 東壁のランダムな出っ張り =====
+        for (let y = 2; y < ROWS - 2; y += Math.floor(Math.random() * 4) + 2) {
+            const depth = Math.floor(Math.random() * 4) + 1; // 左へ1〜4マス突出
+            const height = Math.floor(Math.random() * 3) + 1; // 高さ1〜3マス
+            for (let dy = 0; dy < height && y + dy < ROWS - 2; dy++) {
+                for (let dx = 1; dx <= depth; dx++) {
+                    map[y + dy][COLS - 1 - dx] = SYMBOLS.WALL;
+                }
+            }
+        }
+
+        // ===== 南壁に接する溶岩地帯（高さ1〜3マス）=====
+        for (let x = 1; x < COLS - 1; x++) {
+            const h = Math.floor(Math.random() * 3) + 1; // 各列ごとに高さをランダムに
+            for (let dy = 1; dy <= h; dy++) {
+                const ty = ROWS - 1 - dy;
+                if (ty >= 1) map[ty][x] = SYMBOLS.LAVA;
+            }
+        }
+
         // ===== 溶岩帯（横方向に伸びる）=====
         const lavaCount38 = 8 + Math.floor(Math.random() * 5); // 8〜12本
         for (let i = 0; i < lavaCount38; i++) {
