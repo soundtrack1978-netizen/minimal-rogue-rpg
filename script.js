@@ -6122,6 +6122,24 @@ function initMap() {
         });
     }
 
+    // ステージ5に確定でGOLD敵を出現
+    if (floorLevel === 5) {
+        for (let t = 0; t < 300; t++) {
+            const gx = Math.floor(Math.random() * (COLS - 4)) + 2;
+            const gy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+            if (map[gy][gx] !== SYMBOLS.FLOOR) continue;
+            if (gx === player.x && gy === player.y) continue;
+            if (enemies.some(e => e.x === gx && e.y === gy)) continue;
+            if (Math.abs(gx - player.x) + Math.abs(gy - player.y) < 5) continue;
+            enemies.push({
+                type: 'GOLD', x: gx, y: gy, hp: 4, maxHp: 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500 + floorLevel * 100
+            });
+            addLog("!! A Golden Shiny Enemy appeared !!");
+            break;
+        }
+    }
+
 }
 
 function breakStealth() {
