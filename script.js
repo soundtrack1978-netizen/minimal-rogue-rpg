@@ -4223,6 +4223,11 @@ function initMap() {
             }
         }
 
+        // 出口と同じ行（y=stairsY38）の左側は溶岩にしない
+        for (let lx = 1; lx < stairsX38; lx++) {
+            if (map[stairsY38][lx] === SYMBOLS.LAVA) map[stairsY38][lx] = SYMBOLS.FLOOR;
+        }
+
         // 出口タイルだけ確実にSTAIRSに（沼は出口に接したままにする）
         map[stairsY38][stairsX38] = SYMBOLS.STAIRS;
 
