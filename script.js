@@ -10413,9 +10413,9 @@ async function handleAction(dx, dy) {
         await triggerStage1StaminaTutorial();
     }
 
-    // ゴーレム（G）接近チュートリアル（5マス以内に初めて接近した時）
+    // ゴーレム（G）接近チュートリアル（2マス以内に初めて接近した時）
     if (!hasShownGolemTut && enemies.some(e => e.type === 'ORC' && e.hp > 0 &&
-        Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 5)) {
+        Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 2)) {
         await triggerGolemEvent();
     }
 
