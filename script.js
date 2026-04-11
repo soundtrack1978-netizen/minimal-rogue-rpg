@@ -4254,7 +4254,7 @@ function initMap() {
         for (let i = 0; i < wallCount38; i++) {
             for (let t = 0; t < 60; t++) {
                 const wx = Math.floor(Math.random() * (COLS - 10)) + 5;
-                const wy = Math.floor(Math.random() * (ROWS - 10)) + wallBottomY38 - 2;
+                const wy = Math.floor(Math.random() * (ROWS - wallBottomY38 - 4)) + wallBottomY38;
                 const wlen = 2 + Math.floor(Math.random() * 3);
                 if (Math.abs(wx - player.x) + Math.abs(wy - player.y) < 5) continue;
                 let ok = true;
