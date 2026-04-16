@@ -7318,14 +7318,33 @@ function initMap() {
         }
     }
 
-    // ステージ83: 密集迷路＋KEY_RUNNERのみ。STAIRS→DOOR、他の敵・ウィスプは除去
+    // ステージ83: 密集迷路＋KEY_RUNNERのみ。完全クリーンアップ後に再配置
     if (floorLevel === 83) {
         enemies = [];
         wisps = [];
-        // STAIRSをDOORに変換（鍵が必要な封鎖穴）
-        for (let y = 0; y < ROWS; y++)
-            for (let x = 0; x < COLS; x++)
-                if (map[y][x] === SYMBOLS.STAIRS) map[y][x] = SYMBOLS.DOOR;
+        merchantState = null; // 商人を除去
+
+        // マップ上の余分なタイルを整理：
+        // KEY→FLOOR、MERCHANT→FLOOR、STAIRS/DOOR→まず全部FLOOR
+        let doorX = -1, doorY = -1;
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                const t = map[y][x];
+                if (t === SYMBOLS.KEY || t === SYMBOLS.MERCHANT) {
+                    map[y][x] = SYMBOLS.FLOOR;
+                } else if (t === SYMBOLS.STAIRS || t === SYMBOLS.DOOR) {
+                    // 最初に見つけたSTAIRS/DOORをDOORとして使い、残りはFLOORに
+                    if (doorX === -1) { doorX = x; doorY = y; map[y][x] = SYMBOLS.DOOR; }
+                    else { map[y][x] = SYMBOLS.FLOOR; }
+                }
+            }
+        }
+        // STAIRS/DOORが一つも無かった場合のフォールバック（右下付近）
+        if (doorX === -1) {
+            doorX = COLS - 4; doorY = ROWS - 4;
+            map[doorY][doorX] = SYMBOLS.DOOR;
+        }
+
         // KEY_RUNNERをプレイヤーから遠い床タイルに配置
         let kr83placed = false;
         for (let t = 0; t < 1000 && !kr83placed; t++) {
