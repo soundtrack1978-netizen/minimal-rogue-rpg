@@ -7366,63 +7366,6 @@ function initMap() {
             kr83placed = true;
         }
         addLog("🔑 K holds the only key. Catch it to unlock the door!");
-
-        // 四方の外壁にランダムな突起を追加
-        const protrudedTiles = new Set(); // 突起タイル記録（プレイヤー/DOOR保護用）
-        const safeSet = new Set([
-            `${player.x},${player.y}`,
-            `${player.x-1},${player.y}`, `${player.x+1},${player.y}`,
-            `${player.x},${player.y-1}`, `${player.x},${player.y+1}`,
-            `${doorX},${doorY}`,
-            `${doorX-1},${doorY}`, `${doorX+1},${doorY}`,
-            `${doorX},${doorY-1}`, `${doorX},${doorY+1}`,
-        ]);
-        const addProtrusion = (ax, ay) => {
-            if (ax <= 0 || ax >= COLS-1 || ay <= 0 || ay >= ROWS-1) return;
-            if (safeSet.has(`${ax},${ay}`)) return;
-            map[ay][ax] = SYMBOLS.WALL;
-            protrudedTiles.add(`${ax},${ay}`);
-        };
-        // 上壁（y=0）から下方向へ突起
-        const topCount = 4 + Math.floor(Math.random() * 4);
-        for (let i = 0; i < topCount; i++) {
-            const px = 2 + Math.floor(Math.random() * (COLS - 4));
-            const depth = 1 + Math.floor(Math.random() * 2);
-            const width = 1 + Math.floor(Math.random() * 3);
-            for (let d = 1; d <= depth; d++)
-                for (let w = 0; w < width; w++)
-                    addProtrusion(px + w, d);
-        }
-        // 下壁（y=ROWS-1）から上方向へ突起
-        const btmCount = 4 + Math.floor(Math.random() * 4);
-        for (let i = 0; i < btmCount; i++) {
-            const px = 2 + Math.floor(Math.random() * (COLS - 4));
-            const depth = 1 + Math.floor(Math.random() * 2);
-            const width = 1 + Math.floor(Math.random() * 3);
-            for (let d = 1; d <= depth; d++)
-                for (let w = 0; w < width; w++)
-                    addProtrusion(px + w, ROWS - 1 - d);
-        }
-        // 左壁（x=0）から右方向へ突起
-        const leftCount = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < leftCount; i++) {
-            const py = 2 + Math.floor(Math.random() * (ROWS - 4));
-            const depth = 1 + Math.floor(Math.random() * 2);
-            const height = 1 + Math.floor(Math.random() * 3);
-            for (let d = 1; d <= depth; d++)
-                for (let h = 0; h < height; h++)
-                    addProtrusion(d, py + h);
-        }
-        // 右壁（x=COLS-1）から左方向へ突起
-        const rightCount = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < rightCount; i++) {
-            const py = 2 + Math.floor(Math.random() * (ROWS - 4));
-            const depth = 1 + Math.floor(Math.random() * 2);
-            const height = 1 + Math.floor(Math.random() * 3);
-            for (let d = 1; d <= depth; d++)
-                for (let h = 0; h < height; h++)
-                    addProtrusion(COLS - 1 - d, py + h);
-        }
     }
 
 }
