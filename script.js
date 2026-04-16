@@ -16127,6 +16127,16 @@ async function tryCharmEnemy() {
                     map[enemy.y][enemy.x] = SYMBOLS.FLOOR;
                     enemy.mimicTransitionEnd = performance.now() + 500;
                 }
+                // KEY_RUNNERをチャームした場合、その場にカギを落とす
+                if (enemy.holdsKey) {
+                    keyDropUnderTile = map[enemy.y][enemy.x];
+                    map[enemy.y][enemy.x] = SYMBOLS.KEY;
+                    enemy.holdsKey = false;
+                    enemy.trailX = null; enemy.trailY = null;
+                    addLog("🔑 The thief dropped the key!");
+                    spawnFloatingText(enemy.x, enemy.y, "KEY DROP!", "#fbbf24");
+                    playMelody([{ f: 880, d: 0.1 }, { f: 1108, d: 0.1 }, { f: 1320, d: 0.2 }]);
+                }
                 spawnFloatingText(enemy.x, enemy.y, "CHARMED!!", "#60a5fa");
                 charmedCount++;
             }
