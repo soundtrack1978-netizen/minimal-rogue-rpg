@@ -13405,45 +13405,44 @@ async function enemyTurn() {
         // 逃走行動（FLEEING_HORDE）: プレイヤーから遠ざかる。追い詰められたら反撃
         if (e.flee && !e.isAlly) {
             const fDist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
-            if (fDist > 1) {
-                const fDirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
-                const fValid = fDirs.filter(d => {
-                    const nx = e.x+d.x, ny = e.y+d.y;
-                    return canEnemyMove(nx, ny, e) && !enemies.some(t=>t!==e && t.x===nx && t.y===ny);
-                });
-                if (fValid.length > 0) {
-                    // 最もプレイヤーから遠くなる方向を選ぶ（ランダム性も少し加える）
-                    fValid.sort((a,b) => {
-                        const dA = Math.abs((e.x+a.x)-player.x)+Math.abs((e.y+a.y)-player.y);
-                        const dB = Math.abs((e.x+b.x)-player.x)+Math.abs((e.y+b.y)-player.y);
-                        return dB - dA;
+            // KEY_RUNNERは距離1（隣接）でも逃走。それ以外は距離2以上で逃走
+            if (fDist > 1 || e.type === 'KEY_RUNNER') {
+                // 逃走方向をスコアリングで選択：
+                //   score = プレイヤーからのマンハッタン距離
+                //         - 直前逆方向ペナルティ（往復スタック防止）
+                //         + ランダムノイズ（単調ループ回避）
+                const pickFleeDir = (ent) => {
+                    const dirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+                    const valid = dirs.filter(d => {
+                        const nx = ent.x+d.x, ny = ent.y+d.y;
+                        return canEnemyMove(nx, ny, ent) && !enemies.some(t=>t!==ent && t.x===nx && t.y===ny);
                     });
-                    const topDist = Math.abs((e.x+fValid[0].x)-player.x)+Math.abs((e.y+fValid[0].y)-player.y);
-                    const candidates = fValid.filter(d => Math.abs((e.x+d.x)-player.x)+Math.abs((e.y+d.y)-player.y) === topDist);
-                    const chosen = candidates[Math.floor(Math.random()*candidates.length)];
-                    // 1歩目
+                    if (valid.length === 0) return null;
+                    const scored = valid.map(d => {
+                        let score = Math.abs((ent.x+d.x)-player.x) + Math.abs((ent.y+d.y)-player.y);
+                        // 直前と逆方向のペナルティ（行ったり来たり防止）
+                        if (ent.fleeLastDx !== undefined && d.x === -ent.fleeLastDx && d.y === -ent.fleeLastDy) score -= 4;
+                        score += Math.random() * 2; // ランダムノイズ
+                        return { d, score };
+                    });
+                    scored.sort((a, b) => b.score - a.score);
+                    return scored[0].d;
+                };
+
+                const chosen = pickFleeDir(e);
+                if (chosen) {
                     if (e.type === 'KEY_RUNNER') { e.trailX = e.x; e.trailY = e.y; }
+                    e.fleeLastDx = chosen.x; e.fleeLastDy = chosen.y;
                     e.offsetX = chosen.x * 8; e.offsetY = chosen.y * 8;
                     e.x += chosen.x; e.y += chosen.y;
                     draw(); await new Promise(r => setTimeout(r, 60));
                     e.offsetX = 0; e.offsetY = 0;
-                    // KEY_RUNNER: 2歩目（プレイヤーから再評価して逃走）
+                    // KEY_RUNNER: 2歩目
                     if (e.type === 'KEY_RUNNER') {
-                        const fDirs2 = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
-                        const fValid2 = fDirs2.filter(d => {
-                            const nx = e.x+d.x, ny = e.y+d.y;
-                            return canEnemyMove(nx, ny, e) && !enemies.some(t=>t!==e && t.x===nx && t.y===ny);
-                        });
-                        if (fValid2.length > 0) {
-                            fValid2.sort((a,b) => {
-                                const dA = Math.abs((e.x+a.x)-player.x)+Math.abs((e.y+a.y)-player.y);
-                                const dB = Math.abs((e.x+b.x)-player.x)+Math.abs((e.y+b.y)-player.y);
-                                return dB - dA;
-                            });
-                            const topDist2 = Math.abs((e.x+fValid2[0].x)-player.x)+Math.abs((e.y+fValid2[0].y)-player.y);
-                            const cands2 = fValid2.filter(d => Math.abs((e.x+d.x)-player.x)+Math.abs((e.y+d.y)-player.y) === topDist2);
-                            const chosen2 = cands2[Math.floor(Math.random()*cands2.length)];
-                            e.trailX = e.x; e.trailY = e.y; // 2歩目前にトレイル更新
+                        const chosen2 = pickFleeDir(e);
+                        if (chosen2) {
+                            e.trailX = e.x; e.trailY = e.y;
+                            e.fleeLastDx = chosen2.x; e.fleeLastDy = chosen2.y;
                             e.offsetX = chosen2.x * 8; e.offsetY = chosen2.y * 8;
                             e.x += chosen2.x; e.y += chosen2.y;
                             draw(); await new Promise(r => setTimeout(r, 60));
@@ -13454,8 +13453,7 @@ async function enemyTurn() {
                 continue; // 攻撃しない
             }
             // dist === 1: コーナリングされた → 以降の通常攻撃処理へ落ちる
-            // KEY_RUNNER: 追い詰められても反撃しない
-            if (e.type === 'KEY_RUNNER') continue;
+            if (e.type === 'KEY_RUNNER') continue; // KEY_RUNNERは反撃しない
         }
 
         // ミミック固有AI（味方になった場合は通常の味方AIに任せる）
