@@ -13277,9 +13277,9 @@ async function enemyTurn() {
         // 毒沼または溶岩
         const tile = map[e.y][e.x];
         if (tile === SYMBOLS.POISON || tile === SYMBOLS.LAVA) {
-            // ブレイズは溶岩ダメージ無効、オークは軽減
+            // ブレイズは溶岩ダメージ無効、オークは軽減、KEY_RUNNERは全地形免疫
             if (tile === SYMBOLS.LAVA) {
-                if (e.type === 'BLAZE') {
+                if (e.type === 'BLAZE' || e.type === 'KEY_RUNNER') {
                     // 無効
                 } else if (e.type === 'BOMBER') {
                     // BOMBERは溶岩で即死 → 連鎖爆発
@@ -13295,14 +13295,16 @@ async function enemyTurn() {
                     if (e.hp <= 0) { handleEnemyDeath(e); continue; }
                 }
             } else if (tile === SYMBOLS.POISON) {
-                const damage = 1;
-                e.hp -= damage; e.flashUntil = performance.now() + 100;
-                spawnDamageText(e.x, e.y, damage, '#a855f7');
-                SOUNDS.DAMAGE();
-                if (e.hp <= 0) { handleEnemyDeath(e); continue; }
-                // 毒沼スロー: 2ターンに1回のみ行動
-                if (e.poisonStagger) { e.poisonStagger = false; continue; }
-                else { e.poisonStagger = true; }
+                if (e.type !== 'KEY_RUNNER') { // KEY_RUNNERは毒ダメージ・スロー無効
+                    const damage = 1;
+                    e.hp -= damage; e.flashUntil = performance.now() + 100;
+                    spawnDamageText(e.x, e.y, damage, '#a855f7');
+                    SOUNDS.DAMAGE();
+                    if (e.hp <= 0) { handleEnemyDeath(e); continue; }
+                    // 毒沼スロー: 2ターンに1回のみ行動
+                    if (e.poisonStagger) { e.poisonStagger = false; continue; }
+                    else { e.poisonStagger = true; }
+                }
             }
         } else {
             e.poisonStagger = false;
@@ -13354,16 +13356,38 @@ async function enemyTurn() {
                         const dB = Math.abs((e.x+b.x)-player.x)+Math.abs((e.y+b.y)-player.y);
                         return dB - dA;
                     });
-                    // 同距離の場合は少しランダムに
                     const topDist = Math.abs((e.x+fValid[0].x)-player.x)+Math.abs((e.y+fValid[0].y)-player.y);
                     const candidates = fValid.filter(d => Math.abs((e.x+d.x)-player.x)+Math.abs((e.y+d.y)-player.y) === topDist);
                     const chosen = candidates[Math.floor(Math.random()*candidates.length)];
-                    // KEY_RUNNER: 移動前の座標をトレイルとして記録
+                    // 1歩目
                     if (e.type === 'KEY_RUNNER') { e.trailX = e.x; e.trailY = e.y; }
                     e.offsetX = chosen.x * 8; e.offsetY = chosen.y * 8;
                     e.x += chosen.x; e.y += chosen.y;
-                    await new Promise(r => setTimeout(r, 50));
+                    draw(); await new Promise(r => setTimeout(r, 60));
                     e.offsetX = 0; e.offsetY = 0;
+                    // KEY_RUNNER: 2歩目（プレイヤーから再評価して逃走）
+                    if (e.type === 'KEY_RUNNER') {
+                        const fDirs2 = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+                        const fValid2 = fDirs2.filter(d => {
+                            const nx = e.x+d.x, ny = e.y+d.y;
+                            return canEnemyMove(nx, ny, e) && !enemies.some(t=>t!==e && t.x===nx && t.y===ny);
+                        });
+                        if (fValid2.length > 0) {
+                            fValid2.sort((a,b) => {
+                                const dA = Math.abs((e.x+a.x)-player.x)+Math.abs((e.y+a.y)-player.y);
+                                const dB = Math.abs((e.x+b.x)-player.x)+Math.abs((e.y+b.y)-player.y);
+                                return dB - dA;
+                            });
+                            const topDist2 = Math.abs((e.x+fValid2[0].x)-player.x)+Math.abs((e.y+fValid2[0].y)-player.y);
+                            const cands2 = fValid2.filter(d => Math.abs((e.x+d.x)-player.x)+Math.abs((e.y+d.y)-player.y) === topDist2);
+                            const chosen2 = cands2[Math.floor(Math.random()*cands2.length)];
+                            e.trailX = e.x; e.trailY = e.y; // 2歩目前にトレイル更新
+                            e.offsetX = chosen2.x * 8; e.offsetY = chosen2.y * 8;
+                            e.x += chosen2.x; e.y += chosen2.y;
+                            draw(); await new Promise(r => setTimeout(r, 60));
+                            e.offsetX = 0; e.offsetY = 0;
+                        }
+                    }
                 }
                 continue; // 攻撃しない
             }
@@ -15176,7 +15200,7 @@ function canEnemyMove(x, y, mover = null) {
     if (tile === SYMBOLS.STAIRS && enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === x && e.y === y)) return false;
     // ブレイズとオークは溶岩を障害物と見なさない
     if (isObstacle) {
-        if (tile === SYMBOLS.LAVA && mover && (mover.type === 'BLAZE' || mover.type === 'ORC')) {
+        if (tile === SYMBOLS.LAVA && mover && (mover.type === 'BLAZE' || mover.type === 'ORC' || mover.type === 'KEY_RUNNER')) {
             // 移動を許可
         } else {
             return false;
