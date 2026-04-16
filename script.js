@@ -6017,13 +6017,14 @@ function initMap() {
                 return d > bd ? r : best;
             }, midRooms83[0])
             : lastRoom83;
-        const keyRunnerHp = 60 + floorLevel * 4;
+        const keyRunnerHp = 10 + floorLevel;
         enemies.push({
-            type: 'ORC', x: keyRoom83.cx, y: keyRoom83.cy,
+            type: 'KEY_RUNNER', x: keyRoom83.cx, y: keyRoom83.cy,
             hp: keyRunnerHp, maxHp: keyRunnerHp,
             flashUntil: 0, offsetX: 0, offsetY: 0,
-            expValue: 120, stunTurns: 0,
-            flee: true, holdsKey: true
+            expValue: 80, stunTurns: 0,
+            flee: true, holdsKey: true,
+            trailX: null, trailY: null
         });
         addLog("🔑 The thief lurks somewhere in these halls...");
 
@@ -9500,6 +9501,9 @@ function draw(now) {
                     eChar = 'G';
                     ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 10;
                 }
+                else if (e.type === 'KEY_RUNNER') {
+                    eColor = '#f87171'; eChar = 'K';
+                }
                 else if (e.type === 'KING') {
                     // 王: ゆっくり輝く金色の王冠
                     const kPhase = Math.floor(now / 400) % 2;
@@ -9508,12 +9512,6 @@ function draw(now) {
                     ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 20;
                 }
                 if (e.isAlly) eColor = '#60a5fa';
-                // キーホルダー: 金色グローで視認しやすく
-                if (e.holdsKey) {
-                    const kPhase = Math.floor(now / 250) % 2;
-                    ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = kPhase === 0 ? 18 : 8;
-                    eColor = '#fde68a';
-                }
                 // 派閥グロー
                 if (e.faction === 'CRIMSON' && !e.isAlly) { ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 14; }
                 else if (e.faction === 'COBALT' && !e.isAlly) { ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 14; }
@@ -9528,6 +9526,14 @@ function draw(now) {
                 }
                 ctx.fillStyle = isFlashing ? '#fff' : eColor;
                 ctx.fillText(eChar, px, py);
+                // KEY_RUNNER: 移動前の位置に追従する小さなkを描画
+                if (e.type === 'KEY_RUNNER' && e.trailX != null && (e.trailX !== e.x || e.trailY !== e.y)) {
+                    const tkx = e.trailX * TILE_SIZE + TILE_SIZE / 2;
+                    const tky = e.trailY * TILE_SIZE + TILE_SIZE / 2;
+                    ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 8;
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.fillText('k', tkx, tky);
+                }
             }
             ctx.restore();
         });
@@ -13421,6 +13427,8 @@ async function enemyTurn() {
                     const topDist = Math.abs((e.x+fValid[0].x)-player.x)+Math.abs((e.y+fValid[0].y)-player.y);
                     const candidates = fValid.filter(d => Math.abs((e.x+d.x)-player.x)+Math.abs((e.y+d.y)-player.y) === topDist);
                     const chosen = candidates[Math.floor(Math.random()*candidates.length)];
+                    // KEY_RUNNER: 移動前の座標をトレイルとして記録
+                    if (e.type === 'KEY_RUNNER') { e.trailX = e.x; e.trailY = e.y; }
                     e.offsetX = chosen.x * 8; e.offsetY = chosen.y * 8;
                     e.x += chosen.x; e.y += chosen.y;
                     await new Promise(r => setTimeout(r, 50));
@@ -13429,6 +13437,8 @@ async function enemyTurn() {
                 continue; // 攻撃しない
             }
             // dist === 1: コーナリングされた → 以降の通常攻撃処理へ落ちる
+            // KEY_RUNNER: 追い詰められても反撃しない
+            if (e.type === 'KEY_RUNNER') continue;
         }
 
         // ミミック固有AI（味方になった場合は通常の味方AIに任せる）
