@@ -90,6 +90,7 @@ let openingData = {
 };
 
 let ringDrops = []; // フロアに落ちた指輪 {x, y, ringId}
+let keyDropUnderTile = null; // holdsKey敵撃破時のキードロップ：元タイルを保存
 let dragonTraps = []; // ドラゴンの召喚する罠 {x, y, stage: 'CIRCLE'|'READY'}
 let fireFloors = []; // {x, y, life: 1} // 1ターンで消える炎の床
 let flameProjectiles = []; // {x, y, dx, dy, life} - 炎ブロックが発射する飛翔体
@@ -1208,6 +1209,7 @@ function initMap() {
     flameProjectiles = []; // 炎の飛翔体をリセット
     dragonTraps = []; // ドラゴントラップをリセット
     ringDrops = []; // フロアの指輪ドロップをリセット
+    keyDropUnderTile = null; // キードロップ元タイルをリセット
     bombs = []; // 爆弾をリセット
     blastEffects = []; // 爆風エフェクトをリセット
     isWindFloor = false; windTimer = 0;
@@ -11562,7 +11564,9 @@ async function handleAction(dx, dy) {
                         addLog("TUTORIAL: You can now place blocks with [Space] + [Dir]!");
                     }
                 } else if (nextTile === SYMBOLS.KEY) {
-                    map[ny][nx] = SYMBOLS.FLOOR;
+                    // holdsKey敵ドロップの場合は元タイルを復元、通常配置はFLOOR
+                    map[ny][nx] = keyDropUnderTile !== null ? keyDropUnderTile : SYMBOLS.FLOOR;
+                    keyDropUnderTile = null;
                     player.x = nx; player.y = ny;
                     updateUI();
                     await animateItemGet(SYMBOLS.KEY);
@@ -12396,8 +12400,9 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
         map[enemy.y][enemy.x] = SYMBOLS.FLOOR;
     }
 
-    // キーホルダー: 死亡時にその場にキーを落とす
+    // キーホルダー: 死亡時にその場にキーを落とす（元タイルを保存して上書き）
     if (enemy.holdsKey) {
+        keyDropUnderTile = map[enemy.y][enemy.x]; // ICE/LAVA等を記憶
         map[enemy.y][enemy.x] = SYMBOLS.KEY;
         addLog("🔑 The thief dropped the key!");
         spawnFloatingText(enemy.x, enemy.y, "KEY DROP!", "#fbbf24");
