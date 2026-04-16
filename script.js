@@ -5933,134 +5933,17 @@ function initMap() {
     }
 
     if (floorLevel === 83) {
-        addLog("EVENT: The Thief's Domain.");
-        addLog("A nimble thief carries the only key to escape.");
-        addLog("Chase it down — but it won't go quietly!");
-
-        // 外周壁、内部を全床でリセット
-        for (let y = 0; y < ROWS; y++) {
-            for (let x = 0; x < COLS; x++) {
-                map[y][x] = (y === 0 || y === ROWS - 1 || x === 0 || x === COLS - 1)
-                    ? SYMBOLS.WALL : SYMBOLS.FLOOR;
-            }
-        }
-
-        // 城郭風の部屋を生成（壁区画で仕切る）
-        const rooms83 = [];
-        const MIN_SEP83 = 2;
-        const roomTarget83 = 7 + Math.floor(Math.random() * 4); // 7〜10部屋
-        for (let attempt = 0; attempt < 500 && rooms83.length < roomTarget83; attempt++) {
-            const rw = 4 + Math.floor(Math.random() * 7);
-            const rh = 3 + Math.floor(Math.random() * 5);
-            const rx = 2 + Math.floor(Math.random() * (COLS - rw - 4));
-            const ry = 2 + Math.floor(Math.random() * (ROWS - rh - 4));
-            const overlaps = rooms83.some(r =>
-                rx < r.x + r.w + MIN_SEP83 && rx + rw + MIN_SEP83 > r.x &&
-                ry < r.y + r.h + MIN_SEP83 && ry + rh + MIN_SEP83 > r.y
-            );
-            if (overlaps) continue;
-            for (let py = ry - 1; py <= ry + rh; py++) {
-                for (let px = rx - 1; px <= rx + rw; px++) {
-                    if (px < 1 || px >= COLS - 1 || py < 1 || py >= ROWS - 1) continue;
-                    map[py][px] = (py === ry - 1 || py === ry + rh || px === rx - 1 || px === rx + rw)
-                        ? SYMBOLS.WALL : SYMBOLS.FLOOR;
-                }
-            }
-            rooms83.push({ x: rx, y: ry, w: rw, h: rh, cx: rx + Math.floor(rw / 2), cy: ry + Math.floor(rh / 2) });
-        }
-
-        // MST L字廊下で接続
-        if (rooms83.length > 1) {
-            const inTree83 = new Set([0]);
-            while (inTree83.size < rooms83.length) {
-                let bestA = -1, bestB = -1, bestD = Infinity;
-                for (const ai of inTree83) {
-                    for (let bi = 0; bi < rooms83.length; bi++) {
-                        if (inTree83.has(bi)) continue;
-                        const d = Math.abs(rooms83[ai].cx - rooms83[bi].cx) + Math.abs(rooms83[ai].cy - rooms83[bi].cy);
-                        if (d < bestD) { bestD = d; bestA = ai; bestB = bi; }
-                    }
-                }
-                if (bestA < 0) break;
-                const ra = rooms83[bestA], rb = rooms83[bestB];
-                let cpx = ra.cx, cpy = ra.cy;
-                if (Math.random() < 0.5) {
-                    while (cpx !== rb.cx) { cpx += rb.cx > cpx ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) map[cpy][cpx] = SYMBOLS.FLOOR; }
-                    while (cpy !== rb.cy) { cpy += rb.cy > cpy ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) map[cpy][cpx] = SYMBOLS.FLOOR; }
-                } else {
-                    while (cpy !== rb.cy) { cpy += rb.cy > cpy ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) map[cpy][cpx] = SYMBOLS.FLOOR; }
-                    while (cpx !== rb.cx) { cpx += rb.cx > cpx ? 1 : -1; if (cpx >= 1 && cpx < COLS-1 && cpy >= 1 && cpy < ROWS-1) map[cpy][cpx] = SYMBOLS.FLOOR; }
-                }
-                inTree83.add(bestB);
-            }
-        }
-
-        // プレイヤーを左上の最初の部屋付近に配置
-        if (rooms83.length > 0) {
-            player.x = rooms83[0].cx; player.y = rooms83[0].cy;
-        } else {
-            player.x = 3; player.y = 3;
-        }
-        map[player.y][player.x] = SYMBOLS.FLOOR;
-
-        // 出口を最後の部屋（右下付近）に配置
-        const lastRoom83 = rooms83.length > 1 ? rooms83[rooms83.length - 1] : { cx: COLS - 4, cy: ROWS - 4 };
-        map[lastRoom83.cy][lastRoom83.cx] = SYMBOLS.STAIRS;
-
-        // キーホルダー敵（逃走型ORC）を中間の部屋に配置
-        // できるだけプレイヤーから遠い部屋を選ぶ
-        const midRooms83 = rooms83.slice(1, -1);
-        const keyRoom83 = midRooms83.length > 0
-            ? midRooms83.reduce((best, r) => {
-                const d = Math.abs(r.cx - player.x) + Math.abs(r.cy - player.y);
-                const bd = Math.abs(best.cx - player.x) + Math.abs(best.cy - player.y);
-                return d > bd ? r : best;
-            }, midRooms83[0])
-            : lastRoom83;
-        const keyRunnerHp = 10 + floorLevel;
-        enemies.push({
-            type: 'KEY_RUNNER', x: keyRoom83.cx, y: keyRoom83.cy,
-            hp: keyRunnerHp, maxHp: keyRunnerHp,
-            flashUntil: 0, offsetX: 0, offsetY: 0,
-            expValue: 80, stunTurns: 0,
-            flee: true, holdsKey: true,
-            trailX: null, trailY: null
-        });
-        addLog("🔑 The thief lurks somewhere in these halls...");
-
-        // その他の敵（配置ヘルパー）
-        const placeEnemy83 = (type, hp, exp) => {
-            for (let t = 0; t < 100; t++) {
-                const ex = 2 + Math.floor(Math.random() * (COLS - 4));
-                const ey = 2 + Math.floor(Math.random() * (ROWS - 4));
-                if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
-                if (ex === player.x && ey === player.y) continue;
-                if (enemies.some(e => e.x === ex && e.y === ey)) continue;
-                if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 4) continue;
-                const hp2 = hp + floorLevel * 2;
-                enemies.push({ type, x: ex, y: ey, hp: hp2, maxHp: hp2, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0 });
-                return true;
-            }
-            return false;
-        };
-        for (let i = 0; i < 10; i++) placeEnemy83('NORMAL', 5, 8);
-        for (let i = 0; i < 3; i++) placeEnemy83('ORC', 40, 50);
-        for (let i = 0; i < 2; i++) placeEnemy83('FROST', 15, 20);
-
-        // アイテム配置
-        const items83 = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.HEAL_TOME, SYMBOLS.STEALTH];
-        for (const item of items83) {
-            for (let t = 0; t < 100; t++) {
-                const ix = 2 + Math.floor(Math.random() * (COLS - 4));
-                const iy = 2 + Math.floor(Math.random() * (ROWS - 4));
-                if (map[iy][ix] !== SYMBOLS.FLOOR) continue;
-                if (ix === player.x && iy === player.y) continue;
-                map[iy][ix] = item;
-                break;
-            }
-        }
-
-        return;
+        addLog("EVENT: The Thief's Labyrinth.");
+        addLog("K holds the only key. Hunt it down!");
+        // 内部を全床にしてから迷路ロジックへフォールスルー
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.FLOOR;
+        isDenseMazeFloor = true;
+        isSpiralFloor = false; isCrossFloor = false; isIslandsFloor = false;
+        isMazeFloor = false; isBoldMazeFloor = false;
+        isCastleFloor = false; isGreatHallFloor = false;
+        // return しない → 既存の迷路生成コードへ落ちる
     }
 
     if (floorLevel === 77) {
@@ -7433,6 +7316,35 @@ function initMap() {
             addLog("!! A Golden Shiny Enemy appeared !!");
             break;
         }
+    }
+
+    // ステージ83: 密集迷路＋KEY_RUNNERのみ。STAIRS→DOOR、他の敵・ウィスプは除去
+    if (floorLevel === 83) {
+        enemies = [];
+        wisps = [];
+        // STAIRSをDOORに変換（鍵が必要な封鎖穴）
+        for (let y = 0; y < ROWS; y++)
+            for (let x = 0; x < COLS; x++)
+                if (map[y][x] === SYMBOLS.STAIRS) map[y][x] = SYMBOLS.DOOR;
+        // KEY_RUNNERをプレイヤーから遠い床タイルに配置
+        let kr83placed = false;
+        for (let t = 0; t < 1000 && !kr83placed; t++) {
+            const kx = 2 + Math.floor(Math.random() * (COLS - 4));
+            const ky = 2 + Math.floor(Math.random() * (ROWS - 4));
+            if (map[ky][kx] !== SYMBOLS.FLOOR) continue;
+            if (Math.abs(kx - player.x) + Math.abs(ky - player.y) < 12) continue;
+            const krHp = 10 + floorLevel;
+            enemies.push({
+                type: 'KEY_RUNNER', x: kx, y: ky,
+                hp: krHp, maxHp: krHp,
+                flashUntil: 0, offsetX: 0, offsetY: 0,
+                expValue: 80, stunTurns: 0,
+                flee: true, holdsKey: true,
+                trailX: null, trailY: null
+            });
+            kr83placed = true;
+        }
+        addLog("🔑 K holds the only key. Catch it to unlock the door!");
     }
 
 }
