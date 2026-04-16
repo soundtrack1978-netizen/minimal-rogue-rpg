@@ -2450,8 +2450,11 @@ function initMap() {
                     const _r = Math.random();
                     const _t1 = _w.maze, _t2 = _t1 + _w.dungeon, _t3 = _t2 + _w.castle;
                     screenType = _r < _t1 ? 'maze' : _r < _t2 ? 'dungeon' : _r < _t3 ? 'castle' : 'breaker';
+                } else if (floorLevel >= 90 && !isSpecial && Math.random() < 0.35) {
+                    screenType = 'breaker'; // 35%の確率で壁掘り型
                 } else {
-                    screenType = 'castle';
+                    const r = Math.random();
+                    screenType = r < 0.15 ? 'maze' : r < 0.35 ? 'dungeon' : 'castle';
                 }
                 const result = generateOneScreen(sx, sy, screenType, _sTheme);
                 screenGrid.maps[sy][sx] = result.sMap;
