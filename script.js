@@ -11433,9 +11433,20 @@ async function triggerEnding2() {
 
     await new Promise(r => setTimeout(r, 2000));
 
-    // ドローン停止
-    drone2.g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 2);
-    setTimeout(() => { drone2.osc.stop(); }, 2500);
+    // 深淵との対峙
+    await showStoryPages([
+        [{ en: "The abyss looked back at you.", jp: "深淵が、あなたを見返した" }],
+        [{ en: "You did not look away.", jp: "あなたは目を逸らさなかった" }],
+        [{ en: "Something passed between you.", jp: "何かが、交わされた" }],
+        [{ en: "...", jp: "……" }],
+        [{ en: "You reached out your hand.", jp: "あなたは手を、伸ばした" }],
+    ], false, false, 4500);
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    // ドローン停止（長めにフェード）
+    drone2.g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4);
+    setTimeout(() => { drone2.osc.stop(); }, 4500);
     await new Promise(r => setTimeout(r, 3000));
 
     // BLACK_OUTへ
@@ -11443,13 +11454,23 @@ async function triggerEnding2() {
     transition.alpha = 1.0;
     transition.darken = 1;
     draw(performance.now());
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 2000));
+
+    // 闇の中の最後のページ
+    await showStoryPages([
+        [{ en: "Somewhere far above,", jp: "はるか上方では" }],
+        [{ en: "the dungeon breathes.", jp: "ダンジョンが息をしている" }],
+        [{ en: "It has always breathed.", jp: "いつだって、そうだった" }],
+        [{ en: "But now —", jp: "けれど今は——" }],
+    ], false, false, 5000);
+
+    await new Promise(r => setTimeout(r, 2000));
 
     // 衝撃音と共にエンディングテキスト
     SOUNDS.BANG();
     transition.mode = 'RED_OUT';
     transition.text = "TRUE ENDING";
-    transition.textColor = "#fff";
+    transition.textColor = "#ededed";
     draw(performance.now());
     await new Promise(r => setTimeout(r, 6000));
     transition.text = "";
