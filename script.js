@@ -8788,103 +8788,181 @@ function drawGameOver() {
 }
 
 function drawStatusScreen() {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
-    ctx.strokeStyle = '#ededed';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
+    const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+    const CY = 12, CH = canvas.height - 24;
+    const label = statusPage === 0 ? 'STATUS  1/3' : statusPage === 1 ? 'EQUIP  2/3' : 'SETTINGS  3/3';
 
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ededed';
-    ctx.font = 'bold 24px Courier New';
-    ctx.fillText(statusPage === 0 ? '-- STATUS (1/3) --' : statusPage === 1 ? '-- EQUIPMENT (2/3) --' : '-- SETTINGS (3/3) --', canvas.width / 2, 80);
-
-    ctx.textAlign = 'left';
-    ctx.font = '16px Courier New';
-    const startX = 80;
-    const startY = 120;
-    const gap = 25;
+    // Cascade: CMD (dimmed, STATUS=idx2) + main window
+    dqCmdBackground(2);
+    const WX = 154, WW = canvas.width - WX - 12;
+    drawDQWindow(WX, CY, WW, CH);
+    drawDQTitle(WX, CY, WW, label);
 
     if (statusPage === 0) {
-        // Page 1: Base Stats
-        const stats = [
-            { label: "CHARACTER", val: "＠ (PLAYER)" },
-            { label: "LEVEL", val: player.level },
-            { label: "HP", val: `${player.hp} / ${player.maxHp}` },
-            { label: "STAMINA", val: `${player.stamina} %`, desc: "攻撃で低下。移動や防御(Wait)で回復。" },
-            { label: "EXP", val: `${player.exp} / ${player.nextExp}` },
-            { label: "ATTACK", val: 2 + player.level + (player.swordCount * 3), desc: "レベル、剣、スタミナにより変動。" },
-            { label: "DEFENSE", val: player.armorCount, desc: "鎧の補正値。防御(Wait)でさらに3軽減。" },
-            { label: "FLOOR", val: `${floorLevel} F` },
-            { label: "KILLS", val: player.totalKills },
-            { label: "OBJECTIVE", val: "Destroy Core (B100F)" }
-        ];
+        // ── Page 1: Main Stats ─────────────────────────────────
+        const atk = 2 + player.level + (player.swordCount * 3);
+        const def = player.armorCount;
+        const hpRatio = Math.max(0, Math.min(1, player.hp / player.maxHp));
+        const hpColor = hpRatio > 0.5 ? '#4ade80' : hpRatio > 0.25 ? '#facc15' : '#f87171';
 
-        stats.forEach((s, i) => {
-            ctx.fillStyle = '#ededed';
-            ctx.font = '16px Courier New';
-            ctx.fillText(s.label.padEnd(18, ' '), startX, startY + i * gap);
-            ctx.fillText(String(s.val), startX + 220, startY + i * gap);
-        });
-    } else if (statusPage === 1) {
-        // Page 2: Equipment Effects
-        ctx.font = 'bold 16px Courier New';
-        ctx.fillText('EQUIPMENT EFFECTS', startX, startY);
+        // ── HP ──────────────────────────────────────
+        const barX = WX + 30, barY = CY + 48, barW = WW - 60, barH = 18;
 
-        const jFont = '12px "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-        const infoY = startY + 50;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = hpColor;
+        ctx.fillRect(barX, barY, Math.floor(barW * hpRatio), barH);
+        ctx.strokeStyle = 'rgba(237,237,237,0.25)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barW, barH);
 
-        // --- Holy Sword ---
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
-        ctx.fillText(SYMBOLS.SWORD, startX, infoY);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#aaa';
+        ctx.font = 'bold 12px Courier New';
+        ctx.fillText('HP', barX, barY - 4);
 
-        ctx.font = '14px Courier New';
-        ctx.fillText(`  Holy Sword (Lv${player.swordCount})`, startX, infoY);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = hpColor;
+        ctx.font = 'bold 12px Courier New';
+        ctx.fillText(`${player.hp} / ${player.maxHp}`, barX + barW, barY - 4);
 
-        // --- Holy Armor ---
-        const armorY = infoY + 90;
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = `bold ${TILE_SIZE * 0.7}px 'Courier New'`;
-        ctx.fillText(SYMBOLS.ARMOR, startX + 2, armorY - 2); // 微調整
+        // ── ATK / DEF ───────────────────────────────
+        const statY = CY + 102;
+        const halfW = (WW - 60) / 2;
 
-        ctx.font = '14px Courier New';
-        ctx.fillText(`  Holy Armor (Lv${player.armorCount})`, startX, armorY);
+        // ATK box
+        const atkX = WX + 30;
+        ctx.fillStyle = '#0a0a18';
+        ctx.fillRect(atkX, statY, halfW - 10, 66);
+        ctx.strokeStyle = 'rgba(237,237,237,0.18)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(atkX, statY, halfW - 10, 66);
 
-        // --- Fairy ---
-        if (player.fairyCount > 0) {
-            const fairyY = armorY + 90;
-            ctx.fillStyle = '#f472b6';
-            ctx.font = `bold ${TILE_SIZE}px 'Courier New'`;
-            ctx.fillText(SYMBOLS.FAIRY, startX, fairyY);
-
-            ctx.font = '14px Courier New';
-            ctx.fillText(`  Fairy Companion (x${player.fairyCount})`, startX, fairyY);
-        }
-    } else {
-        // Page 3: Settings
-        ctx.font = 'bold 16px Courier New';
-        ctx.fillStyle = '#ededed';
-        ctx.fillText('SETTINGS', startX, startY);
-
-        const optY = startY + 50;
-        ctx.font = '18px Courier New';
-        ctx.fillStyle = '#ededed';
-        ctx.fillText('>', startX, optY);
-        ctx.fillStyle = '#ededed';
-        ctx.fillText('BGM', startX + 20, optY);
-        ctx.fillStyle = bgmEnabled ? '#4ade80' : '#f87171';
-        ctx.fillText(bgmEnabled ? 'ON' : 'OFF', startX + 80, optY);
-
+        ctx.textAlign = 'center';
         ctx.fillStyle = '#888';
-        ctx.font = '13px Courier New';
-        ctx.fillText('[Enter] Toggle  |  [Left/Right] Change Page', startX, optY + 40);
+        ctx.font = '11px Courier New';
+        ctx.fillText('ATTACK', atkX + (halfW - 10) / 2, statY + 16);
+        ctx.fillStyle = '#facc15';
+        ctx.font = 'bold 30px Courier New';
+        ctx.fillText(atk, atkX + (halfW - 10) / 2, statY + 52);
+
+        // DEF box
+        const defX = WX + 30 + halfW + 10;
+        ctx.fillStyle = '#0a0a18';
+        ctx.fillRect(defX, statY, halfW - 10, 66);
+        ctx.strokeStyle = 'rgba(237,237,237,0.18)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(defX, statY, halfW - 10, 66);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#888';
+        ctx.font = '11px Courier New';
+        ctx.fillText('DEFENSE', defX + (halfW - 10) / 2, statY + 16);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 30px Courier New';
+        ctx.fillText(def, defX + (halfW - 10) / 2, statY + 52);
+
+        // ── Divider ─────────────────────────────────
+        const divY = statY + 80;
+        ctx.strokeStyle = 'rgba(237,237,237,0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(WX + 20, divY); ctx.lineTo(WX + WW - 20, divY); ctx.stroke();
+
+        // ── Secondary stats (small) ──────────────────
+        const cols = [
+            [
+                { label: 'LEVEL',   val: `${player.level}` },
+                { label: 'EXP',     val: `${player.exp} / ${player.nextExp}` },
+                { label: 'STAMINA', val: `${player.stamina}%` },
+            ],
+            [
+                { label: 'FLOOR',   val: `${floorLevel}F` },
+                { label: 'KILLS',   val: `${player.totalKills}` },
+                { label: 'GOLD',    val: `${player.gold}G` },
+            ]
+        ];
+        const secY = divY + 16;
+        const colW = (WW - 60) / 2;
+        cols.forEach((col, ci) => {
+            const cx2 = WX + 30 + ci * (colW + 10);
+            col.forEach((item, ri) => {
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#555';
+                ctx.font = '11px Courier New';
+                ctx.fillText(item.label, cx2, secY + ri * 22);
+                ctx.fillStyle = '#aaa';
+                ctx.font = '12px Courier New';
+                ctx.fillText(item.val, cx2 + 72, secY + ri * 22);
+            });
+        });
+
+    } else if (statusPage === 1) {
+        // ── Page 2: Equipment ──────────────────────────────────
+        const sx = WX + 30;
+        let ey = CY + 50;
+
+        const equipRow = (symbol, color, name, level, desc) => {
+            ctx.fillStyle = color;
+            ctx.font = `bold 18px Courier New`;
+            ctx.textAlign = 'left';
+            ctx.fillText(symbol, sx, ey + 4);
+            ctx.fillStyle = '#ededed';
+            ctx.font = 'bold 14px Courier New';
+            ctx.fillText(name, sx + 26, ey);
+            ctx.fillStyle = '#777';
+            ctx.font = '11px Courier New';
+            ctx.fillText(`Lv ${level}`, sx + 26, ey + 14);
+            ctx.fillStyle = '#555';
+            ctx.font = '11px ' + JA_FONT;
+            ctx.fillText(desc, sx + 26, ey + 28);
+            ctx.strokeStyle = 'rgba(237,237,237,0.10)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(sx, ey + 40); ctx.lineTo(WX + WW - 20, ey + 40); ctx.stroke();
+            ey += 56;
+        };
+
+        equipRow(SYMBOLS.SWORD, '#38bdf8', 'Holy Sword', player.swordCount, `攻撃力 +${player.swordCount * 3}`);
+        equipRow(SYMBOLS.ARMOR, '#38bdf8', 'Holy Armor', player.armorCount, `防御力 +${player.armorCount}`);
+
+        if (player.fairyCount > 0) {
+            ctx.fillStyle = '#f472b6';
+            ctx.font = 'bold 18px Courier New';
+            ctx.textAlign = 'left';
+            ctx.fillText(SYMBOLS.FAIRY, sx, ey + 4);
+            ctx.fillStyle = '#ededed';
+            ctx.font = 'bold 14px Courier New';
+            ctx.fillText('Fairy Companion', sx + 26, ey);
+            ctx.fillStyle = '#777';
+            ctx.font = '11px Courier New';
+            ctx.fillText(`x${player.fairyCount}`, sx + 26, ey + 14);
+            ctx.fillStyle = '#555';
+            ctx.font = '11px ' + JA_FONT;
+            ctx.fillText('鍵へ向かう。周囲5マスの敵を遠ざける。', sx + 26, ey + 28);
+        }
+
+    } else {
+        // ── Page 3: Settings ───────────────────────────────────
+        const sx = WX + 30;
+        const optY = CY + 70;
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#ededed';
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillText('▶  BGM', sx, optY);
+        ctx.fillStyle = bgmEnabled ? '#4ade80' : '#f87171';
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillText(bgmEnabled ? 'ON' : 'OFF', sx + 120, optY);
+
+        ctx.fillStyle = '#555';
+        ctx.font = '12px Courier New';
+        ctx.fillText('[Enter] Toggle', sx, optY + 28);
     }
 
+    // Footer
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ededed';
-    ctx.font = '13px Courier New';
-    ctx.fillText('[Left/Right] Change Page  |  [X] or [I] to Back', canvas.width / 2, canvas.height - 65);
+    ctx.fillStyle = '#555';
+    ctx.font = '11px Courier New';
+    ctx.fillText('[←→] Page  [X] Back', WX + WW / 2, CY + CH - 10);
 }
 
 // ─── DQ1-style UI Helpers ────────────────────────────────────────
