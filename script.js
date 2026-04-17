@@ -8869,7 +8869,7 @@ function drawStatusScreen() {
 
         const optY = startY + 50;
         ctx.font = '18px Courier New';
-        ctx.fillStyle = '#ffe04b';
+        ctx.fillStyle = '#ffffff';
         ctx.fillText('>', startX, optY);
         ctx.fillStyle = '#fff';
         ctx.fillText('BGM', startX + 20, optY);
@@ -8901,7 +8901,7 @@ function drawDQWindow(x, y, w, h) {
 
 function drawDQTitle(x, y, w, title) {
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffe04b';
+    ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px Courier New';
     ctx.fillText('━ ' + title + ' ━', x + w / 2, y + 22);
 }
@@ -8917,9 +8917,9 @@ function drawMenuScreen() {
 
     const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
     const options = [
-        { en: 'ITEMS',  ja: 'どうぐ' },
-        { en: 'RINGS',  ja: 'ゆびわ' },
-        { en: 'STATUS', ja: 'じょうたい' },
+        { en: 'ITEMS',  ja: '道具' },
+        { en: 'RINGS',  ja: '指輪' },
+        { en: 'STATUS', ja: '状態' },
     ];
 
     ctx.textAlign = 'left';
@@ -8930,7 +8930,7 @@ function drawMenuScreen() {
         if (isSelected) {
             ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
             ctx.fillRect(x + 12, ty - 17, W - 24, 24);
-            ctx.fillStyle = '#ffe04b';
+            ctx.fillStyle = '#ffffff';
             ctx.font = 'bold 15px Courier New';
             ctx.fillText('▶', x + 14, ty);
         }
@@ -9044,7 +9044,7 @@ function drawRingsScreen() {
         const W = 480;
         const X = (canvas.width - W) / 2;
         drawDQWindow(X, PAD, W, H);
-        drawDQTitle(X, PAD, W, 'RINGS  ゆびわ');
+        drawDQTitle(X, PAD, W, 'RINGS  指輪');
 
         const ROW_H = 72;
         const listTop = PAD + 42;
@@ -9058,7 +9058,7 @@ function drawRingsScreen() {
             if (isSel) {
                 ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
                 ctx.fillRect(X + 10, sy - 2, W - 20, ROW_H - 8);
-                ctx.fillStyle = '#ffe04b';
+                ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
                 ctx.fillText('▶', X + 12, sy + 18);
@@ -9067,7 +9067,7 @@ function drawRingsScreen() {
             // Slot label
             ctx.textAlign = 'left';
             ctx.font = 'bold 13px Courier New';
-            ctx.fillStyle = isSel ? '#ffe04b' : '#666';
+            ctx.fillStyle = isSel ? '#ffffff' : '#666';
             ctx.fillText('Slot ' + (s + 1), X + 30, sy + 16);
 
             // Ring name box
@@ -9081,7 +9081,7 @@ function drawRingsScreen() {
             if (ring) {
                 // Symbol
                 ctx.font = '16px Courier New';
-                ctx.fillStyle = '#ffe04b';
+                ctx.fillStyle = '#ffffff';
                 ctx.fillText(ring.symbol || '◎', boxX + 10, boxY + 22);
                 // Japanese name
                 ctx.font = 'bold 14px ' + JA_FONT;
@@ -9153,7 +9153,7 @@ function drawRingsScreen() {
         if (ringEquipSelection >= ringScrollOffset + maxVis) ringScrollOffset = ringEquipSelection - maxVis + 1;
 
         if (ringScrollOffset > 0) {
-            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▲', PAD + LEFT_W / 2, LIST_TOP - 4);
         }
 
@@ -9168,7 +9168,7 @@ function drawRingsScreen() {
             if (isSel) {
                 ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
                 ctx.fillRect(PAD + 10, iy - 2, LEFT_W - 20, ROW_H - 4);
-                ctx.fillStyle = '#ffe04b';
+                ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
                 ctx.fillText('▶', PAD + 12, iy + 18);
@@ -9198,7 +9198,7 @@ function drawRingsScreen() {
         });
 
         if (ringScrollOffset + maxVis < listItems.length) {
-            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▼', PAD + LEFT_W / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
 
@@ -9213,7 +9213,7 @@ function drawRingsScreen() {
         if (selItem && selItem.id) {
             let ry = PAD + 76;
             ctx.font = 'bold 13px ' + JA_FONT;
-            ctx.fillStyle = '#ffe04b';
+            ctx.fillStyle = '#ffffff';
             ctx.textAlign = 'left';
             ctx.fillText(selItem.symbol || '◎', rx, ry);
             ctx.font = 'bold 15px ' + JA_FONT;
@@ -9241,7 +9241,7 @@ function drawRingsScreen() {
         ctx.beginPath(); ctx.moveTo(rx, footerY - 14); ctx.lineTo(RIGHT_X + RIGHT_W - 14, footerY - 14); ctx.stroke();
         ctx.textAlign = 'center';
         ctx.font = 'bold 13px Courier New';
-        ctx.fillStyle = '#ffe04b';
+        ctx.fillStyle = '#ffffff';
         ctx.fillText('[Enter] Equip', RIGHT_X + RIGHT_W / 2, footerY);
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
@@ -9301,7 +9301,7 @@ function drawInventoryScreen() {
         if (inventorySelection >= maxVis) startIdx = inventorySelection - maxVis + 1;
 
         if (startIdx > 0) {
-            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▲', PAD + LEFT_W / 2, LIST_TOP - 4);
         }
 
@@ -9315,7 +9315,7 @@ function drawInventoryScreen() {
             if (isSel) {
                 ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
                 ctx.fillRect(PAD + 10, iy - 2, LEFT_W - 20, ROW_H - 4);
-                ctx.fillStyle = '#ffe04b';
+                ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
                 ctx.fillText('▶', PAD + 12, iy + 18);
@@ -9323,7 +9323,7 @@ function drawInventoryScreen() {
 
             // Symbol
             ctx.font = '14px Courier New';
-            ctx.fillStyle = isSel ? '#ffe04b' : '#777';
+            ctx.fillStyle = isSel ? '#ffffff' : '#777';
             ctx.textAlign = 'left';
             ctx.fillText(item.symbol, PAD + 30, iy + 18);
 
@@ -9334,14 +9334,14 @@ function drawInventoryScreen() {
 
             // Count (right)
             ctx.textAlign = 'right';
-            ctx.fillStyle = isSel ? '#ffe04b' : '#666';
+            ctx.fillStyle = isSel ? '#ffffff' : '#666';
             ctx.font = 'bold 13px Courier New';
             ctx.fillText('×' + item.count, PAD + LEFT_W - 14, iy + 18);
             ctx.textAlign = 'left';
         }
 
         if (startIdx + maxVis < items.length) {
-            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▼', PAD + LEFT_W / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
     }
@@ -9360,7 +9360,7 @@ function drawInventoryScreen() {
 
         // Large symbol
         ctx.font = 'bold 28px Courier New';
-        ctx.fillStyle = '#ffe04b';
+        ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'left';
         ctx.fillText(sel.symbol, rx, ry + 4);
 
@@ -9420,7 +9420,7 @@ function drawInventoryScreen() {
 
         ctx.textAlign = 'center';
         ctx.font = 'bold 13px Courier New';
-        ctx.fillStyle = '#ffe04b';
+        ctx.fillStyle = '#ffffff';
         ctx.fillText('[Enter] Use Item', RIGHT_X + RIGHT_W / 2, footerY);
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
