@@ -8958,24 +8958,20 @@ function drawDQWindowDim(x, y, w, h) {
 // Render the COMMAND window as a dimmed background layer (cascade level 0)
 // activeIdx: which option is faintly highlighted (0=ITEMS, 1=RINGS, 2=STATUS)
 function dqCmdBackground(activeIdx) {
-    const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-    const cx = 12, cy = 12, cw = 152, ch = 116;
-    const opts = [{ en: 'ITEMS', ja: '道具' }, { en: 'RINGS', ja: '指輪' }, { en: 'STATUS', ja: '状態' }];
+    const cx = 12, cy = 12, cw = 185, ch = 145;
+    const opts = ['ITEMS', 'RINGS', 'STATUS'];
     drawDQWindowDim(cx, cy, cw, ch);
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(237,237,237,0.28)';
-    ctx.font = 'bold 13px Courier New';
-    ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 20);
-    ctx.textAlign = 'left';
+    ctx.font = 'bold 15px Courier New';
+    ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 24);
     opts.forEach((opt, i) => {
-        const ty = cy + 44 + i * 26;
+        const ty = cy + 54 + i * 30;
         const isAct = i === activeIdx;
         ctx.fillStyle = isAct ? 'rgba(237,237,237,0.55)' : 'rgba(237,237,237,0.18)';
-        ctx.font = (isAct ? 'bold ' : '') + '13px Courier New';
-        ctx.fillText(opt.en, cx + 18, ty);
-        ctx.font = '11px ' + JA_FONT;
-        ctx.fillStyle = isAct ? 'rgba(237,237,237,0.35)' : 'rgba(237,237,237,0.12)';
-        ctx.fillText(opt.ja, cx + 110, ty);
+        ctx.font = '15px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(opt, cx + cw / 2, ty);
     });
 }
 
