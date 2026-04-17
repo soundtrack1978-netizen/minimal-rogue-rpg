@@ -9326,9 +9326,9 @@ function drawInventoryScreen() {
     dqCmdBackground(0);
 
     const LX = 154;  // 12 + 152 - 10 (overlap)
-    const LW = 220;
-    const RX = LX + LW - 10; // 364
-    const RW = canvas.width - RX - 12; // 424
+    const LW = 250;
+    const RX = LX + LW - 20; // INFOウィンドウを20px重ねてカスケード感を演出
+    const RW = canvas.width - RX - 12;
 
     drawDQWindow(LX, CY, LW, CH);
     drawDQTitle(LX, CY, LW, 'ITEM BAG');
