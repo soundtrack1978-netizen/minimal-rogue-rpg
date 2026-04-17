@@ -9241,15 +9241,30 @@ function drawRingsScreen() {
             else if (isEquippedHere) nameColor = '#4ade80';
             else if (isEquippedOther) nameColor = '#60a5fa';
 
+            // アイコン描画
+            if (item.id) {
+                // マップと同じ金色の丸（リング形状）
+                const icx = RL_X + 37, icy = iy + 11;
+                ctx.save();
+                ctx.fillStyle = isSel ? '#fffde7' : '#b8960c';
+                ctx.beginPath(); ctx.arc(icx, icy, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#060614';
+                ctx.beginPath(); ctx.arc(icx, icy, 2.5, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            } else {
+                ctx.font = '13px Courier New';
+                ctx.fillStyle = isSel ? '#f87171' : '#555';
+                ctx.fillText('✕', RL_X + 32, iy + 15);
+            }
             // 英語名（Courier New）
             ctx.font = (isSel ? 'bold ' : '') + '13px Courier New';
             ctx.fillStyle = nameColor;
-            ctx.fillText((item.id ? '◎ ' : '✕ ') + item.name, RL_X + 30, iy + 14);
+            ctx.fillText(item.name, RL_X + 48, iy + 14);
             // 日本語名（小さく下）
             ctx.font = '11px ' + JA_FONT;
             ctx.fillStyle = item.id === null ? (isSel ? 'rgba(248,113,113,0.7)' : '#444')
                           : (isSel ? '#999' : '#555');
-            ctx.fillText(item.nameJa, RL_X + 42, iy + 27);
+            ctx.fillText(item.nameJa, RL_X + 48, iy + 27);
 
             if (isEquippedHere) {
                 ctx.textAlign = 'right'; ctx.fillStyle = '#4ade80'; ctx.font = '11px Courier New';
