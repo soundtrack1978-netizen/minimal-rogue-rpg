@@ -9241,9 +9241,15 @@ function drawRingsScreen() {
             else if (isEquippedHere) nameColor = '#4ade80';
             else if (isEquippedOther) nameColor = '#60a5fa';
 
-            ctx.font = (isSel ? 'bold ' : '') + '13px ' + JA_FONT;
+            // 英語名（Courier New）
+            ctx.font = (isSel ? 'bold ' : '') + '13px Courier New';
             ctx.fillStyle = nameColor;
-            ctx.fillText((item.id ? '◎ ' : '✕ ') + item.nameJa, RL_X + 30, iy + 18);
+            ctx.fillText((item.id ? '◎ ' : '✕ ') + item.name, RL_X + 30, iy + 14);
+            // 日本語名（小さく下）
+            ctx.font = '11px ' + JA_FONT;
+            ctx.fillStyle = item.id === null ? (isSel ? 'rgba(248,113,113,0.7)' : '#444')
+                          : (isSel ? '#999' : '#555');
+            ctx.fillText(item.nameJa, RL_X + 42, iy + 27);
 
             if (isEquippedHere) {
                 ctx.textAlign = 'right'; ctx.fillStyle = '#4ade80'; ctx.font = '11px Courier New';
