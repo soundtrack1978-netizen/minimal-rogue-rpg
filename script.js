@@ -9327,7 +9327,7 @@ function drawInventoryScreen() {
 
     const LX = 154;
     const LW = 250;
-    const RX = LX + LW + 8;   // ITEM LISTの右端から8px空けてINFOを配置
+    const RX = LX + LW + 20;  // ITEM LISTの右端から20px空けてINFOを配置
     const RW = 350;             // INFOウィンドウの幅を固定
 
     drawDQWindow(LX, CY, LW, CH);
