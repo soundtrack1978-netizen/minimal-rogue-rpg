@@ -8888,10 +8888,22 @@ function drawStatusScreen() {
         ctx.fillText('[Enter] Toggle', sx, optY + 22);
     }
 
+    const footY = CY + CH - 10;
+    ctx.font = '14px Courier New';
+    if (statusPage > 0) {
+        ctx.fillStyle = '#ededed';
+        ctx.textAlign = 'left';
+        ctx.fillText('◀', WX + 16, footY);
+    }
+    if (statusPage < 2) {
+        ctx.fillStyle = '#ededed';
+        ctx.textAlign = 'right';
+        ctx.fillText('▶', WX + WW - 16, footY);
+    }
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#444';
     ctx.font = '11px Courier New';
-    ctx.fillText('[←→] Page  [X] Back', WX + WW / 2, CY + CH - 10);
+    ctx.fillText('[X] Back', WX + WW / 2, footY);
 }
 
 // ─── Player Stat Helpers ─────────────────────────────────────────
