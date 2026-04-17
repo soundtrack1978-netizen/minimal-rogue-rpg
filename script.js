@@ -8805,13 +8805,11 @@ function drawStatusScreen() {
         // ── 上段: HP / ATTACK / DEFENSE ────────────────────────
         const atk = getPlayerAttack();
         const def = getPlayerDefense();
-        const atkBase = 2 + player.level;
-        const defBase = Math.floor(player.level / 2);
 
         const main = [
             { label: 'HP',      val: `${player.hp} / ${player.maxHp}`,  sub: null },
-            { label: 'ATTACK',  val: `${atk}`,  sub: player.swordCount > 0 ? `(Lv+${atkBase}  sword+${player.swordCount * 3})` : `(Lv+${atkBase})` },
-            { label: 'DEFENSE', val: `${def}`,  sub: player.armorCount > 0 ? `(Lv+${defBase}  armor+${player.armorCount})` : `(Lv+${defBase})` },
+            { label: 'ATTACK',  val: `${atk}`,  sub: `(+${player.swordCount * 3})` },
+            { label: 'DEFENSE', val: `${def}`,   sub: `(+${player.armorCount})` },
         ];
         let y = CY + 50;
         main.forEach(s => {
@@ -8822,10 +8820,7 @@ function drawStatusScreen() {
             ctx.font = '14px Courier New';
             ctx.fillText(s.val, valX, y);
             if (s.sub) {
-                ctx.fillStyle = '#666';
-                ctx.font = '12px Courier New';
                 ctx.fillText(s.sub, valX + 36, y);
-                ctx.fillStyle = '#ededed';
             }
             y += ROW;
         });
