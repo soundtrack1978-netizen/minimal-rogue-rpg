@@ -9301,6 +9301,8 @@ function drawInventoryScreen() {
 
     // アイテムリスト定義（今後増える想定 ─ ここに追加するだけでOK）
     const fullItems = [
+        { name: 'Fairy',          nameJa: '妖精',           symbol: SYMBOLS.FAIRY,          count: player.fairyCount,
+          desc: 'Release a fairy. Heads for the KEY. Enemies flee 5 tiles.', descJa: '鍵へ向かう。周囲5マスの敵を遠ざける。' },
         { name: 'Breaker Tome',   nameJa: '破壊の魔導書',  symbol: SYMBOLS.BREAKER_TOME,  count: player.breakerTomes,
           desc: 'Smash one wall tile on this floor.',          descJa: 'この階の壁を1枚破壊できる。' },
         { name: 'Charm Tome',     nameJa: '魅了の魔導書',  symbol: SYMBOLS.CHARM,          count: player.charmTomes,
@@ -9317,8 +9319,6 @@ function drawInventoryScreen() {
           desc: 'Fully restore HP.',                           descJa: 'HPを全回復する。' },
         { name: 'Stealth Tome',   nameJa: '隠身の魔導書',  symbol: SYMBOLS.STEALTH,        count: player.stealthTomes,
           desc: 'Vanish from sight. Enemies cannot see you.',  descJa: '姿を消し、敵から見えなくなる。' },
-        { name: 'Fairy',          nameJa: '妖精',           symbol: SYMBOLS.FAIRY,          count: player.fairyCount,
-          desc: 'Release a fairy. Heads for the KEY. Enemies flee 5 tiles.', descJa: '鍵へ向かう。周囲5マスの敵を遠ざける。' },
     ];
     const items = fullItems.filter(it => it.count > 0);
 
@@ -16093,7 +16093,7 @@ async function startGame(startFloor = 1, isTestMode = false) {
         player.stealthTomes = 5;
         player.healTomes = 5;
         player.explosionTomes = 5;
-        player.guardianTomes = 0;
+        player.guardianTomes = 5;
         player.escapeTomes = 5;
         addLog("TEST BUFF: 5 of each Tome added to inventory.");
         addLog("DEBUG HINT: Start at Floor 77 to force DENSE MAZE.");
@@ -16527,6 +16527,7 @@ window.addEventListener('keydown', async e => {
             return;
         } else if (gameState === 'INVENTORY') {
             const fullItems = [
+                { id: 'FAIRY', count: player.fairyCount },
                 { id: 'BREAKER', count: player.breakerTomes },
                 { id: 'CHARM', count: player.charmTomes },
                 { id: 'ESCAPE', count: player.escapeTomes },
@@ -16535,7 +16536,6 @@ window.addEventListener('keydown', async e => {
                 { id: 'HASTE', count: player.hasteTomes },
                 { id: 'HEAL', count: player.healTomes },
                 { id: 'STEALTH', count: player.stealthTomes },
-                { id: 'FAIRY', count: player.fairyCount }
             ];
             const items = fullItems.filter(it => it.count > 0);
             const selectedItem = items[inventorySelection];
