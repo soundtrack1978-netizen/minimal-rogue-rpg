@@ -8973,10 +8973,14 @@ function drawMenuScreen() {
             ctx.fillStyle = 'rgba(237,237,237,0.10)';
             ctx.fillRect(cx + 10, ty - 18, cw - 20, 26);
         }
+        ctx.font = '15px Courier New';
         ctx.fillStyle = isSel ? '#ededed' : '#777';
-        ctx.font = (isSel ? 'bold ' : '') + '15px Courier New';
         ctx.textAlign = 'center';
-        ctx.fillText((isSel ? '▶ ' : '') + opt.en, cx + cw / 2, ty);
+        ctx.fillText(opt.en, cx + cw / 2, ty);
+        if (isSel) {
+            ctx.textAlign = 'left';
+            ctx.fillText('▶', cx + 16, ty);
+        }
     });
 }
 
