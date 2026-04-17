@@ -8906,42 +8906,68 @@ function drawDQTitle(x, y, w, title) {
     ctx.fillText('━ ' + title + ' ━', x + w / 2, y + 22);
 }
 
+function drawDQWindowDim(x, y, w, h) {
+    ctx.fillStyle = '#000008';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 6, y + 6, w - 12, h - 12);
+}
+
+// Render the COMMAND window as a dimmed background layer (cascade level 0)
+// activeIdx: which option is faintly highlighted (0=ITEMS, 1=RINGS, 2=STATUS)
+function dqCmdBackground(activeIdx) {
+    const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+    const cx = 12, cy = 12, cw = 152, ch = 116;
+    const opts = [{ en: 'ITEMS', ja: '道具' }, { en: 'RINGS', ja: '指輪' }, { en: 'STATUS', ja: '状態' }];
+    drawDQWindowDim(cx, cy, cw, ch);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 20);
+    ctx.textAlign = 'left';
+    opts.forEach((opt, i) => {
+        const ty = cy + 44 + i * 26;
+        const isAct = i === activeIdx;
+        ctx.fillStyle = isAct ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.18)';
+        ctx.font = (isAct ? 'bold ' : '') + '13px Courier New';
+        ctx.fillText(opt.en, cx + 18, ty);
+        ctx.font = '11px ' + JA_FONT;
+        ctx.fillStyle = isAct ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)';
+        ctx.fillText(opt.ja, cx + 110, ty);
+    });
+}
+
 // ─── Main Menu ───────────────────────────────────────────────────
 function drawMenuScreen() {
-    const W = 220, H = 138;
-    const x = (canvas.width - W) / 2;
-    const y = (canvas.height - H) / 2;
-
-    drawDQWindow(x, y, W, H);
-    drawDQTitle(x, y, W, 'COMMAND');
-
     const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-    const options = [
-        { en: 'ITEMS',  ja: '道具' },
-        { en: 'RINGS',  ja: '指輪' },
-        { en: 'STATUS', ja: '状態' },
-    ];
-
+    const cx = 12, cy = 12, cw = 152, ch = 116;
+    const opts = [{ en: 'ITEMS', ja: '道具' }, { en: 'RINGS', ja: '指輪' }, { en: 'STATUS', ja: '状態' }];
+    drawDQWindow(cx, cy, cw, ch);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 20);
     ctx.textAlign = 'left';
-    options.forEach((opt, i) => {
-        const ty = y + 50 + i * 30;
-        const isSelected = i === menuSelection;
-
-        if (isSelected) {
-            ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
-            ctx.fillRect(x + 12, ty - 17, W - 24, 24);
+    opts.forEach((opt, i) => {
+        const ty = cy + 44 + i * 26;
+        const isSel = i === menuSelection;
+        if (isSel) {
+            ctx.fillStyle = 'rgba(255,255,255,0.10)';
+            ctx.fillRect(cx + 10, ty - 16, cw - 20, 22);
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 15px Courier New';
-            ctx.fillText('▶', x + 14, ty);
+            ctx.font = 'bold 13px Courier New';
+            ctx.fillText('▶', cx + 10, ty);
         }
-
-        ctx.fillStyle = isSelected ? '#ffffff' : '#777';
-        ctx.font = 'bold 15px Courier New';
-        ctx.fillText(opt.en, x + 34, ty);
-
-        ctx.font = '12px ' + JA_FONT;
-        ctx.fillStyle = isSelected ? '#aaa' : '#444';
-        ctx.fillText(opt.ja, x + 140, ty);
+        ctx.fillStyle = isSel ? '#ffffff' : '#777';
+        ctx.font = 'bold 13px Courier New';
+        ctx.fillText(opt.en, cx + 26, ty);
+        ctx.font = '11px ' + JA_FONT;
+        ctx.fillStyle = isSel ? '#aaa' : '#444';
+        ctx.fillText(opt.ja, cx + 110, ty);
     });
 }
 
@@ -9036,18 +9062,18 @@ function drawShopScreen() {
 
 function drawRingsScreen() {
     const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-    const PAD = 16;
-    const H = canvas.height - PAD * 2;
+    const CY = 12, CH = canvas.height - 24;
 
     if (ringEquipPhase === 'SLOT') {
-        // ── Phase 1: Slot selection ─────────────────────────────
-        const W = 480;
-        const X = (canvas.width - W) / 2;
-        drawDQWindow(X, PAD, W, H);
-        drawDQTitle(X, PAD, W, 'RINGS  指輪');
+        // ── Phase 1: CMD (dimmed) + SLOTS window ─────────────────
+        dqCmdBackground(1);
+        const SX = 154; // 12 + 152 - 10 (overlap)
+        const SW = canvas.width - SX - 12;
+        drawDQWindow(SX, CY, SW, CH);
+        drawDQTitle(SX, CY, SW, 'RINGS  指輪');
 
         const ROW_H = 72;
-        const listTop = PAD + 42;
+        const listTop = CY + 42;
 
         for (let s = 0; s < 2; s++) {
             const sy = listTop + s * ROW_H;
@@ -9056,42 +9082,36 @@ function drawRingsScreen() {
             const isSel = ringSlotSelection === s;
 
             if (isSel) {
-                ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
-                ctx.fillRect(X + 10, sy - 2, W - 20, ROW_H - 8);
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillRect(SX + 10, sy - 2, SW - 20, ROW_H - 8);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
-                ctx.fillText('▶', X + 12, sy + 18);
+                ctx.fillText('▶', SX + 12, sy + 18);
             }
 
-            // Slot label
             ctx.textAlign = 'left';
             ctx.font = 'bold 13px Courier New';
             ctx.fillStyle = isSel ? '#ffffff' : '#666';
-            ctx.fillText('Slot ' + (s + 1), X + 30, sy + 16);
+            ctx.fillText('Slot ' + (s + 1), SX + 30, sy + 16);
 
-            // Ring name box
-            const boxX = X + 86, boxY = sy - 2, boxW = W - 100, boxH = ROW_H - 8;
+            const boxX = SX + 86, boxY = sy - 2, boxW = SW - 100, boxH = ROW_H - 8;
             ctx.fillStyle = '#060614';
             ctx.fillRect(boxX, boxY, boxW, boxH);
-            ctx.strokeStyle = isSel ? 'rgba(255,224,75,0.5)' : 'rgba(255,255,255,0.12)';
+            ctx.strokeStyle = isSel ? 'rgba(255,255,255,0.40)' : 'rgba(255,255,255,0.12)';
             ctx.lineWidth = 1;
             ctx.strokeRect(boxX, boxY, boxW, boxH);
 
             if (ring) {
-                // Symbol
                 ctx.font = '16px Courier New';
                 ctx.fillStyle = '#ffffff';
                 ctx.fillText(ring.symbol || '◎', boxX + 10, boxY + 22);
-                // Japanese name
                 ctx.font = 'bold 14px ' + JA_FONT;
                 ctx.fillStyle = isSel ? '#fff' : '#ccc';
                 ctx.fillText(ring.nameJa, boxX + 30, boxY + 22);
-                // English name
                 ctx.font = '11px Courier New';
                 ctx.fillStyle = '#888';
                 ctx.fillText(ring.name, boxX + 30, boxY + 38);
-                // Description (only when selected)
                 if (isSel) {
                     ctx.font = '11px ' + JA_FONT;
                     ctx.fillStyle = '#aaa';
@@ -9104,47 +9124,56 @@ function drawRingsScreen() {
             }
         }
 
-        // Footer
         ctx.textAlign = 'center';
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
-        ctx.fillText('[↑↓] Select  [Enter] Choose Slot  [X] Back', X + W / 2, PAD + H - 10);
+        ctx.fillText('[↑↓] Select  [Enter] Choose Slot  [X] Back', SX + SW / 2, CY + CH - 10);
 
     } else {
-        // ── Phase 2: Ring selection (split panel) ───────────────
-        const LEFT_W = 310;
-        const RIGHT_X = PAD + LEFT_W + 8;
-        const RIGHT_W = canvas.width - PAD * 2 - LEFT_W - 8;
+        // ── Phase 2: CMD (dimmed) + SLOT SUMMARY (dimmed) + RING LIST (active) ──
+        dqCmdBackground(1);
 
-        drawDQWindow(PAD, PAD, LEFT_W, H);
-        drawDQWindow(RIGHT_X, PAD, RIGHT_W, H);
-        drawDQTitle(PAD, PAD, LEFT_W, 'SELECT RING');
-        drawDQTitle(RIGHT_X, PAD, RIGHT_W, 'Slot ' + (ringSlotSelection + 1));
-
-        // Slot header in right panel
+        // Slot summary panel (dimmed, cascade level 1)
+        const SS_X = 154, SS_W = 178;
+        drawDQWindowDim(SS_X, CY, SS_W, CH);
         const slotRingId = player.equippedRings[ringSlotSelection];
         const slotRing = slotRingId ? RINGS.find(r => r.id === slotRingId) : null;
-        const rx = RIGHT_X + 14;
-
-        ctx.font = '12px ' + JA_FONT;
-        ctx.fillStyle = '#666';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.font = 'bold 13px Courier New';
+        ctx.fillText('━ SLOT ' + (ringSlotSelection + 1) + ' ━', SS_X + SS_W / 2, CY + 20);
         ctx.textAlign = 'left';
-        ctx.fillText('現在の装備', rx, PAD + 38);
-        ctx.font = 'bold 13px ' + JA_FONT;
-        ctx.fillStyle = slotRing ? '#4ade80' : '#555';
-        ctx.fillText(slotRing ? slotRing.nameJa : '（空き）', rx, PAD + 54);
+        ctx.font = '11px ' + JA_FONT;
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillText('現在の装備', SS_X + 14, CY + 38);
+        ctx.font = 'bold 12px ' + JA_FONT;
+        ctx.fillStyle = slotRing ? 'rgba(74,222,128,0.60)' : 'rgba(255,255,255,0.20)';
+        ctx.fillText(slotRing ? slotRing.nameJa : '（空き）', SS_X + 14, CY + 54);
 
-        // Divider
+        // Ring list+detail panel (active, cascade level 2)
+        const RL_X = SS_X + SS_W - 10; // 322
+        const RL_W = canvas.width - RL_X - 12; // 466
+        drawDQWindow(RL_X, CY, RL_W, CH);
+        drawDQTitle(RL_X, CY, RL_W, 'SELECT RING');
+
+        // Internal split: left=list (220px), right=detail
+        const LIST_W = 220;
+        const DETAIL_X = RL_X + LIST_W;
+        const DETAIL_W = RL_W - LIST_W;
+
         ctx.strokeStyle = 'rgba(255,255,255,0.12)';
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(rx, PAD + 64); ctx.lineTo(RIGHT_X + RIGHT_W - 14, PAD + 64); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(DETAIL_X, CY + 8);
+        ctx.lineTo(DETAIL_X, CY + CH - 8);
+        ctx.stroke();
 
         // Ring list
         const ownedRings = RINGS.filter(r => player.ownedRings.includes(r.id));
         const listItems = [{ id: null, nameJa: '（外す）', name: 'Remove', descJa: 'このスロットを空にする' }, ...ownedRings];
 
-        const LIST_TOP = PAD + 36;
-        const LIST_BOT = PAD + H - 28;
+        const LIST_TOP = CY + 36;
+        const LIST_BOT = CY + CH - 28;
         const ROW_H = 34;
         const maxVis = Math.floor((LIST_BOT - LIST_TOP) / ROW_H);
 
@@ -9154,7 +9183,7 @@ function drawRingsScreen() {
 
         if (ringScrollOffset > 0) {
             ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
-            ctx.fillText('▲', PAD + LEFT_W / 2, LIST_TOP - 4);
+            ctx.fillText('▲', RL_X + LIST_W / 2, LIST_TOP - 4);
         }
 
         const visItems = listItems.slice(ringScrollOffset, ringScrollOffset + maxVis);
@@ -9166,16 +9195,15 @@ function drawRingsScreen() {
             const isEquippedOther = item.id && player.equippedRings[1 - ringSlotSelection] === item.id;
 
             if (isSel) {
-                ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
-                ctx.fillRect(PAD + 10, iy - 2, LEFT_W - 20, ROW_H - 4);
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillRect(RL_X + 10, iy - 2, LIST_W - 20, ROW_H - 4);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
-                ctx.fillText('▶', PAD + 12, iy + 18);
+                ctx.fillText('▶', RL_X + 12, iy + 18);
             }
 
             ctx.textAlign = 'left';
-            // Name color
             let nameColor = isSel ? '#fff' : '#aaa';
             if (item.id === null) nameColor = isSel ? '#f87171' : '#666';
             else if (isEquippedHere) nameColor = '#4ade80';
@@ -9183,84 +9211,93 @@ function drawRingsScreen() {
 
             ctx.font = (isSel ? 'bold ' : '') + '13px ' + JA_FONT;
             ctx.fillStyle = nameColor;
-            ctx.fillText((item.id ? '◎ ' : '✕ ') + item.nameJa, PAD + 30, iy + 18);
+            ctx.fillText((item.id ? '◎ ' : '✕ ') + item.nameJa, RL_X + 30, iy + 18);
 
-            // Status badge
             if (isEquippedHere) {
                 ctx.textAlign = 'right'; ctx.fillStyle = '#4ade80'; ctx.font = '11px Courier New';
-                ctx.fillText('装備中', PAD + LEFT_W - 14, iy + 18);
+                ctx.fillText('装備中', RL_X + LIST_W - 14, iy + 18);
                 ctx.textAlign = 'left';
             } else if (isEquippedOther) {
                 ctx.textAlign = 'right'; ctx.fillStyle = '#60a5fa'; ctx.font = '11px Courier New';
-                ctx.fillText('Slot' + (2 - ringSlotSelection), PAD + LEFT_W - 14, iy + 18);
+                ctx.fillText('Slot' + (2 - ringSlotSelection), RL_X + LIST_W - 14, iy + 18);
                 ctx.textAlign = 'left';
             }
         });
 
         if (ringScrollOffset + maxVis < listItems.length) {
             ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
-            ctx.fillText('▼', PAD + LEFT_W / 2, LIST_TOP + maxVis * ROW_H + 8);
+            ctx.fillText('▼', RL_X + LIST_W / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
 
-        // Left footer
         ctx.textAlign = 'center';
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#444';
-        ctx.fillText('[↑↓] Select', PAD + LEFT_W / 2, PAD + H - 10);
+        ctx.fillText('[↑↓] Select', RL_X + LIST_W / 2, CY + CH - 10);
 
-        // Right panel: selected ring detail
+        // Detail panel (right of divider)
         const selItem = listItems[ringEquipSelection];
+        const dx = DETAIL_X + 14;
         if (selItem && selItem.id) {
-            let ry = PAD + 76;
+            let ry = CY + 42;
             ctx.font = 'bold 13px ' + JA_FONT;
             ctx.fillStyle = '#ffffff';
             ctx.textAlign = 'left';
-            ctx.fillText(selItem.symbol || '◎', rx, ry);
+            ctx.fillText(selItem.symbol || '◎', dx, ry);
             ctx.font = 'bold 15px ' + JA_FONT;
             ctx.fillStyle = '#fff';
-            ctx.fillText(selItem.nameJa, rx + 20, ry);
+            ctx.fillText(selItem.nameJa, dx + 20, ry);
             ry += 18;
             ctx.font = '12px Courier New';
             ctx.fillStyle = '#777';
-            ctx.fillText(selItem.name, rx + 20, ry);
+            ctx.fillText(selItem.name, dx + 20, ry);
             ry += 16;
 
             ctx.strokeStyle = 'rgba(255,255,255,0.12)';
             ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(RIGHT_X + RIGHT_W - 14, ry); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(dx, ry); ctx.lineTo(RL_X + RL_W - 14, ry); ctx.stroke();
             ry += 14;
 
             ctx.font = '13px ' + JA_FONT;
             ctx.fillStyle = '#ccc';
-            ctx.fillText(selItem.descJa, rx, ry);
+            const descW = DETAIL_W - 28;
+            const descText = selItem.descJa;
+            if (ctx.measureText(descText).width <= descW) {
+                ctx.fillText(descText, dx, ry);
+            } else {
+                const parts = descText.split('。').filter(s => s.trim());
+                parts.forEach(p => { ctx.fillText(p + '。', dx, ry); ry += 18; });
+            }
         }
 
-        // Right panel footer
-        const footerY = PAD + H - 28;
+        const footerY = CY + CH - 28;
         ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(rx, footerY - 14); ctx.lineTo(RIGHT_X + RIGHT_W - 14, footerY - 14); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(dx, footerY - 14); ctx.lineTo(RL_X + RL_W - 14, footerY - 14); ctx.stroke();
         ctx.textAlign = 'center';
         ctx.font = 'bold 13px Courier New';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText('[Enter] Equip', RIGHT_X + RIGHT_W / 2, footerY);
+        ctx.fillText('[Enter] Equip', DETAIL_X + DETAIL_W / 2, footerY);
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
-        ctx.fillText('[X] Back to Slots', RIGHT_X + RIGHT_W / 2, footerY + 14);
+        ctx.fillText('[X] Back to Slots', DETAIL_X + DETAIL_W / 2, footerY + 14);
     }
 }
 
 function drawInventoryScreen() {
     const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-    const PAD = 16;
-    const LEFT_W = 310;
-    const RIGHT_X = PAD + LEFT_W + 8;
-    const RIGHT_W = canvas.width - PAD * 2 - LEFT_W - 8;
-    const H = canvas.height - PAD * 2;
+    const CY = 12, CH = canvas.height - 24;
 
-    drawDQWindow(PAD, PAD, LEFT_W, H);
-    drawDQWindow(RIGHT_X, PAD, RIGHT_W, H);
-    drawDQTitle(PAD, PAD, LEFT_W, 'ITEM BAG');
-    drawDQTitle(RIGHT_X, PAD, RIGHT_W, 'INFO');
+    // Cascade layout: CMD (dimmed) → ITEM LIST → INFO
+    dqCmdBackground(0);
+
+    const LX = 154;  // 12 + 152 - 10 (overlap)
+    const LW = 220;
+    const RX = LX + LW - 10; // 364
+    const RW = canvas.width - RX - 12; // 424
+
+    drawDQWindow(LX, CY, LW, CH);
+    drawDQTitle(LX, CY, LW, 'ITEM BAG');
+    drawDQWindow(RX, CY, RW, CH);
+    drawDQTitle(RX, CY, RW, 'INFO');
 
     // アイテムリスト定義（今後増える想定 ─ ここに追加するだけでOK）
     const fullItems = [
@@ -9290,10 +9327,10 @@ function drawInventoryScreen() {
         ctx.textAlign = 'center';
         ctx.fillStyle = '#555';
         ctx.font = '14px Courier New';
-        ctx.fillText('(Empty)', PAD + LEFT_W / 2, PAD + H / 2);
+        ctx.fillText('(Empty)', LX + LW / 2, CY + CH / 2);
     } else {
-        const LIST_TOP = PAD + 36;
-        const LIST_BOT = PAD + H - 28;
+        const LIST_TOP = CY + 36;
+        const LIST_BOT = CY + CH - 28;
         const ROW_H = 34;
         const maxVis = Math.floor((LIST_BOT - LIST_TOP) / ROW_H);
 
@@ -9302,7 +9339,7 @@ function drawInventoryScreen() {
 
         if (startIdx > 0) {
             ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
-            ctx.fillText('▲', PAD + LEFT_W / 2, LIST_TOP - 4);
+            ctx.fillText('▲', LX + LW / 2, LIST_TOP - 4);
         }
 
         for (let i = 0; i < maxVis; i++) {
@@ -9313,79 +9350,70 @@ function drawInventoryScreen() {
             const isSel = idx === inventorySelection;
 
             if (isSel) {
-                ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
-                ctx.fillRect(PAD + 10, iy - 2, LEFT_W - 20, ROW_H - 4);
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillRect(LX + 10, iy - 2, LW - 20, ROW_H - 4);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
-                ctx.fillText('▶', PAD + 12, iy + 18);
+                ctx.fillText('▶', LX + 12, iy + 18);
             }
 
-            // Symbol
             ctx.font = '14px Courier New';
             ctx.fillStyle = isSel ? '#ffffff' : '#777';
             ctx.textAlign = 'left';
-            ctx.fillText(item.symbol, PAD + 30, iy + 18);
+            ctx.fillText(item.symbol, LX + 30, iy + 18);
 
-            // Name (English)
             ctx.fillStyle = isSel ? '#ffffff' : '#aaa';
-            ctx.font = (isSel ? 'bold ' : '') + '14px Courier New';
-            ctx.fillText(item.name, PAD + 50, iy + 18);
+            ctx.font = (isSel ? 'bold ' : '') + '13px Courier New';
+            ctx.fillText(item.name, LX + 50, iy + 18);
 
-            // Count (right)
             ctx.textAlign = 'right';
             ctx.fillStyle = isSel ? '#ffffff' : '#666';
-            ctx.font = 'bold 13px Courier New';
-            ctx.fillText('×' + item.count, PAD + LEFT_W - 14, iy + 18);
+            ctx.font = 'bold 12px Courier New';
+            ctx.fillText('×' + item.count, LX + LW - 14, iy + 18);
             ctx.textAlign = 'left';
         }
 
         if (startIdx + maxVis < items.length) {
             ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
-            ctx.fillText('▼', PAD + LEFT_W / 2, LIST_TOP + maxVis * ROW_H + 8);
+            ctx.fillText('▼', LX + LW / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
     }
 
-    // Left footer
     ctx.textAlign = 'center';
     ctx.font = '11px Courier New';
     ctx.fillStyle = '#444';
-    ctx.fillText('[↑↓] Select', PAD + LEFT_W / 2, PAD + H - 10);
+    ctx.fillText('[↑↓] Select', LX + LW / 2, CY + CH - 10);
 
     // ── Right panel: info ────────────────────────────────────
     const sel = items.length > 0 ? items[inventorySelection] : null;
     if (sel) {
-        const rx = RIGHT_X + 16;
-        let ry = PAD + 42;
+        const rx = RX + 16;
+        let ry = CY + 42;
 
-        // Large symbol
         ctx.font = 'bold 28px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'left';
         ctx.fillText(sel.symbol, rx, ry + 4);
 
-        // English name
         ctx.font = 'bold 16px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.fillText(sel.name, rx + 34, ry);
 
-        // Japanese name
         ctx.font = '12px ' + JA_FONT;
         ctx.fillStyle = '#aaa';
         ctx.fillText(sel.nameJa, rx + 34, ry + 16);
 
         ry += 34;
 
-        // Divider
         ctx.strokeStyle = 'rgba(255,255,255,0.18)';
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(RIGHT_X + RIGHT_W - 16, ry); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(RX + RW - 16, ry); ctx.stroke();
         ry += 16;
 
-        // English description (word wrap)
         ctx.font = '13px Courier New';
         ctx.fillStyle = '#ccc';
-        const maxDescW = RIGHT_W - 36;
+        const maxDescW = RW - 36;
         const words = sel.desc.split(' ');
         let line = '';
         for (const word of words) {
@@ -9398,38 +9426,34 @@ function drawInventoryScreen() {
 
         ry += 6;
 
-        // Japanese description
         ctx.font = '13px ' + JA_FONT;
         ctx.fillStyle = '#aaa';
-        // Simple wrap for Japanese
         const jp = sel.descJa;
-        const jpMaxW = RIGHT_W - 36;
+        const jpMaxW = RW - 36;
         if (ctx.measureText(jp).width <= jpMaxW) {
             ctx.fillText(jp, rx, ry); ry += 20;
         } else {
-            // split at natural breaks
             const parts = jp.split('。').filter(s => s.trim());
             parts.forEach(p => { ctx.fillText(p + '。', rx, ry); ry += 18; });
         }
 
-        // Use prompt at bottom of right panel
-        const footerY = PAD + H - 28;
+        const footerY = CY + CH - 28;
         ctx.strokeStyle = 'rgba(255,255,255,0.15)';
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(rx, footerY - 14); ctx.lineTo(RIGHT_X + RIGHT_W - 16, footerY - 14); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(rx, footerY - 14); ctx.lineTo(RX + RW - 16, footerY - 14); ctx.stroke();
 
         ctx.textAlign = 'center';
         ctx.font = 'bold 13px Courier New';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText('[Enter] Use Item', RIGHT_X + RIGHT_W / 2, footerY);
+        ctx.fillText('[Enter] Use Item', RX + RW / 2, footerY);
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
-        ctx.fillText('[X] Back to Menu', RIGHT_X + RIGHT_W / 2, footerY + 14);
+        ctx.fillText('[X] Back to Menu', RX + RW / 2, footerY + 14);
     } else {
         ctx.textAlign = 'center';
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#444';
-        ctx.fillText('[X] Back', RIGHT_X + RIGHT_W / 2, PAD + H - 10);
+        ctx.fillText('[X] Back', RX + RW / 2, CY + CH - 10);
     }
 }
 
