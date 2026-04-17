@@ -1244,7 +1244,7 @@ function initMap() {
     const isMerchantFloor = floorLevel >= 10 && floorLevel < 100 && merchantCooldownOk && (isExactMerchantFloor || (isNearMerchantFloor && Math.random() < 0.3));
 
     // --- MULTI-SCREEN FLOOR (Floor 50+: 固定ステージ以外 / 101F+: DEEP TEST 10x10) ---
-    const fixedStageFloors = [50, 53, 57, 63, 66, 70, 75, 77, 80, 83, 85, 88, 100];
+    const fixedStageFloors = [50, 53, 57, 63, 66, 70, 75, 77, 80, 83, 85, 86, 88, 93, 99, 100];
     if ((floorLevel >= 50 && floorLevel < 100 && !fixedStageFloors.includes(floorLevel)) || floorLevel >= 101) {
         multiScreenMode = true;
         if (floorLevel >= 101) {
@@ -2446,6 +2446,261 @@ function initMap() {
                     addLog(`⚠️ A strange aura... "${bizNames[result.bizType] || '???'}"`);
                     continue;
                 }
+                // ===== POISON WASTELAND スクリーン (90+F: 非特殊画面に約6%で出現) =====
+                if (floorLevel >= 90 && !isSpecial && Math.random() < 0.06) {
+                    const pwMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
+                    const pwEnemies = [];
+
+                    // 内部を全部毒にする
+                    for (let y = 1; y < ROWS - 1; y++)
+                        for (let x = 1; x < COLS - 1; x++)
+                            pwMap[y][x] = SYMBOLS.POISON;
+
+                    // ランダム壁クラスター（5〜9か所）— 通路帯を避けて配置
+                    const pwWallCount = 5 + Math.floor(Math.random() * 5);
+                    for (let i = 0; i < pwWallCount; i++) {
+                        const wcx = 4 + Math.floor(Math.random() * (COLS - 10));
+                        const wcy = 3 + Math.floor(Math.random() * (ROWS - 8));
+                        const ww = 1 + Math.floor(Math.random() * 4);
+                        const wh = 1 + Math.floor(Math.random() * 3);
+                        for (let ddy = 0; ddy < wh; ddy++)
+                            for (let ddx = 0; ddx < ww; ddx++) {
+                                const tx = wcx + ddx, ty = wcy + ddy;
+                                if (tx < 1 || tx >= COLS-1 || ty < 1 || ty >= ROWS-1) continue;
+                                // 通路帯（左右: y=11-13, 上下: x=18-21）は避ける
+                                if ((tx <= 2 || tx >= COLS-3) && ty >= 10 && ty <= 14) continue;
+                                if ((ty <= 1 || ty >= ROWS-2) && tx >= 17 && tx <= 22) continue;
+                                pwMap[ty][tx] = SYMBOLS.WALL;
+                            }
+                    }
+
+                    // 通路入口を開け、内側の代表座標を記録
+                    const pwPassages = [];
+                    if (sx < screenGridSize - 1) {
+                        for (let ppy = 11; ppy <= 13; ppy++) { pwMap[ppy][COLS-1] = SYMBOLS.FLOOR; pwMap[ppy][COLS-2] = SYMBOLS.FLOOR; }
+                        pwPassages.push({ x: COLS-3, y: 12 });
+                    }
+                    if (sx > 0) {
+                        for (let ppy = 11; ppy <= 13; ppy++) { pwMap[ppy][0] = SYMBOLS.FLOOR; pwMap[ppy][1] = SYMBOLS.FLOOR; }
+                        pwPassages.push({ x: 2, y: 12 });
+                    }
+                    if (sy < screenGridSize - 1) {
+                        for (let ppx = 18; ppx <= 21; ppx++) { pwMap[ROWS-1][ppx] = SYMBOLS.FLOOR; pwMap[ROWS-2][ppx] = SYMBOLS.FLOOR; }
+                        pwPassages.push({ x: 19, y: ROWS-3 });
+                    }
+                    if (sy > 0) {
+                        for (let ppx = 18; ppx <= 21; ppx++) { pwMap[0][ppx] = SYMBOLS.FLOOR; pwMap[1][ppx] = SYMBOLS.FLOOR; }
+                        pwPassages.push({ x: 19, y: 2 });
+                    }
+
+                    // BFS: WALL以外（POISON/FLOOR）を通って2点を接続
+                    const bfsPW = (startX, startY, endX, endY) => {
+                        if (startX === endX && startY === endY) return [];
+                        const pwPrev = Array.from({ length: ROWS }, () => new Array(COLS).fill(null));
+                        const pwVis  = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
+                        const q = [{ x: startX, y: startY }];
+                        pwVis[startY][startX] = 1;
+                        const d4 = [[1,0],[-1,0],[0,1],[0,-1]];
+                        while (q.length > 0) {
+                            const { x, y } = q.shift();
+                            if (x === endX && y === endY) {
+                                const path = [];
+                                let cx = endX, cy = endY;
+                                while (cx !== startX || cy !== startY) {
+                                    path.push({ x: cx, y: cy });
+                                    const p = pwPrev[cy][cx]; cx = p.x; cy = p.y;
+                                }
+                                return path;
+                            }
+                            for (const [ddx, ddy] of d4) {
+                                const nx = x + ddx, ny = y + ddy;
+                                if (nx < 1 || nx >= COLS-1 || ny < 1 || ny >= ROWS-1) continue;
+                                if (pwVis[ny][nx] || pwMap[ny][nx] === SYMBOLS.WALL) continue;
+                                pwVis[ny][nx] = 1;
+                                pwPrev[ny][nx] = { x, y };
+                                q.push({ x: nx, y: ny });
+                            }
+                        }
+                        return null;
+                    };
+
+                    // 2点間をウェイポイント経由で蛇行接続し、経路をFLOORにする
+                    const pwConnect = (p1, p2) => {
+                        const numWP = 3 + Math.floor(Math.random() * 3);
+                        const halfY = Math.floor(ROWS / 2);
+                        const halfX = Math.floor(COLS / 2);
+                        const isH = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y);
+                        const wpts = [p1];
+                        for (let wi = 1; wi <= numWP; wi++) {
+                            const t = wi / (numWP + 1);
+                            let wpX, wpY;
+                            if (isH) {
+                                wpX = Math.max(2, Math.min(COLS-3, Math.floor(p1.x + (p2.x - p1.x) * t)));
+                                wpY = (wi % 2 === 0)
+                                    ? 2 + Math.floor(Math.random() * (halfY - 3))
+                                    : halfY + 1 + Math.floor(Math.random() * (ROWS - halfY - 4));
+                            } else {
+                                wpX = (wi % 2 === 0)
+                                    ? 2 + Math.floor(Math.random() * (halfX - 3))
+                                    : halfX + 1 + Math.floor(Math.random() * (COLS - halfX - 4));
+                                wpY = Math.max(2, Math.min(ROWS-3, Math.floor(p1.y + (p2.y - p1.y) * t)));
+                            }
+                            // 壁と重なる場合は近傍補正
+                            for (let dd = 0; dd < ROWS-2; dd++) {
+                                const tryY = 1 + ((wpY - 1 + dd) % (ROWS-2));
+                                if (pwMap[tryY][wpX] !== SYMBOLS.WALL) { wpY = tryY; break; }
+                            }
+                            wpts.push({ x: wpX, y: wpY });
+                        }
+                        wpts.push(p2);
+                        for (let wi = 0; wi < wpts.length - 1; wi++) {
+                            const seg = bfsPW(wpts[wi].x, wpts[wi].y, wpts[wi+1].x, wpts[wi+1].y);
+                            if (seg) for (const { x, y } of seg)
+                                if (pwMap[y][x] !== SYMBOLS.WALL) pwMap[y][x] = SYMBOLS.FLOOR;
+                        }
+                        // 両端に安全ゾーン（2×2 FLOOR）
+                        for (const ep of [p1, p2])
+                            for (let ddy = -1; ddy <= 1; ddy++)
+                                for (let ddx = -1; ddx <= 1; ddx++) {
+                                    const tx = ep.x + ddx, ty = ep.y + ddy;
+                                    if (tx >= 1 && tx < COLS-1 && ty >= 1 && ty < ROWS-1)
+                                        if (pwMap[ty][tx] !== SYMBOLS.WALL) pwMap[ty][tx] = SYMBOLS.FLOOR;
+                                }
+                    };
+
+                    // 全通路を連鎖接続 (0→1→2→3)
+                    if (pwPassages.length >= 2) {
+                        for (let pi = 0; pi < pwPassages.length - 1; pi++)
+                            pwConnect(pwPassages[pi], pwPassages[pi+1]);
+                    } else if (pwPassages.length === 1) {
+                        // 通路が1本だけなら中央へ接続
+                        pwConnect(pwPassages[0], { x: Math.floor(COLS/2), y: Math.floor(ROWS/2) });
+                    }
+
+                    // 敵配置: POISON上のみ (NORMAL×5, FROST×3, BREAKER×2)
+                    const pwBaseHp = 5 + floorLevel;
+                    const placeEnemyPW = (type, hpMul, expV) => {
+                        for (let t = 0; t < 100; t++) {
+                            const ex = 2 + Math.floor(Math.random() * (COLS-4));
+                            const ey = 2 + Math.floor(Math.random() * (ROWS-4));
+                            if (pwMap[ey][ex] !== SYMBOLS.POISON) continue;
+                            if (pwEnemies.some(e => e.x === ex && e.y === ey)) continue;
+                            const hp = Math.floor(pwBaseHp * hpMul);
+                            pwEnemies.push({ type, x:ex, y:ey, hp, maxHp:hp, flashUntil:0, offsetX:0, offsetY:0, expValue:expV, stunTurns:0 });
+                            return;
+                        }
+                    };
+                    for (let i = 0; i < 5; i++) placeEnemyPW('NORMAL', 1.0,  8);
+                    for (let i = 0; i < 3; i++) placeEnemyPW('FROST',  2.0, 20);
+                    for (let i = 0; i < 2; i++) placeEnemyPW('BREAKER',3.0, 35);
+
+                    screenGrid.maps[sy][sx] = pwMap;
+                    screenGrid.enemies[sy][sx] = pwEnemies;
+                    screenGrid.wisps[sy][sx] = [];
+                    screenGrid.tempWalls[sy][sx] = [];
+                    allRooms[`${sx},${sy}`] = [{ x:1, y:1, w:COLS-2, h:ROWS-2, cx:Math.floor(COLS/2), cy:Math.floor(ROWS/2) }];
+                    addLog('☠️ The stench of venom drifts from a nearby chamber...');
+                    continue;
+                }
+
+                // ===== TURRET GAUNTLET スクリーン (90+F: 非特殊画面に約10%で出現) =====
+                if (floorLevel >= 90 && !isSpecial && Math.random() < 0.10) {
+                    const tgMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
+                    const tgEnemies = [];
+
+                    // 内部を全部床にする
+                    for (let y = 1; y < ROWS - 1; y++)
+                        for (let x = 1; x < COLS - 1; x++)
+                            tgMap[y][x] = SYMBOLS.FLOOR;
+
+                    // ランダム壁柱（タレット跳ね返り用）12本
+                    for (let i = 0; i < 12; i++) {
+                        const wx = Math.floor(Math.random() * (COLS - 10)) + 5;
+                        const wy = Math.floor(Math.random() * (ROWS - 8)) + 4;
+                        // 通路付近は避ける
+                        if (wy >= 10 && wy <= 14 && (wx <= 2 || wx >= COLS - 3)) continue;
+                        if (wx >= 17 && wx <= 22 && (wy <= 2 || wy >= ROWS - 3)) continue;
+                        tgMap[wy][wx] = SYMBOLS.WALL;
+                    }
+
+                    // 毒沼パッチ（3〜5か所）
+                    const tgPoisonCount = 3 + Math.floor(Math.random() * 3);
+                    for (let i = 0; i < tgPoisonCount; i++) {
+                        const pcx = Math.floor(Math.random() * (COLS - 14)) + 7;
+                        const pcy = Math.floor(Math.random() * (ROWS - 12)) + 6;
+                        const pr = 1 + Math.floor(Math.random() * 2);
+                        for (let dy = -pr; dy <= pr; dy++) {
+                            for (let dx = -pr; dx <= pr; dx++) {
+                                if (dx * dx + dy * dy > pr * pr) continue;
+                                const ppx = pcx + dx, ppy = pcy + dy;
+                                if (ppx < 2 || ppx >= COLS - 2 || ppy < 2 || ppy >= ROWS - 2) continue;
+                                if (tgMap[ppy][ppx] === SYMBOLS.WALL) continue;
+                                tgMap[ppy][ppx] = SYMBOLS.POISON;
+                            }
+                        }
+                    }
+
+                    // 通路入口を開ける（隣接スクリーンへの接続）
+                    if (sx < screenGridSize - 1) { for (let py = 11; py <= 13; py++) { tgMap[py][COLS-1] = SYMBOLS.FLOOR; tgMap[py][COLS-2] = SYMBOLS.FLOOR; } }
+                    if (sx > 0)                  { for (let py = 11; py <= 13; py++) { tgMap[py][0]      = SYMBOLS.FLOOR; tgMap[py][1]      = SYMBOLS.FLOOR; } }
+                    if (sy < screenGridSize - 1) { for (let ppx = 18; ppx <= 21; ppx++) { tgMap[ROWS-1][ppx] = SYMBOLS.FLOOR; tgMap[ROWS-2][ppx] = SYMBOLS.FLOOR; } }
+                    if (sy > 0)                  { for (let ppx = 18; ppx <= 21; ppx++) { tgMap[0][ppx]      = SYMBOLS.FLOOR; tgMap[1][ppx]      = SYMBOLS.FLOOR; } }
+
+                    const tgHp = 80 + floorLevel * 5;
+
+                    // 下壁沿い HOPPER_TURRET: dir:0 (上向きレーザー、左右移動)
+                    const tgBottom = 4 + Math.floor(Math.random() * 4);
+                    for (let i = 0; i < tgBottom; i++) {
+                        for (let retry = 0; retry < 100; retry++) {
+                            const tx = 3 + Math.floor(Math.random() * (COLS - 8));
+                            const ty = ROWS - 2;
+                            if (tgMap[ty][tx] !== SYMBOLS.FLOOR) continue;
+                            if (tgEnemies.some(e => e.x === tx && e.y === ty)) continue;
+                            if (tx >= 17 && tx <= 22) continue; // 下通路付近除外
+                            tgEnemies.push({ type:'HOPPER_TURRET', x:tx, y:ty, dir:0, hp:tgHp, maxHp:tgHp, flashUntil:0, offsetX:0, offsetY:0, expValue:50, stunTurns:0, hopTimer:1+Math.floor(Math.random()*3) });
+                            break;
+                        }
+                    }
+
+                    // 右壁沿い HOPPER_TURRET: dir:3 (左向きレーザー、上下移動)
+                    const tgRight = 3 + Math.floor(Math.random() * 3);
+                    for (let i = 0; i < tgRight; i++) {
+                        for (let retry = 0; retry < 100; retry++) {
+                            const tx = COLS - 2;
+                            const ty = 3 + Math.floor(Math.random() * (ROWS - 8));
+                            if (tgMap[ty][tx] !== SYMBOLS.FLOOR) continue;
+                            if (tgEnemies.some(e => e.x === tx && e.y === ty)) continue;
+                            if (ty >= 10 && ty <= 14) continue; // 右通路付近除外
+                            tgEnemies.push({ type:'HOPPER_TURRET', x:tx, y:ty, dir:3, hp:tgHp, maxHp:tgHp, flashUntil:0, offsetX:0, offsetY:0, expValue:50, stunTurns:0, hopTimer:1+Math.floor(Math.random()*3) });
+                            break;
+                        }
+                    }
+
+                    // 上壁沿い HOPPER_TURRET: dir:2 (下向きレーザー、左右移動) ※確率50%で追加
+                    if (Math.random() < 0.5) {
+                        const tgTop = 3 + Math.floor(Math.random() * 3);
+                        for (let i = 0; i < tgTop; i++) {
+                            for (let retry = 0; retry < 100; retry++) {
+                                const tx = 3 + Math.floor(Math.random() * (COLS - 8));
+                                const ty = 1;
+                                if (tgMap[ty][tx] !== SYMBOLS.FLOOR) continue;
+                                if (tgEnemies.some(e => e.x === tx && e.y === ty)) continue;
+                                if (tx >= 17 && tx <= 22) continue;
+                                tgEnemies.push({ type:'HOPPER_TURRET', x:tx, y:ty, dir:2, hp:tgHp, maxHp:tgHp, flashUntil:0, offsetX:0, offsetY:0, expValue:50, stunTurns:0, hopTimer:1+Math.floor(Math.random()*3) });
+                                break;
+                            }
+                        }
+                    }
+
+                    screenGrid.maps[sy][sx] = tgMap;
+                    screenGrid.enemies[sy][sx] = tgEnemies;
+                    screenGrid.wisps[sy][sx] = [];
+                    screenGrid.tempWalls[sy][sx] = [];
+                    allRooms[`${sx},${sy}`] = [{ x:1, y:1, w:COLS-2, h:ROWS-2, cx:Math.floor(COLS/2), cy:Math.floor(ROWS/2) }];
+                    addLog('⚠️ Turret fire echoes from a nearby chamber...');
+                    continue;
+                }
+
                 if (deepTheme) {
                     // フロアテーマの重みに基づいてスクリーンタイプを選択（タイプ分布はフロア全体で統一）
                     const _w = deepTheme.screenTypeWeights;
@@ -2588,6 +2843,27 @@ function initMap() {
             if (placed) break;
         }
 
+        // Stage 97: マルチスクリーン上でKEYをKEY_RUNNERに差し替え
+        if (floorLevel === 97) {
+            let krX = -1, krY = -1;
+            for (let y = 0; y < ROWS && krX === -1; y++)
+                for (let x = 0; x < COLS && krX === -1; x++)
+                    if (keyMap[y][x] === SYMBOLS.KEY) { krX = x; krY = y; keyMap[y][x] = SYMBOLS.FLOOR; }
+            if (krX !== -1) {
+                const krHp = 10 + floorLevel;
+                screenGrid.enemies[keyScreenY][keyScreenX].push({
+                    type: 'KEY_RUNNER', x: krX, y: krY,
+                    hp: krHp, maxHp: krHp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0,
+                    expValue: 80, stunTurns: 0,
+                    flee: true, holdsKey: true,
+                    trailX: null, trailY: null
+                });
+            }
+            addLog("EVENT: Stage 97 — The Key Thief!");
+            addLog("🔑 K holds the only key. Find it across the labyrinth!");
+        }
+
         // 階段(DOOR): 決定済みの画面に配置
         const doorMap = screenGrid.maps[doorScreenY][doorScreenX];
         const doorRooms = allRooms[`${doorScreenX},${doorScreenY}`];
@@ -2718,6 +2994,37 @@ function initMap() {
             !(Math.abs(m.x - player.x) <= 3 && Math.abs(m.y - player.y) <= 3));
         movingMadmen = movingMadmen.filter(m => !(m.screenX === 0 && m.screenY === 0));
         enemies.push(...startMadmen);
+
+        // Stage 98: FAIRY_MIMICをスタート画面以外の各スクリーンに70%で1体ずつ配置
+        if (floorLevel === 98) {
+            for (let sy = 0; sy < screenGridSize; sy++) {
+                for (let sx = 0; sx < screenGridSize; sx++) {
+                    if (sx === 0 && sy === 0) continue; // スタート画面はスキップ
+                    if (Math.random() >= 0.70) continue;
+                    const fmMap = screenGrid.maps[sy][sx];
+                    for (let t = 0; t < 300; t++) {
+                        const fx = Math.floor(Math.random() * (COLS - 4)) + 2;
+                        const fy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                        if (fmMap[fy][fx] === SYMBOLS.FLOOR &&
+                            !screenGrid.enemies[sy][sx].some(e => e.x === fx && e.y === fy)) {
+                            const fmHp = Math.floor(floorLevel / 2) + 8;
+                            screenGrid.enemies[sy][sx].push({
+                                type: 'FAIRY_MIMIC',
+                                x: fx, y: fy,
+                                hp: fmHp, maxHp: fmHp,
+                                disguised: true,
+                                mimicTransitionEnd: 0,
+                                flashUntil: 0, offsetX: 0, offsetY: 0,
+                                expValue: 20, stunTurns: 0,
+                                moveCooldown: 0
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+            addLog("⚠️ Something feels... off about those fairies.");
+        }
 
         return;
     }
@@ -7368,6 +7675,145 @@ function initMap() {
         addLog("🔑 K holds the only key. Catch it to unlock the door!");
     }
 
+    // Stage 86 / 93: KEY_RUNNER がカギを持って逃げる（マップ・敵はそのまま）
+    if (floorLevel === 86 || floorLevel === 93) {
+        // マップ上のKEYをすべて除去し、STAIRS/DOORは最初の1個だけDOORとして残す
+        let doorX = -1, doorY = -1;
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                const t = map[y][x];
+                if (t === SYMBOLS.KEY) {
+                    map[y][x] = SYMBOLS.FLOOR;
+                } else if (t === SYMBOLS.STAIRS || t === SYMBOLS.DOOR) {
+                    if (doorX === -1) { doorX = x; doorY = y; map[y][x] = SYMBOLS.DOOR; }
+                    else { map[y][x] = SYMBOLS.FLOOR; }
+                }
+            }
+        }
+        // STAIRS/DOORが一つも無かった場合のフォールバック
+        if (doorX === -1) {
+            map[ROWS - 4][COLS - 4] = SYMBOLS.DOOR;
+        }
+
+        // KEY_RUNNERをプレイヤーから遠い床タイルに配置
+        let krPlaced = false;
+        for (let t = 0; t < 1000 && !krPlaced; t++) {
+            const kx = 2 + Math.floor(Math.random() * (COLS - 4));
+            const ky = 2 + Math.floor(Math.random() * (ROWS - 4));
+            if (map[ky][kx] !== SYMBOLS.FLOOR) continue;
+            if (Math.abs(kx - player.x) + Math.abs(ky - player.y) < 12) continue;
+            const krHp = 10 + floorLevel;
+            enemies.push({
+                type: 'KEY_RUNNER', x: kx, y: ky,
+                hp: krHp, maxHp: krHp,
+                flashUntil: 0, offsetX: 0, offsetY: 0,
+                expValue: 80, stunTurns: 0,
+                flee: true, holdsKey: true,
+                trailX: null, trailY: null
+            });
+            krPlaced = true;
+        }
+        addLog(`EVENT: Stage ${floorLevel} — The Key Thief!`);
+        addLog("🔑 K holds the only key. Catch it to unlock the door!");
+    }
+
+    // ========================================================
+    // STAGE 99: ICICLE CAVERN — 敵なし・洞窟壁・つらら密室
+    // ========================================================
+    if (floorLevel === 99) {
+        addLog("EVENT: The Final Cavern.");
+        addLog("▲ Rock spikes fill every corner. The air is deathly still.");
+        addLog("⚠️ Something lurks beyond the silence...");
+
+        // 全面を外周壁・内部床で初期化
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                map[y][x] = (y === 0 || y === ROWS - 1 || x === 0 || x === COLS - 1)
+                    ? SYMBOLS.WALL : SYMBOLS.FLOOR;
+            }
+        }
+
+        // --- 洞窟壁の凹凸（各辺から不規則に突き出す） ---
+        // 上壁から下向き突起（列ごとにランダムな深さ 0-4）
+        for (let x = 2; x < COLS - 2; x++) {
+            const depth = Math.floor(Math.random() * 5); // 0〜4
+            for (let d = 1; d <= depth; d++) {
+                if (d < ROWS - 2) map[d][x] = SYMBOLS.WALL;
+            }
+        }
+        // 下壁から上向き突起
+        for (let x = 2; x < COLS - 2; x++) {
+            const depth = Math.floor(Math.random() * 5);
+            for (let d = 1; d <= depth; d++) {
+                if (ROWS - 1 - d >= 1) map[ROWS - 1 - d][x] = SYMBOLS.WALL;
+            }
+        }
+        // 左壁から右向き突起
+        for (let y = 2; y < ROWS - 2; y++) {
+            const depth = Math.floor(Math.random() * 5);
+            for (let d = 1; d <= depth; d++) {
+                if (d < COLS - 2) map[y][d] = SYMBOLS.WALL;
+            }
+        }
+        // 右壁から左向き突起
+        for (let y = 2; y < ROWS - 2; y++) {
+            const depth = Math.floor(Math.random() * 5);
+            for (let d = 1; d <= depth; d++) {
+                if (COLS - 1 - d >= 1) map[y][COLS - 1 - d] = SYMBOLS.WALL;
+            }
+        }
+        // 角の丸め：4隅の内側に小さな壁の塊を追加してより洞窟らしく
+        const addCorner = (cx, cy, r) => {
+            for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+                const nx = cx + dx, ny = cy + dy;
+                if (nx < 1 || nx >= COLS-1 || ny < 1 || ny >= ROWS-1) continue;
+                if (dx*dx + dy*dy <= r*r && Math.random() < 0.7) map[ny][nx] = SYMBOLS.WALL;
+            }
+        };
+        addCorner(3, 3, 2);
+        addCorner(COLS - 4, 3, 2);
+        addCorner(3, ROWS - 4, 2);
+        addCorner(COLS - 4, ROWS - 4, 2);
+
+        // --- プレイヤー配置：左上の安全地帯 ---
+        player.x = 5; player.y = 6;
+        // スタート周辺 5×5 を強制的に床にする
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+            const ny = player.y + dy, nx = player.x + dx;
+            if (ny >= 1 && ny < ROWS-1 && nx >= 1 && nx < COLS-1) map[ny][nx] = SYMBOLS.FLOOR;
+        }
+
+        // --- 出口（STAIRS）：右下の安全地帯 ---
+        const stairsX99 = COLS - 6, stairsY99 = ROWS - 6;
+        map[stairsY99][stairsX99] = SYMBOLS.STAIRS;
+        // 出口周辺 5×5 を強制的に床にする
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+            const ny = stairsY99 + dy, nx = stairsX99 + dx;
+            if (ny >= 1 && ny < ROWS-1 && nx >= 1 && nx < COLS-1 && map[ny][nx] !== SYMBOLS.STAIRS)
+                map[ny][nx] = SYMBOLS.FLOOR;
+        }
+
+        // --- つらら（ICICLE）を床タイル全体に密に散布 ---
+        // tempWalls への追加：hp:2 の破壊可能障害物
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                if (map[y][x] !== SYMBOLS.FLOOR) continue;
+                // スタート・出口周辺は除外
+                if (Math.abs(x - player.x) + Math.abs(y - player.y) <= 4) continue;
+                if (Math.abs(x - stairsX99) + Math.abs(y - stairsY99) <= 4) continue;
+                // 50% の確率でつらら配置（密集感を出す）
+                if (Math.random() < 0.50) {
+                    tempWalls.push({ x, y, hp: 2, type: 'ICICLE' });
+                }
+            }
+        }
+
+        // 敵なし（ラスボス前の静寂）
+        enemies = [];
+
+        return;
+    }
+
 }
 
 function breakStealth() {
@@ -7388,7 +7834,7 @@ function isWallAt(x, y) {
 }
 
 async function startFloorTransition() {
-    if (floorLevel === 100) stopBGM();
+    if (floorLevel === 100 || floorLevel === 99) stopBGM();
     isProcessing = true;
     isPlayerVisible = false; // 遷移開始時に即座に隠す
     SOUNDS.DESCEND();
@@ -7482,23 +7928,19 @@ async function startFloorTransition() {
 
     // 着地後にBGM処理（100階は無音）
     // 再生中なら次フロアへ引き継ぐ。無音状態でフロア移動したときだけ新しく開始する。
-    if (floorLevel !== 100 && !bgmActive) changeBGMTrack();
+    if (floorLevel !== 100 && floorLevel !== 99 && !bgmActive) changeBGMTrack();
 
     // 階層ごとのストーリー演出
     if (floorLevel === 100) {
-        const hasSeenStory = localStorage.getItem('floor100_story_seen') === '1';
-        if (!hasSeenStory) {
-            isProcessing = true;
-            await new Promise(r => setTimeout(r, 600));
-            await showStoryPages([
-                ["Before your eyes lies a sphere of light.", "", "あなたの目の前に、光の球体がある"],
-                ["It is the Dungeon Core.", "", "ダンジョンコアだ"],
-                ["You once read of it in ancient scrolls.", "", "古い文献で、読んだことがある"],
-                ["Destroy this, and the dungeon", "will vanish into nothingness.", "", "これを破壊すれば、ダンジョンは消え去るのだ"],
-                ["And then, you may finally", "return to the surface.", "", "そしてあなたは、地上へ帰還することが", "できるだろう"]
-            ], true);
-            localStorage.setItem('floor100_story_seen', '1');
-        }
+        isProcessing = true;
+        await new Promise(r => setTimeout(r, 600));
+        await showStoryPages([
+            ["Before your eyes lies a sphere of light.", "", "あなたの目の前に、光の球体がある"],
+            ["It is the Dungeon Core.", "", "ダンジョンコアだ"],
+            ["You once read of it in ancient scrolls.", "", "古い文献で、読んだことがある"],
+            ["Destroy this, and the dungeon", "will vanish into nothingness.", "", "これを破壊すれば、ダンジョンは消え去るのだ"],
+            ["And then, you may finally", "return to the surface.", "", "そしてあなたは、地上へ帰還することが", "できるだろう"]
+        ], true);
     }
     isProcessing = false;
 }
@@ -9348,6 +9790,19 @@ function draw(now) {
             if (e.hp <= 0) return;
             // 擬態中のミミックは敵として描画しない（マップのSTAIRSタイルとして見える）
             // ただし変身演出中は点滅させる
+            // FAIRY_MIMIC: 擬態中は妖精として描画（ゆっくり脈動）
+            if (e.type === 'FAIRY_MIMIC' && e.disguised) {
+                const fmPx = e.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0);
+                const fmPy = e.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0);
+                ctx.save();
+                ctx.globalAlpha = 1.0; // 点滅なし・本物の妖精と同じ不透明度
+                ctx.fillStyle = '#f9a8d4';
+                ctx.shadowColor = '#f472b6'; ctx.shadowBlur = 10;
+                ctx.fillText(SYMBOLS.FAIRY, fmPx, fmPy);
+                ctx.restore();
+                return;
+            }
+
             if (e.type === 'MIMIC' && e.disguised) {
                 if (e.mimicTransitionEnd && now < e.mimicTransitionEnd) {
                     // 変身演出中：穴とMが交互に点滅
@@ -9421,6 +9876,15 @@ function draw(now) {
                         eChar = phase === 0 ? 'M' : SYMBOLS.STAIRS;
                     }
                 }
+                else if (e.type === 'FAIRY_MIMIC') {
+                    eColor = '#ef4444'; eChar = 'M';
+                    // 正体暴露直後は妖精と交互に点滅
+                    if (e.mimicTransitionEnd && now < e.mimicTransitionEnd) {
+                        const phase = Math.floor(now / 80) % 2;
+                        eColor = phase === 0 ? '#ef4444' : '#f472b6';
+                        eChar = phase === 0 ? 'M' : SYMBOLS.FAIRY;
+                    }
+                }
                 else if (e.type === 'MADMAN') {
                     // 狂人: 赤く不規則に明滅する＠
                     const mPhase = Math.floor(now / 90) % 3;
@@ -9477,18 +9941,19 @@ function draw(now) {
             const dx = [0, 1, 0, -1][e.dir];
             const dy = [-1, 0, 1, 0][e.dir];
             let lx = e.x + dx, ly = e.y + dy;
-            const startX = e.x * TILE_SIZE + TILE_SIZE / 2;
-            const startY = e.y * TILE_SIZE + TILE_SIZE / 2;
+            const offX = e.offsetX || 0, offY = e.offsetY || 0;
+            const startX = e.x * TILE_SIZE + TILE_SIZE / 2 + offX;
+            const startY = e.y * TILE_SIZE + TILE_SIZE / 2 + offY;
             let endX = startX, endY = startY;
             while (lx >= 0 && lx < COLS && ly >= 0 && ly < ROWS) {
                 if (isWallAt(lx, ly)) {
                     // 壁にぶつかるまで描画（壁の手前の端まで伸ばす）
-                    endX = lx * TILE_SIZE + TILE_SIZE / 2 - dx * TILE_SIZE / 2;
-                    endY = ly * TILE_SIZE + TILE_SIZE / 2 - dy * TILE_SIZE / 2;
+                    endX = lx * TILE_SIZE + TILE_SIZE / 2 - dx * TILE_SIZE / 2 + offX;
+                    endY = ly * TILE_SIZE + TILE_SIZE / 2 - dy * TILE_SIZE / 2 + offY;
                     break;
                 }
-                endX = lx * TILE_SIZE + TILE_SIZE / 2;
-                endY = ly * TILE_SIZE + TILE_SIZE / 2;
+                endX = lx * TILE_SIZE + TILE_SIZE / 2 + offX;
+                endY = ly * TILE_SIZE + TILE_SIZE / 2 + offY;
                 lx += dx; ly += dy;
             }
             if (endX !== startX || endY !== startY) {
@@ -10926,7 +11391,7 @@ async function handleAction(dx, dy) {
     // ドラゴン出現チェック
     if (floorLevel === 100 && !hasSpawnedDragon && dungeonCore) {
         const dist = Math.abs(player.x - dungeonCore.x) + Math.abs(player.y - dungeonCore.y);
-        if (dist <= 8) {
+        if (dist <= 6) {
             try { await triggerDragonSpawn(); } catch(err) { console.error('[dragon spawn ERROR]', err); } finally { isProcessing = false; }
             return;
         }
@@ -12000,7 +12465,8 @@ function useFairy() {
         movingFairies.push({ x: fx, y: fy, screenX: -1, screenY: -1, underTile: under, surrounded: false, waitTurns: 3, stopped: false });
     }
 
-    addLog("🧚 You released a FAIRY! It heads toward the KEY.");
+    const hasKR = enemies.some(e => e.type === 'KEY_RUNNER' && e.holdsKey && e.hp > 0);
+    addLog(hasKR ? "🧚 You released a FAIRY! It hunts the KEY RUNNER!" : "🧚 You released a FAIRY! It heads toward the KEY.");
     spawnFloatingText(fx, fy, "FAIRY RELEASED", "#f472b6");
     SOUNDS.GET_ITEM();
     updateUI();
@@ -12043,23 +12509,28 @@ function moveFairies() {
         }
         if (f.waitTurns > 0) f.waitTurns--;
 
-        // 目標を探す（KEY優先、次にDOOR（解錠前の穴）、次にSTAIRS）
+        // 目標を探す（KEY_RUNNER最優先、次にKEY、DOOR、STAIRS）
         // MIMICが擬態しているSTAIRSは除外して本物の穴だけを目標にする
         let goalX = -1, goalY = -1, goalSym = null;
-        outerRF: for (const sym of [SYMBOLS.KEY, SYMBOLS.DOOR, SYMBOLS.STAIRS]) {
-            for (let gy = 0; gy < ROWS; gy++) {
-                for (let gx = 0; gx < COLS; gx++) {
-                    if (map[gy][gx] === sym && !(gx === f.x && gy === f.y) &&
-                        !enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === gx && e.y === gy)) {
-                        goalX = gx; goalY = gy; goalSym = sym; break outerRF;
+        const krTarget = enemies.find(e => e.type === 'KEY_RUNNER' && e.holdsKey && e.hp > 0);
+        if (krTarget) {
+            goalX = krTarget.x; goalY = krTarget.y; goalSym = 'KEY_RUNNER';
+        } else {
+            outerRF: for (const sym of [SYMBOLS.KEY, SYMBOLS.DOOR, SYMBOLS.STAIRS]) {
+                for (let gy = 0; gy < ROWS; gy++) {
+                    for (let gx = 0; gx < COLS; gx++) {
+                        if (map[gy][gx] === sym && !(gx === f.x && gy === f.y) &&
+                            !enemies.some(e => e.type === 'MIMIC' && e.disguised && e.x === gx && e.y === gy)) {
+                            goalX = gx; goalY = gy; goalSym = sym; break outerRF;
+                        }
                     }
                 }
             }
         }
         if (goalX < 0) continue;
 
-        // 目標の1マス手前で停止（stopped = true → 取得可能・点滅終了）
-        if (Math.abs(f.x - goalX) + Math.abs(f.y - goalY) <= 1) {
+        // KEY_RUNNER以外: 目標の1マス手前で停止（stopped = true → 取得可能・点滅終了）
+        if (goalSym !== 'KEY_RUNNER' && Math.abs(f.x - goalX) + Math.abs(f.y - goalY) <= 1) {
             f.stopped = true;
             continue;
         }
@@ -12069,8 +12540,8 @@ function moveFairies() {
         // BFSで次の一歩を計算
         const { dx: bestDX, dy: bestDY } = fairyBFS(map, f.x, f.y, goalX, goalY);
 
-        // 目標タイル自体への踏み込みは避ける
-        if (f.x + bestDX === goalX && f.y + bestDY === goalY) continue;
+        // KEY_RUNNER以外: 目標タイル自体への踏み込みは避ける
+        if (goalSym !== 'KEY_RUNNER' && f.x + bestDX === goalX && f.y + bestDY === goalY) continue;
 
         if (bestDX !== 0 || bestDY !== 0) {
             // 設置ブロック（tempWall）には進まない（BFSで避けているが念のため）
@@ -12124,6 +12595,16 @@ function moveFairies() {
 
     // 妖精ごとに目標を計算するヘルパー（自分の位置を除外してキー優先・なければ出口）
     const findGoalForFairy = (fairy) => {
+        // KEY_RUNNER最優先: 全画面のscreenGrid.enemiesを検索
+        for (let sy = 0; sy < screenGridSize; sy++) {
+            for (let sx = 0; sx < screenGridSize; sx++) {
+                const scrEnemies = (sx === currentScreen.x && sy === currentScreen.y)
+                    ? enemies
+                    : (screenGrid.enemies[sy][sx] || []);
+                const kr = scrEnemies.find(e => e.type === 'KEY_RUNNER' && e.holdsKey && e.hp > 0);
+                if (kr) return { gx: sx * COLS + kr.x, gy: sy * ROWS + kr.y, sym: 'KEY_RUNNER' };
+            }
+        }
         const searchSymbols = [SYMBOLS.KEY, SYMBOLS.DOOR, SYMBOLS.STAIRS];
         for (const sym of searchSymbols) {
             let gx = -1, gy = -1;
@@ -12222,8 +12703,8 @@ function moveFairies() {
         const goalSX = Math.floor(goalGX / COLS), goalSY = Math.floor(goalGY / ROWS);
         const goalLocalX = goalGX % COLS, goalLocalY = goalGY % ROWS;
 
-        // KEY・DOOR・STAIRS が目標かつ同じ画面にいる場合、1マス隣にいれば停止して待機
-        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.DOOR || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
+        // KEY_RUNNER以外: KEY・DOOR・STAIRS が目標かつ同じ画面なら1マス隣で停止
+        if (goalSym !== 'KEY_RUNNER' && (goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.DOOR || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
             const distToGoal = Math.abs(f.x - goalLocalX) + Math.abs(f.y - goalLocalY);
             if (distToGoal <= 1) { f.stopped = true; continue; } // 停止 → 取得可能・点滅終了
         }
@@ -12244,8 +12725,8 @@ function moveFairies() {
         // BFSで障害物（壁）を避けながら最短経路の第一歩を取得
         const { dx: bestDX, dy: bestDY } = fairyBFS(curFMap, f.x, f.y, targetX, targetY);
 
-        // KEY・DOOR・STAIRSが目標の場合、次の一歩がそのタイル自体なら踏み込まない
-        if ((goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.DOOR || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
+        // KEY_RUNNER以外: KEY・DOOR・STAIRSが目標の場合、そのタイル自体には踏み込まない
+        if (goalSym !== 'KEY_RUNNER' && (goalSym === SYMBOLS.KEY || goalSym === SYMBOLS.DOOR || goalSym === SYMBOLS.STAIRS) && f.screenX === goalSX && f.screenY === goalSY) {
             const nx = f.x + bestDX, ny = f.y + bestDY;
             if (nx === goalLocalX && ny === goalLocalY) continue;
         }
@@ -12452,6 +12933,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
             case 'LAYER': goldDrop = 12; break;
             case 'BREAKER': goldDrop = 20; break;
             case 'MIMIC': goldDrop = 25; break;
+            case 'FAIRY_MIMIC': goldDrop = 30; break;
             case 'SUMMONER': goldDrop = 30; break;
             case 'DRAGON': goldDrop = 50; break;
             case 'GOLD': goldDrop = 100; break;
@@ -12487,7 +12969,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
 
     // NECRO_RING: プレイヤーが倒した敵を仲間として蘇らせる
     if (killedByPlayer && hasRing('NECRO_RING') && !enemy.isAlly && !enemy.isFalling) {
-        const necroExclude = ['DRAGON', 'GOLD', 'KING', 'SNAKE', 'MIMIC'];
+        const necroExclude = ['DRAGON', 'GOLD', 'KING', 'SNAKE', 'MIMIC', 'FAIRY_MIMIC'];
         if (!necroExclude.includes(enemy.type)) {
             const revivedHp = Math.max(1, Math.floor(enemy.maxHp * 0.5));
             const revived = {
@@ -12621,6 +13103,16 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
     if (enemy.type !== 'KING' && enemies.some(e => e.type === 'KING' && e.hp > 0 && !e._dead)) {
         damage = Math.max(1, damage - 2);
         spawnFloatingText(enemy.x, enemy.y, "GUARD!", '#fbbf24');
+    }
+
+    // フェアリーミミックの正体暴露（攻撃時）
+    if (enemy.type === 'FAIRY_MIMIC' && enemy.disguised) {
+        enemy.disguised = false;
+        enemy.mimicTransitionEnd = performance.now() + 500;
+        SOUNDS.MIMIC_REVEAL();
+        addLog("It was a FAKE FAIRY! A MIMIC!");
+        spawnFloatingText(enemy.x, enemy.y, "FAKE FAIRY!!", "#f472b6");
+        setScreenShake(8, 200);
     }
 
     // ミミックの正体暴露
@@ -13397,6 +13889,80 @@ async function enemyTurn() {
             }
             // dist === 1: コーナリングされた → 以降の通常攻撃処理へ落ちる
             if (e.type === 'KEY_RUNNER') continue; // KEY_RUNNERは反撃しない
+        }
+
+        // フェアリーミミック固有AI
+        if (e.type === 'FAIRY_MIMIC' && !e.isAlly) {
+            const fmDist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
+            if (e.disguised) {
+                if (fmDist <= 3 && !player.isStealth) {
+                    // 距離3以内で正体を現し先制攻撃
+                    e.disguised = false;
+                    e.mimicTransitionEnd = performance.now() + 500;
+                    SOUNDS.MIMIC_REVEAL();
+                    addLog("It's a MIMIC! Disguised as a FAIRY!!");
+                    spawnFloatingText(e.x, e.y, "FAKE FAIRY!!", "#f472b6");
+                    setScreenShake(10, 300);
+                    e.offsetX = (player.x - e.x) * 8; e.offsetY = (player.y - e.y) * 8;
+                    spawnSlash(player.x, player.y);
+                    SOUNDS.ENEMY_ATTACK();
+                    const fmAtk0 = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                    player.hp -= fmAtk0;
+                    player.flashUntil = performance.now() + 300;
+                    spawnDamageText(player.x, player.y, fmAtk0, '#f472b6');
+                    SOUNDS.DAMAGE();
+                    attackOccurred = true;
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                    await new Promise(r => setTimeout(r, 200));
+                    e.offsetX = 0; e.offsetY = 0;
+                } else {
+                    // 擬態中: 本物の妖精のようにゆっくり漂う
+                    e.moveCooldown = (e.moveCooldown || 6) - 1;
+                    if (e.moveCooldown <= 0) {
+                        e.moveCooldown = 5 + Math.floor(Math.random() * 5);
+                        if (Math.random() < 0.4) {
+                            const fmMoves = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+                            const fmValid = fmMoves.filter(m => canEnemyMove(e.x+m.x, e.y+m.y, e) && !enemies.some(t=>t!==e&&t.x===e.x+m.x&&t.y===e.y+m.y));
+                            if (fmValid.length > 0) {
+                                const m = fmValid[Math.floor(Math.random() * fmValid.length)];
+                                e.x += m.x; e.y += m.y;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // 正体暴露後: プレイヤーに追跡・攻撃
+                if (fmDist === 1 && !player.isStealth) {
+                    e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
+                    spawnSlash(player.x, player.y);
+                    SOUNDS.ENEMY_ATTACK();
+                    const fmAtk1 = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                    if (player.isDefending) {
+                        const fmRed = Math.max(1, Math.floor(fmAtk1 * 0.4));
+                        player.hp -= fmRed;
+                        spawnDamageText(player.x, player.y, fmRed, '#f472b6');
+                    } else {
+                        player.hp -= fmAtk1;
+                        spawnDamageText(player.x, player.y, fmAtk1, '#f472b6');
+                    }
+                    player.flashUntil = performance.now() + 300;
+                    SOUNDS.DAMAGE();
+                    attackOccurred = true;
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                    await new Promise(r => setTimeout(r, 200));
+                    e.offsetX = 0; e.offsetY = 0;
+                } else if (fmDist > 1) {
+                    e.moveCooldown = (e.moveCooldown || 3) - 1;
+                    if (e.moveCooldown <= 0) {
+                        e.moveCooldown = 3;
+                        const fmSx = Math.sign(player.x - e.x), fmSy = Math.sign(player.y - e.y);
+                        if (canEnemyMove(e.x+fmSx, e.y+fmSy, e)) { e.x += fmSx; e.y += fmSy; }
+                        else if (canEnemyMove(e.x+fmSx, e.y, e)) e.x += fmSx;
+                        else if (canEnemyMove(e.x, e.y+fmSy, e)) e.y += fmSy;
+                    }
+                }
+            }
+            continue;
         }
 
         // ミミック固有AI（味方になった場合は通常の味方AIに任せる）
@@ -15805,6 +16371,7 @@ window.addEventListener('keydown', async e => {
                 { id: 'CHARM', count: player.charmTomes },
                 { id: 'ESCAPE', count: player.escapeTomes },
                 { id: 'EXPLOSION', count: player.explosionTomes },
+                { id: 'GUARDIAN', count: player.guardianTomes },
                 { id: 'HASTE', count: player.hasteTomes },
                 { id: 'HEAL', count: player.healTomes },
                 { id: 'STEALTH', count: player.stealthTomes },
@@ -15833,6 +16400,9 @@ window.addEventListener('keydown', async e => {
                 } else if (selectedItem.id === 'HEAL') {
                     gameState = 'PLAYING';
                     useHealTome();
+                } else if (selectedItem.id === 'GUARDIAN' && !player.isShielded) {
+                    gameState = 'PLAYING';
+                    useGuardianTome();
                 } else if (selectedItem.id === 'BREAKER' && !player.isBreaker) {
                     gameState = 'PLAYING';
                     useBreakerTome();
