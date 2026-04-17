@@ -6069,15 +6069,8 @@ function initMap() {
     if (isBoldMazeFloor) isMazeFloor = false;
     let isCastleFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && layoutRoll < 0.57;
     let isGreatHallFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && !isCastleFloor && layoutRoll < 0.67;
-    // 大広間フロアにランダムモディファイアを付与（ICE / WIND / WISP）
-    // ICE/WISP は20階以降、WIND は36階以降（通常の突風発生条件と同じ）
+    // 大広間フロアのモディファイア（ICE / WIND / WISP）は無効化
     let greatHallModifier = null;
-    if (isGreatHallFloor && floorLevel >= 20) {
-        const _mRoll = Math.random();
-        if (_mRoll < 0.33) greatHallModifier = 'ICE';
-        else if (_mRoll < 0.66 && floorLevel >= 36) greatHallModifier = 'WIND';
-        else greatHallModifier = 'WISP';
-    }
 
     if (floorLevel === 80) {
         addLog("EVENT: The Frozen Furnace.");
