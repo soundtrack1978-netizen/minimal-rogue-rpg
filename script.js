@@ -8959,30 +8959,30 @@ function dqCmdBackground(activeIdx) {
 // ─── Main Menu ───────────────────────────────────────────────────
 function drawMenuScreen() {
     const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-    const cx = 12, cy = 12, cw = 300, ch = 230;
+    const cx = 12, cy = 12, cw = 210, ch = 165;
     const opts = [{ en: 'ITEMS', ja: '道具' }, { en: 'RINGS', ja: '指輪' }, { en: 'STATUS', ja: '状態' }];
     drawDQWindow(cx, cy, cw, ch);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ededed';
-    ctx.font = 'bold 26px Courier New';
-    ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 38);
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 28);
     ctx.textAlign = 'left';
     opts.forEach((opt, i) => {
-        const ty = cy + 90 + i * 52;
+        const ty = cy + 62 + i * 36;
         const isSel = i === menuSelection;
         if (isSel) {
             ctx.fillStyle = 'rgba(237,237,237,0.10)';
-            ctx.fillRect(cx + 10, ty - 32, cw - 20, 44);
+            ctx.fillRect(cx + 10, ty - 22, cw - 20, 30);
             ctx.fillStyle = '#ededed';
-            ctx.font = 'bold 26px Courier New';
-            ctx.fillText('▶', cx + 18, ty);
+            ctx.font = 'bold 18px Courier New';
+            ctx.fillText('▶', cx + 12, ty);
         }
         ctx.fillStyle = isSel ? '#ededed' : '#777';
-        ctx.font = 'bold 26px Courier New';
-        ctx.fillText(opt.en, cx + 52, ty);
-        ctx.font = '22px ' + JA_FONT;
+        ctx.font = 'bold 18px Courier New';
+        ctx.fillText(opt.en, cx + 36, ty);
+        ctx.font = '15px ' + JA_FONT;
         ctx.fillStyle = isSel ? '#aaa' : '#444';
-        ctx.fillText(opt.ja, cx + 210, ty);
+        ctx.fillText(opt.ja, cx + 152, ty);
     });
 }
 
