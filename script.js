@@ -8846,6 +8846,23 @@ function drawStatusScreen() {
             y += 24;
         });
 
+        // ── 装備中の指輪 ────────────────────────────────────────
+        y += 8;
+        ctx.strokeStyle = 'rgba(237,237,237,0.10)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(sx, y - 4); ctx.lineTo(WX + WW - 20, y - 4); ctx.stroke();
+
+        player.equippedRings.forEach((ringId, i) => {
+            const ring = ringId ? RINGS.find(r => r.id === ringId) : null;
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#777';
+            ctx.font = '13px Courier New';
+            ctx.fillText(`RING ${i + 1}`, sx, y);
+            ctx.fillStyle = ring ? '#aaa' : '#444';
+            ctx.fillText(ring ? ring.name : '——', valX, y);
+            y += 24;
+        });
+
     } else if (statusPage === 1) {
         // ── Page 2: Equipment ──────────────────────────────────
         const equip = [
