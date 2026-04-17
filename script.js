@@ -8966,23 +8966,17 @@ function drawMenuScreen() {
     ctx.fillStyle = '#ededed';
     ctx.font = 'bold 15px Courier New';
     ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 24);
-    ctx.textAlign = 'left';
     opts.forEach((opt, i) => {
         const ty = cy + 54 + i * 30;
         const isSel = i === menuSelection;
         if (isSel) {
             ctx.fillStyle = 'rgba(237,237,237,0.10)';
             ctx.fillRect(cx + 10, ty - 18, cw - 20, 26);
-            ctx.fillStyle = '#ededed';
-            ctx.font = 'bold 15px Courier New';
-            ctx.fillText('▶', cx + 12, ty);
         }
         ctx.fillStyle = isSel ? '#ededed' : '#777';
-        ctx.font = 'bold 15px Courier New';
-        ctx.fillText(opt.en, cx + 30, ty);
-        ctx.font = '13px ' + JA_FONT;
-        ctx.fillStyle = isSel ? '#aaa' : '#444';
-        ctx.fillText(opt.ja, cx + 132, ty);
+        ctx.font = (isSel ? 'bold ' : '') + '15px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText((isSel ? '▶ ' : '') + opt.en, cx + cw / 2, ty);
     });
 }
 
