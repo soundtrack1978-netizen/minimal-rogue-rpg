@@ -741,7 +741,7 @@ function toggleBGM() {
 }
 
 // プレイヤーカラー
-const PLAYER_COLORS = ['#ffffff', '#fbbf24', '#4ade80', '#38bdf8', '#f472b6'];
+const PLAYER_COLORS = ['#ededed', '#fbbf24', '#4ade80', '#38bdf8', '#f472b6'];
 let playerColorIndex = 0;
 
 // ゲーム状態
@@ -1012,7 +1012,7 @@ async function tryEscape() {
     ghost.style.top = startY + 'px';
     ghost.style.transform = `translate(-50%, -50%) ${player.facing === 'RIGHT' ? 'scaleX(-1)' : ''}`;
     ghost.style.font = `bold ${TILE_SIZE}px 'Courier New'`;
-    ghost.style.color = '#fff';
+    ghost.style.color = '#ededed';
     ghost.style.zIndex = '9999';
     ghost.style.pointerEvents = 'none';
     ghost.style.textShadow = '0 0 10px #fff, 0 0 20px #c084fc'; // 輝きを追加
@@ -1143,7 +1143,7 @@ function updateUI() {
     } else if (player.isBreaker) {
         hpElement.style.color = '#f59e0b'; // 壁破壊状態はオレンジに
     } else {
-        hpElement.style.color = '#ffffff';
+        hpElement.style.color = '#ededed';
     }
 
     const bar = document.getElementById('stamina-bar');
@@ -1160,7 +1160,7 @@ function updateUI() {
     }
 
     lvElement.innerText = player.level;
-    lvElement.style.color = '#ffffff';
+    lvElement.style.color = '#ededed';
     const bestFloorEl = document.getElementById('best-floor');
     if (bestFloorEl) bestFloorEl.innerText = `B${maxReachedFloor}F`;
     if (floorLevel === 100) {
@@ -7841,7 +7841,7 @@ async function startFloorTransition() {
     transition.active = true;
     transition.mode = 'FALLING';
     transition.text = `FLOOR ${floorLevel}`;
-    transition.textColor = '#fff';
+    transition.textColor = '#ededed';
     transition.playerY = -50;
     transition.particles = [];
     for (let i = 0; i < 40; i++) {
@@ -8130,7 +8130,7 @@ async function triggerDragonSpawn() {
         if (otherE.type === 'DRAGON') return;
         if (otherE.hp > 0) {
             otherE.y = Math.min(ROWS - 3, otherE.y + 10);
-            spawnDamageText(otherE.x, otherE.y, 0, '#fff'); // ダメージなしの吹き飛ばし演出
+            spawnDamageText(otherE.x, otherE.y, 0, '#ededed'); // ダメージなしの吹き飛ばし演出
         }
     });
 
@@ -8682,7 +8682,7 @@ function drawTitle() {
     ctx.textAlign = 'center';
     const deepUnlocked = localStorage.getItem('deep_unlocked') === '1';
 
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ededed';
     ctx.font = "bold 40px 'Courier New', Courier, monospace";
     ctx.fillText('MINIMAL ROGUE', canvas.width / 2, canvas.height / 3);
 
@@ -8715,7 +8715,7 @@ function drawTitle() {
             text = 'DESCEND INTO THE ABYSS';
             ctx.fillStyle = isSelected ? '#38bdf8' : '#1e6fa8';
         } else {
-            ctx.fillStyle = isSelected ? '#fff' : (isDisabled ? '#333' : '#666');
+            ctx.fillStyle = isSelected ? '#ededed' : (isDisabled ? '#333' : '#666');
         }
         if (i === 2) text = `TEST: FLOOR ${testFloor}`;
         if (i === 3) text = `DEEP TEST: FLOOR ${deepTestFloor}`;
@@ -8728,13 +8728,13 @@ function drawTitle() {
                 ctx.fillText('Auto-save only. Resume from where you died.  /  オートセーブのみ。死んだ階層から再開します。', canvas.width / 2, menuY + i * 40 + 22);
                 ctx.fillText('No save data yet.  /  まだデータがありません。', canvas.width / 2, menuY + i * 40 + 36);
                 ctx.font = '24px Courier New';
-                ctx.fillStyle = '#fff'; // CONTINUE本文の色を白に戻す
+                ctx.fillStyle = '#ededed'; // CONTINUE本文の色を白に戻す
             } else if (i === 1 && hasSave && !deepUnlocked) {
                 ctx.font = '12px Courier New';
                 ctx.fillStyle = '#aaa';
                 ctx.fillText(`— Resume from B${saveFloor}F —`, canvas.width / 2, menuY + i * 40 + 25);
                 ctx.font = '24px Courier New';
-                ctx.fillStyle = '#fff';
+                ctx.fillStyle = '#ededed';
             } else if (i === 1 && deepUnlocked) {
                 ctx.font = '12px Courier New';
                 ctx.fillStyle = '#38bdf8';
@@ -8790,12 +8790,12 @@ function drawGameOver() {
 function drawStatusScreen() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = '#ededed';
     ctx.lineWidth = 2;
     ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ededed';
     ctx.font = 'bold 24px Courier New';
     ctx.fillText(statusPage === 0 ? '-- STATUS (1/3) --' : statusPage === 1 ? '-- EQUIPMENT (2/3) --' : '-- SETTINGS (3/3) --', canvas.width / 2, 80);
 
@@ -8821,7 +8821,7 @@ function drawStatusScreen() {
         ];
 
         stats.forEach((s, i) => {
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = '#ededed';
             ctx.font = '16px Courier New';
             ctx.fillText(s.label.padEnd(18, ' '), startX, startY + i * gap);
             ctx.fillText(String(s.val), startX + 220, startY + i * gap);
@@ -8864,14 +8864,14 @@ function drawStatusScreen() {
     } else {
         // Page 3: Settings
         ctx.font = 'bold 16px Courier New';
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = '#ededed';
         ctx.fillText('SETTINGS', startX, startY);
 
         const optY = startY + 50;
         ctx.font = '18px Courier New';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#ededed';
         ctx.fillText('>', startX, optY);
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = '#ededed';
         ctx.fillText('BGM', startX + 20, optY);
         ctx.fillStyle = bgmEnabled ? '#4ade80' : '#f87171';
         ctx.fillText(bgmEnabled ? 'ON' : 'OFF', startX + 80, optY);
@@ -8882,7 +8882,7 @@ function drawStatusScreen() {
     }
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ededed';
     ctx.font = '13px Courier New';
     ctx.fillText('[Left/Right] Change Page  |  [X] or [I] to Back', canvas.width / 2, canvas.height - 65);
 }
@@ -8891,17 +8891,17 @@ function drawStatusScreen() {
 function drawDQWindow(x, y, w, h) {
     ctx.fillStyle = '#000010';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#ededed';
     ctx.lineWidth = 3;
     ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.20)';
+    ctx.strokeStyle = 'rgba(237, 237, 237, 0.20)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 6, y + 6, w - 12, h - 12);
 }
 
 function drawDQTitle(x, y, w, title) {
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#ededed';
     ctx.font = 'bold 14px Courier New';
     ctx.fillText('━ ' + title + ' ━', x + w / 2, y + 22);
 }
@@ -8909,10 +8909,10 @@ function drawDQTitle(x, y, w, title) {
 function drawDQWindowDim(x, y, w, h) {
     ctx.fillStyle = '#000008';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.strokeStyle = 'rgba(237,237,237,0.28)';
     ctx.lineWidth = 3;
     ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.strokeStyle = 'rgba(237,237,237,0.07)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 6, y + 6, w - 12, h - 12);
 }
@@ -8925,18 +8925,18 @@ function dqCmdBackground(activeIdx) {
     const opts = [{ en: 'ITEMS', ja: '道具' }, { en: 'RINGS', ja: '指輪' }, { en: 'STATUS', ja: '状態' }];
     drawDQWindowDim(cx, cy, cw, ch);
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.fillStyle = 'rgba(237,237,237,0.28)';
     ctx.font = 'bold 13px Courier New';
     ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 20);
     ctx.textAlign = 'left';
     opts.forEach((opt, i) => {
         const ty = cy + 44 + i * 26;
         const isAct = i === activeIdx;
-        ctx.fillStyle = isAct ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.18)';
+        ctx.fillStyle = isAct ? 'rgba(237,237,237,0.55)' : 'rgba(237,237,237,0.18)';
         ctx.font = (isAct ? 'bold ' : '') + '13px Courier New';
         ctx.fillText(opt.en, cx + 18, ty);
         ctx.font = '11px ' + JA_FONT;
-        ctx.fillStyle = isAct ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)';
+        ctx.fillStyle = isAct ? 'rgba(237,237,237,0.35)' : 'rgba(237,237,237,0.12)';
         ctx.fillText(opt.ja, cx + 110, ty);
     });
 }
@@ -8948,7 +8948,7 @@ function drawMenuScreen() {
     const opts = [{ en: 'ITEMS', ja: '道具' }, { en: 'RINGS', ja: '指輪' }, { en: 'STATUS', ja: '状態' }];
     drawDQWindow(cx, cy, cw, ch);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#ededed';
     ctx.font = 'bold 13px Courier New';
     ctx.fillText('━ COMMAND ━', cx + cw / 2, cy + 20);
     ctx.textAlign = 'left';
@@ -8956,13 +8956,13 @@ function drawMenuScreen() {
         const ty = cy + 44 + i * 26;
         const isSel = i === menuSelection;
         if (isSel) {
-            ctx.fillStyle = 'rgba(255,255,255,0.10)';
+            ctx.fillStyle = 'rgba(237,237,237,0.10)';
             ctx.fillRect(cx + 10, ty - 16, cw - 20, 22);
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '#ededed';
             ctx.font = 'bold 13px Courier New';
             ctx.fillText('▶', cx + 10, ty);
         }
-        ctx.fillStyle = isSel ? '#ffffff' : '#777';
+        ctx.fillStyle = isSel ? '#ededed' : '#777';
         ctx.font = 'bold 13px Courier New';
         ctx.fillText(opt.en, cx + 26, ty);
         ctx.font = '11px ' + JA_FONT;
@@ -8977,18 +8977,18 @@ function drawShopScreen() {
     const h = canvas.height - pad * 2;
     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.fillRect(pad, pad, w, h);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = '#ededed';
     ctx.lineWidth = 2;
     ctx.strokeRect(pad, pad, w, h);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ededed';
     ctx.font = 'bold 22px Courier New';
     ctx.fillText('-- Stranded Adventurer --', canvas.width / 2, pad + 30);
 
     // ゴールド表示
     ctx.font = '14px Courier New';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ededed';
     ctx.textAlign = 'right';
     ctx.fillText(`Gold: ${player.gold}G`, pad + w - 15, pad + 55);
     ctx.textAlign = 'left';
@@ -9018,15 +9018,15 @@ function drawShopScreen() {
         }
 
         if (isSelected) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillStyle = 'rgba(237, 237, 237, 0.1)';
             ctx.fillRect(pad + 5, yPos - 12, w - 10, lineH - 4);
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = '#ededed';
             ctx.fillText('>', pad + 12, yPos + 5);
         }
 
         // アイコン + 名前
         ctx.font = '14px Courier New';
-        const iconColor = (item.type === 'sword' || item.type === 'armor') ? '#38bdf8' : '#fff';
+        const iconColor = (item.type === 'sword' || item.type === 'armor') ? '#38bdf8' : '#ededed';
         if (owned) {
             ctx.fillStyle = '#4ade80';
             ctx.fillText(`✓ ${symbol} ${name}（${nameJa}）`, pad + 30, yPos + 5);
@@ -9037,13 +9037,13 @@ function drawShopScreen() {
             // アイコン部分を色分け
             ctx.fillStyle = isSelected ? iconColor : (item.type === 'ring' ? '#ccc' : '#38bdf8');
             ctx.fillText(`  ${symbol}`, pad + 30, yPos + 5);
-            ctx.fillStyle = isSelected ? '#fff' : '#ccc';
+            ctx.fillStyle = isSelected ? '#ededed' : '#ccc';
             ctx.fillText(` ${name}（${nameJa}）`, pad + 30 + ctx.measureText(`  ${symbol}`).width, yPos + 5);
         }
 
         // コスト
         ctx.textAlign = 'right';
-        ctx.fillStyle = owned ? '#4ade80' : (canAfford ? '#fff' : '#555');
+        ctx.fillStyle = owned ? '#4ade80' : (canAfford ? '#ededed' : '#555');
         ctx.fillText(owned ? 'Owned' : `${item.cost}G`, pad + w - 15, yPos + 5);
         ctx.textAlign = 'left';
 
@@ -9082,9 +9082,9 @@ function drawRingsScreen() {
             const isSel = ringSlotSelection === s;
 
             if (isSel) {
-                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillStyle = 'rgba(237,237,237,0.08)';
                 ctx.fillRect(SX + 10, sy - 2, SW - 20, ROW_H - 8);
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#ededed';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
                 ctx.fillText('▶', SX + 12, sy + 18);
@@ -9092,22 +9092,22 @@ function drawRingsScreen() {
 
             ctx.textAlign = 'left';
             ctx.font = 'bold 13px Courier New';
-            ctx.fillStyle = isSel ? '#ffffff' : '#666';
+            ctx.fillStyle = isSel ? '#ededed' : '#666';
             ctx.fillText('Slot ' + (s + 1), SX + 30, sy + 16);
 
             const boxX = SX + 86, boxY = sy - 2, boxW = SW - 100, boxH = ROW_H - 8;
             ctx.fillStyle = '#060614';
             ctx.fillRect(boxX, boxY, boxW, boxH);
-            ctx.strokeStyle = isSel ? 'rgba(255,255,255,0.40)' : 'rgba(255,255,255,0.12)';
+            ctx.strokeStyle = isSel ? 'rgba(237,237,237,0.40)' : 'rgba(237,237,237,0.12)';
             ctx.lineWidth = 1;
             ctx.strokeRect(boxX, boxY, boxW, boxH);
 
             if (ring) {
                 ctx.font = '16px Courier New';
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#ededed';
                 ctx.fillText(ring.symbol || '◎', boxX + 10, boxY + 22);
                 ctx.font = 'bold 14px ' + JA_FONT;
-                ctx.fillStyle = isSel ? '#fff' : '#ccc';
+                ctx.fillStyle = isSel ? '#ededed' : '#ccc';
                 ctx.fillText(ring.nameJa, boxX + 30, boxY + 22);
                 ctx.font = '11px Courier New';
                 ctx.fillStyle = '#888';
@@ -9139,15 +9139,15 @@ function drawRingsScreen() {
         const slotRingId = player.equippedRings[ringSlotSelection];
         const slotRing = slotRingId ? RINGS.find(r => r.id === slotRingId) : null;
         ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.fillStyle = 'rgba(237,237,237,0.28)';
         ctx.font = 'bold 13px Courier New';
         ctx.fillText('━ SLOT ' + (ringSlotSelection + 1) + ' ━', SS_X + SS_W / 2, CY + 20);
         ctx.textAlign = 'left';
         ctx.font = '11px ' + JA_FONT;
-        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillStyle = 'rgba(237,237,237,0.25)';
         ctx.fillText('現在の装備', SS_X + 14, CY + 38);
         ctx.font = 'bold 12px ' + JA_FONT;
-        ctx.fillStyle = slotRing ? 'rgba(74,222,128,0.60)' : 'rgba(255,255,255,0.20)';
+        ctx.fillStyle = slotRing ? 'rgba(74,222,128,0.60)' : 'rgba(237,237,237,0.20)';
         ctx.fillText(slotRing ? slotRing.nameJa : '（空き）', SS_X + 14, CY + 54);
 
         // Ring list+detail panel (active, cascade level 2)
@@ -9161,7 +9161,7 @@ function drawRingsScreen() {
         const DETAIL_X = RL_X + LIST_W;
         const DETAIL_W = RL_W - LIST_W;
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.strokeStyle = 'rgba(237,237,237,0.12)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(DETAIL_X, CY + 8);
@@ -9182,7 +9182,7 @@ function drawRingsScreen() {
         if (ringEquipSelection >= ringScrollOffset + maxVis) ringScrollOffset = ringEquipSelection - maxVis + 1;
 
         if (ringScrollOffset > 0) {
-            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ededed'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▲', RL_X + LIST_W / 2, LIST_TOP - 4);
         }
 
@@ -9195,16 +9195,16 @@ function drawRingsScreen() {
             const isEquippedOther = item.id && player.equippedRings[1 - ringSlotSelection] === item.id;
 
             if (isSel) {
-                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillStyle = 'rgba(237,237,237,0.08)';
                 ctx.fillRect(RL_X + 10, iy - 2, LIST_W - 20, ROW_H - 4);
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#ededed';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
                 ctx.fillText('▶', RL_X + 12, iy + 18);
             }
 
             ctx.textAlign = 'left';
-            let nameColor = isSel ? '#fff' : '#aaa';
+            let nameColor = isSel ? '#ededed' : '#aaa';
             if (item.id === null) nameColor = isSel ? '#f87171' : '#666';
             else if (isEquippedHere) nameColor = '#4ade80';
             else if (isEquippedOther) nameColor = '#60a5fa';
@@ -9225,7 +9225,7 @@ function drawRingsScreen() {
         });
 
         if (ringScrollOffset + maxVis < listItems.length) {
-            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ededed'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▼', RL_X + LIST_W / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
 
@@ -9240,11 +9240,11 @@ function drawRingsScreen() {
         if (selItem && selItem.id) {
             let ry = CY + 42;
             ctx.font = 'bold 13px ' + JA_FONT;
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '#ededed';
             ctx.textAlign = 'left';
             ctx.fillText(selItem.symbol || '◎', dx, ry);
             ctx.font = 'bold 15px ' + JA_FONT;
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = '#ededed';
             ctx.fillText(selItem.nameJa, dx + 20, ry);
             ry += 18;
             ctx.font = '12px Courier New';
@@ -9252,7 +9252,7 @@ function drawRingsScreen() {
             ctx.fillText(selItem.name, dx + 20, ry);
             ry += 16;
 
-            ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+            ctx.strokeStyle = 'rgba(237,237,237,0.12)';
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(dx, ry); ctx.lineTo(RL_X + RL_W - 14, ry); ctx.stroke();
             ry += 14;
@@ -9270,11 +9270,11 @@ function drawRingsScreen() {
         }
 
         const footerY = CY + CH - 28;
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(237,237,237,0.12)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(dx, footerY - 14); ctx.lineTo(RL_X + RL_W - 14, footerY - 14); ctx.stroke();
         ctx.textAlign = 'center';
         ctx.font = 'bold 13px Courier New';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#ededed';
         ctx.fillText('[Enter] Equip', DETAIL_X + DETAIL_W / 2, footerY);
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
@@ -9338,7 +9338,7 @@ function drawInventoryScreen() {
         if (inventorySelection >= maxVis) startIdx = inventorySelection - maxVis + 1;
 
         if (startIdx > 0) {
-            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ededed'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▲', LX + LW / 2, LIST_TOP - 4);
         }
 
@@ -9350,32 +9350,32 @@ function drawInventoryScreen() {
             const isSel = idx === inventorySelection;
 
             if (isSel) {
-                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillStyle = 'rgba(237,237,237,0.08)';
                 ctx.fillRect(LX + 10, iy - 2, LW - 20, ROW_H - 4);
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#ededed';
                 ctx.font = 'bold 14px Courier New';
                 ctx.textAlign = 'left';
                 ctx.fillText('▶', LX + 12, iy + 18);
             }
 
             ctx.font = '14px Courier New';
-            ctx.fillStyle = isSel ? '#ffffff' : '#777';
+            ctx.fillStyle = isSel ? '#ededed' : '#777';
             ctx.textAlign = 'left';
             ctx.fillText(item.symbol, LX + 30, iy + 18);
 
-            ctx.fillStyle = isSel ? '#ffffff' : '#aaa';
+            ctx.fillStyle = isSel ? '#ededed' : '#aaa';
             ctx.font = (isSel ? 'bold ' : '') + '13px Courier New';
             ctx.fillText(item.name, LX + 50, iy + 18);
 
             ctx.textAlign = 'right';
-            ctx.fillStyle = isSel ? '#ffffff' : '#666';
+            ctx.fillStyle = isSel ? '#ededed' : '#666';
             ctx.font = 'bold 12px Courier New';
             ctx.fillText('×' + item.count, LX + LW - 14, iy + 18);
             ctx.textAlign = 'left';
         }
 
         if (startIdx + maxVis < items.length) {
-            ctx.fillStyle = '#ffffff'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#ededed'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
             ctx.fillText('▼', LX + LW / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
     }
@@ -9392,12 +9392,12 @@ function drawInventoryScreen() {
         let ry = CY + 42;
 
         ctx.font = 'bold 28px Courier New';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#ededed';
         ctx.textAlign = 'left';
         ctx.fillText(sel.symbol, rx, ry + 4);
 
         ctx.font = 'bold 16px Courier New';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#ededed';
         ctx.fillText(sel.name, rx + 34, ry);
 
         ctx.font = '12px ' + JA_FONT;
@@ -9406,7 +9406,7 @@ function drawInventoryScreen() {
 
         ry += 34;
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.strokeStyle = 'rgba(237,237,237,0.18)';
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(RX + RW - 16, ry); ctx.stroke();
         ry += 16;
@@ -9438,13 +9438,13 @@ function drawInventoryScreen() {
         }
 
         const footerY = CY + CH - 28;
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.strokeStyle = 'rgba(237,237,237,0.15)';
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(rx, footerY - 14); ctx.lineTo(RX + RW - 16, footerY - 14); ctx.stroke();
 
         ctx.textAlign = 'center';
         ctx.font = 'bold 13px Courier New';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#ededed';
         ctx.fillText('[Enter] Use Item', RX + RW / 2, footerY);
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
@@ -9470,12 +9470,12 @@ function drawConfirmBuy() {
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = '#ededed';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ededed';
     ctx.font = 'bold 14px Courier New';
     ctx.fillText(`Buy ${name}?`, canvas.width / 2, y + 35);
 
@@ -9484,9 +9484,9 @@ function drawConfirmBuy() {
     ctx.fillText(`${item.cost}G`, canvas.width / 2, y + 60);
 
     ctx.font = '16px Courier New';
-    ctx.fillStyle = (shopConfirmSelection === 0) ? '#fff' : '#666';
+    ctx.fillStyle = (shopConfirmSelection === 0) ? '#ededed' : '#666';
     ctx.fillText(shopConfirmSelection === 0 ? '> YES <' : '  YES  ', canvas.width / 2 - 60, y + 100);
-    ctx.fillStyle = (shopConfirmSelection === 1) ? '#fff' : '#666';
+    ctx.fillStyle = (shopConfirmSelection === 1) ? '#ededed' : '#666';
     ctx.fillText(shopConfirmSelection === 1 ? '> NO <' : '  NO  ', canvas.width / 2 + 60, y + 100);
 }
 
@@ -9512,7 +9512,7 @@ function drawConfirmNewGame() {
 
     ctx.font = '16px Courier New';
     // NO on left (default safe option), YES on right
-    ctx.fillStyle = (newGameConfirmSelection === 0) ? '#fff' : '#555';
+    ctx.fillStyle = (newGameConfirmSelection === 0) ? '#ededed' : '#555';
     ctx.fillText(newGameConfirmSelection === 0 ? '> NO <' : '  NO  ', canvas.width / 2 - 70, y + 110);
     ctx.fillStyle = (newGameConfirmSelection === 1) ? '#f87171' : '#555';
     ctx.fillText(newGameConfirmSelection === 1 ? '> YES <' : '  YES  ', canvas.width / 2 + 70, y + 110);
@@ -9525,12 +9525,12 @@ function drawConfirmEscape() {
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = '#ededed';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ededed';
     ctx.font = 'bold 18px Courier New';
     ctx.fillText('REALLY USE ESCAPE TOME?', canvas.width / 2, y + 50);
 
@@ -9647,7 +9647,7 @@ function draw(now) {
             const v = Math.round(255 * (1 - transition.darken));
             ctx.fillStyle = `rgb(${v},${v},${v})`;
         } else {
-            ctx.fillStyle = isWhite ? '#fff' : transition.mode === 'RED_OUT' ? '#b00' : '#000';
+            ctx.fillStyle = isWhite ? '#ededed' : transition.mode === 'RED_OUT' ? '#b00' : '#000';
         }
         ctx.fillRect(-screenShake.x, -screenShake.y, canvas.width, canvas.height);
     } else {
@@ -9696,7 +9696,7 @@ function draw(now) {
                     ctx.beginPath(); ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, TILE_SIZE * 0.4, 0, Math.PI * 2); ctx.fill();
                     ctx.restore();
                 } else if (char === SYMBOLS.STAIRS || char === SYMBOLS.DOOR) {
-                    ctx.fillStyle = '#fff'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+                    ctx.fillStyle = '#ededed'; ctx.fillText(char, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(px + 2, py + TILE_SIZE - 4, TILE_SIZE - 4, 2);
                 } else if (char === SYMBOLS.SAVE) {
                     ctx.fillStyle = '#38bdf8'; ctx.fillText(SYMBOLS.SAVE, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
@@ -9750,7 +9750,7 @@ function draw(now) {
                 } else if (char === SYMBOLS.ICE) {
                     ctx.fillStyle = '#0c4a6e'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
                     ctx.save(); ctx.beginPath(); ctx.rect(px, py, TILE_SIZE, TILE_SIZE); ctx.clip();
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1;
+                    ctx.strokeStyle = 'rgba(237, 237, 237, 0.15)'; ctx.lineWidth = 1;
                     const stripe = 6;
                     for (let s = -TILE_SIZE; s < TILE_SIZE * 2; s += stripe) {
                         ctx.beginPath(); ctx.moveTo(px + s, py); ctx.lineTo(px + s + TILE_SIZE, py + TILE_SIZE); ctx.stroke();
@@ -9806,7 +9806,7 @@ function draw(now) {
                             (f.screenX === -1 || (f.screenX === currentScreen.x && f.screenY === currentScreen.y)) &&
                             Math.abs(f.x - x) + Math.abs(f.y - y) <= 3
                         );
-                        if (nearMoving) tileColor = '#fff';
+                        if (nearMoving) tileColor = '#ededed';
                     }
                     ctx.fillStyle = tileColor; ctx.fillText(drawChar, px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                 }
@@ -9844,7 +9844,7 @@ function draw(now) {
                 ctx.fillStyle = '#67e8f9';
                 ctx.fillText(SYMBOLS.BLOCK, wx + TILE_SIZE / 2, wy + TILE_SIZE / 2);
                 ctx.save();
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#ededed';
                 ctx.fillText('*', wx + TILE_SIZE / 2, wy + TILE_SIZE / 2 + 2);
                 ctx.restore();
             } else if (w.type === 'BOMB_STAR_BLOCK') {
@@ -9853,7 +9853,7 @@ function draw(now) {
                 ctx.fillText(SYMBOLS.BLOCK, wx + TILE_SIZE / 2, wy + TILE_SIZE / 2);
                 ctx.save();
                 ctx.font = `bold 11px 'Courier New'`;
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#ededed';
                 ctx.fillText('X', wx + TILE_SIZE / 2, wy + TILE_SIZE / 2 + 4);
                 ctx.restore();
             } else if (w.type === 'FIRE_BLOCK') {
@@ -9879,7 +9879,7 @@ function draw(now) {
                     ctx.restore();
                 }
             } else {
-                ctx.fillStyle = (w.hp === 1) ? '#aaa' : '#fff';
+                ctx.fillStyle = (w.hp === 1) ? '#aaa' : '#ededed';
                 ctx.fillText((w.hp === 1) ? SYMBOLS.BLOCK_CRACKED : SYMBOLS.BLOCK, wx + TILE_SIZE / 2, wy + TILE_SIZE / 2);
             }
         });
@@ -9924,7 +9924,7 @@ function draw(now) {
             // 残りターン数を中央に表示（死体は上にX、下にタイマー）
             ctx.font = "bold 11px 'Courier New'";
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = '#ededed';
             if (b.isCorpse) {
                 ctx.fillText('X', bx + TILE_SIZE / 2, by + TILE_SIZE / 2 - 3);
                 ctx.font = "bold 8px 'Courier New'";
@@ -9992,7 +9992,7 @@ function draw(now) {
             ctx.globalAlpha = e.alpha !== undefined ? e.alpha : 1.0;
             if (e.type === 'DRAGON') {
                 let color = (e.hp <= e.maxHp / 2) ? `rgb(255, ${50 + Math.round((Math.sin(now / 150) * 0.5 + 0.5) * 100)}, 0)` : `rgb(255, 255, ${255 - Math.round((Math.sin(now / 300) * 0.5 + 0.5) * 55)})`;
-                ctx.fillStyle = isFlashing ? '#fff' : color;
+                ctx.fillStyle = isFlashing ? '#ededed' : color;
                 ctx.shadowColor = color; ctx.shadowBlur = 15;
                 ctx.fillText('D', px, py);
                 if (e.body) e.body.forEach(seg => ctx.fillText(seg.char || 'D', seg.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0), seg.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0)));
@@ -10004,7 +10004,7 @@ function draw(now) {
                     sColor = phase === 0 ? '#a855f7' : '#d8b4fe';
                 }
                 if (e.isAlly) sColor = '#60a5fa';
-                ctx.fillStyle = isFlashing ? '#fff' : sColor;
+                ctx.fillStyle = isFlashing ? '#ededed' : sColor;
                 ctx.shadowColor = sColor; ctx.shadowBlur = 10;
                 ctx.fillText('S', px, py);
                 if (e.body) e.body.forEach(seg => ctx.fillText(seg.char, seg.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0), seg.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0)));
@@ -10023,7 +10023,7 @@ function draw(now) {
                     ctx.shadowColor = '#f97316'; ctx.shadowBlur = 6;
                 }
                 else if (e.type === 'BLAZE') { eColor = '#fb923c'; eChar = 'F'; }
-                else if (e.type === 'FROST') { eColor = '#ffffff'; eChar = 'I'; }
+                else if (e.type === 'FROST') { eColor = '#ededed'; eChar = 'I'; }
                 else if (e.type === 'BOMBER') { eColor = '#f97316'; eChar = 'X'; }
                 else if (e.type === 'BREAKER') { eColor = '#f87171'; eChar = SYMBOLS.BREAKER; }
                 else if (e.type === 'LAYER') { eColor = '#f87171'; eChar = SYMBOLS.LAYER; }
@@ -10078,10 +10078,10 @@ function draw(now) {
                 }
                 // 氷床の上の敵は視認性向上のため色グロー付加
                 if (map[e.y] && map[e.y][e.x] === SYMBOLS.ICE) {
-                    ctx.shadowColor = isFlashing ? '#fff' : eColor;
+                    ctx.shadowColor = isFlashing ? '#ededed' : eColor;
                     ctx.shadowBlur = Math.max(ctx.shadowBlur || 0, 8);
                 }
-                ctx.fillStyle = isFlashing ? '#fff' : eColor;
+                ctx.fillStyle = isFlashing ? '#ededed' : eColor;
                 ctx.fillText(eChar, px, py);
                 // KEY_RUNNER: 移動前の位置に追従する小さなkを描画
                 if (e.type === 'KEY_RUNNER' && e.trailX != null && (e.trailX !== e.x || e.trailY !== e.y)) {
@@ -10126,9 +10126,9 @@ function draw(now) {
                 ctx.shadowColor = laserColor; ctx.shadowBlur = 15;
                 ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
                 // コア（細い明るい線）
-                ctx.strokeStyle = '#fff';
+                ctx.strokeStyle = '#ededed';
                 ctx.lineWidth = 1;
-                ctx.shadowColor = '#fff'; ctx.shadowBlur = 8;
+                ctx.shadowColor = '#ededed'; ctx.shadowBlur = 8;
                 ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
                 ctx.restore();
             }
@@ -10136,7 +10136,7 @@ function draw(now) {
 
         // 4. ウィスプ
         wisps.forEach(w => {
-            ctx.fillStyle = '#fff'; ctx.shadowBlur = 10; ctx.shadowColor = '#fff';
+            ctx.fillStyle = '#ededed'; ctx.shadowBlur = 10; ctx.shadowColor = '#ededed';
             ctx.fillText(SYMBOLS.WISP, w.x * TILE_SIZE + TILE_SIZE / 2, w.y * TILE_SIZE + TILE_SIZE / 2);
             ctx.shadowBlur = 0;
         });
@@ -10146,7 +10146,7 @@ function draw(now) {
             ctx.save();
             ctx.font = `bold 11px 'Courier New'`;
             ctx.shadowBlur = 14; ctx.shadowColor = '#f97316';
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '#ededed';
             ctx.fillText('X', bp.x * TILE_SIZE + TILE_SIZE / 2, bp.y * TILE_SIZE + TILE_SIZE / 2 + 4);
             ctx.restore();
         });
@@ -10156,7 +10156,7 @@ function draw(now) {
             ctx.save();
             if (fp.fromIceStar) {
                 ctx.shadowBlur = 12; ctx.shadowColor = '#67e8f9';
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#ededed';
             } else {
                 ctx.shadowBlur = 12; ctx.shadowColor = '#f97316';
                 ctx.fillStyle = '#fbbf24';
@@ -10174,7 +10174,7 @@ function draw(now) {
             if (player.isStealth) ctx.globalAlpha = 0.5;
 
             if (tomeAuraParams.active) {
-                const colors = ['#fff', '#fbbf24', '#4ade80', '#38bdf8'];
+                const colors = ['#ededed', '#fbbf24', '#4ade80', '#38bdf8'];
                 ctx.fillStyle = colors[Math.floor(now / 40) % colors.length]; ctx.shadowBlur = 15; ctx.shadowColor = ctx.fillStyle;
             } else {
                 ctx.fillStyle = pFlashing ? '#f87171' : PLAYER_COLORS[playerColorIndex];
@@ -10231,7 +10231,7 @@ function draw(now) {
     // --- 以降は画面の揺れ等に影響されないUIエフェクト等 ---
 
     // 攻撃線、ダメージテキスト
-    attackLines.forEach(l => { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); });
+    attackLines.forEach(l => { ctx.strokeStyle = '#ededed'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); });
     damageTexts.forEach(d => {
         const elapsed = (now - d.startTime) / (d.duration ?? 400);
         ctx.save(); ctx.globalAlpha = 1 - elapsed; ctx.fillStyle = d.color;
@@ -10250,25 +10250,25 @@ function draw(now) {
             const v = Math.round(255 * (1 - transition.darken));
             ctx.fillStyle = `rgb(${v},${v},${v})`;
         } else {
-            ctx.fillStyle = isWhiteTr ? '#fff' : transition.mode === 'RED_OUT' ? '#b00' : '#000';
+            ctx.fillStyle = isWhiteTr ? '#ededed' : transition.mode === 'RED_OUT' ? '#b00' : '#000';
         }
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         if (transition.mode === 'FALLING') {
             transition.particles.forEach(p => { ctx.fillStyle = '#444'; ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2); ctx.fill(); });
-            ctx.fillStyle = '#fff'; ctx.font = `bold ${TILE_SIZE * 1.5}px 'Courier New'`; ctx.fillText(SYMBOLS.PLAYER, canvas.width / 2, transition.playerY);
+            ctx.fillStyle = '#ededed'; ctx.font = `bold ${TILE_SIZE * 1.5}px 'Courier New'`; ctx.fillText(SYMBOLS.PLAYER, canvas.width / 2, transition.playerY);
         } else if ((transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT') && transition.particles) {
             transition.particles.forEach(p => {
                 p.y += p.speed * (1 + (transition.accel || 0) * 4); if (p.y > canvas.height) p.y = -20;
                 ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(p.x, p.y, 1.2, 0, Math.PI * 2); ctx.fill();
             });
         } else if (transition.mode === 'STARS' && transition.particles) {
-            ctx.fillStyle = '#fff'; transition.particles.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.size || 1, 0, Math.PI * 2); ctx.fill(); });
+            ctx.fillStyle = '#ededed'; transition.particles.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.size || 1, 0, Math.PI * 2); ctx.fill(); });
         }
 
         // トランジションテキスト（FLOOR 100 等）
         if (transition.text) {
-            ctx.fillStyle = transition.textColor || ((transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT') ? '#000' : '#fff');
+            ctx.fillStyle = transition.textColor || ((transition.mode === 'WHITE_OUT' || transition.mode === 'WHITE_ASCENT') ? '#000' : '#ededed');
             ctx.font = (transition.mode === 'BLACK_OUT' || transition.mode === 'STARS' || transition.mode === 'RED_OUT') ? "bold 48px 'Courier New', Courier, monospace" : "bold 32px 'Courier New', Courier, monospace";
             ctx.fillText(transition.text, canvas.width / 2, canvas.height / 2);
         }
@@ -10279,7 +10279,7 @@ function draw(now) {
     if (transition.flashAlpha > 0) {
         ctx.save();
         ctx.globalAlpha = transition.flashAlpha;
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = '#ededed';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
     }
@@ -10341,7 +10341,7 @@ function draw(now) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const credits = ["STAFF", "", "GAME DESIGN", "HIROTAKA ADACHI", "", "PROGRAMMING", "HIROTAKA ADACHI", "", "GRAPHICS", "HIROTAKA ADACHI", "", "MUSIC", "SUNO AI", "", "SPECIAL THANKS", "YOU", "", "THANK YOU FOR PLAYING!", "", "THE END"];
         credits.forEach((txt, i) => {
-            ctx.fillStyle = (i === 0 || txt === "THE END") ? '#fff' : '#ccc';
+            ctx.fillStyle = (i === 0 || txt === "THE END") ? '#ededed' : '#ccc';
             ctx.font = (i === 0) ? "bold 20px 'Courier New'" : (txt === "THE END" ? "bold 24px 'Courier New'" : "14px 'Courier New'");
             ctx.fillText(txt, canvas.width / 2, canvas.height / 2 - 180 + i * 20);
         });
@@ -10846,7 +10846,7 @@ async function slidePlayer(dx, dy) {
             player.hp -= dmg;
             player.flashUntil = performance.now() + 200;
             if (player.hp > 0) animateBounce(player);
-            spawnDamageText(player.x, player.y, dmg, '#fff');
+            spawnDamageText(player.x, player.y, dmg, '#ededed');
             SOUNDS.DAMAGE();
             addLog("ZAP! Slid into a Wisp!");
             updateUI();
@@ -12518,7 +12518,7 @@ async function checkWispDamage(w) {
         player.hp -= dmg;
         player.flashUntil = performance.now() + 200;
         if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
-        spawnDamageText(player.x, player.y, dmg, '#fff');
+        spawnDamageText(player.x, player.y, dmg, '#ededed');
         SOUNDS.DAMAGE();
         addLog("ZAP! Touched a Wisp!");
         if (player.hp <= 0) triggerGameOver();
@@ -12543,7 +12543,7 @@ async function checkWispDamage(w) {
             const dmg = 20;
             e.hp -= dmg;
             e.flashUntil = performance.now() + 200;
-            spawnDamageText(w.x, w.y, dmg, '#fff');
+            spawnDamageText(w.x, w.y, dmg, '#ededed');
             SOUNDS.DAMAGE();
             // 擬態中のミミックは一瞬だけ本性を見せる
             if (e.type === 'MIMIC' && e.disguised) {
@@ -13720,7 +13720,7 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
     player.hp -= damage;
     player.flashUntil = performance.now() + 200;
     if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
-    spawnDamageText(player.x, player.y, damage, '#ffffff');
+    spawnDamageText(player.x, player.y, damage, '#ededed');
     if (player.hp <= 0) { player.hp = 0; updateUI(); return; }
 
     const isRealWall = (tx, ty) => {
@@ -14608,7 +14608,7 @@ async function enemyTurn() {
                     let dmg = (e.type === 'ORC' ? 15 : (e.type === 'BREAKER' ? 12 : (e.type === 'LAYER' ? 6 : (e.type === 'SNAKE' ? 10 : (e.type === 'MIMIC' ? 12 : (e.type === 'SUMMONER' ? 8 : 5)))))) + Math.floor(floorLevel / 2);
                     allyBestTarget.hp -= dmg;
                     allyBestTarget.flashUntil = performance.now() + 100;
-                    spawnDamageText(allyBestTarget.x, allyBestTarget.y, dmg, '#fff');
+                    spawnDamageText(allyBestTarget.x, allyBestTarget.y, dmg, '#ededed');
                     SOUNDS.HIT();
                     attackOccurred = true;
 
@@ -15068,7 +15068,7 @@ async function enemyTurn() {
                     SOUNDS.DAMAGE();
                     player.hp -= damage; player.flashUntil = performance.now() + 200;
                     if (player.hp > 0) animateBounce(player);
-                    spawnDamageText(player.x, player.y, damage, '#ffffff');
+                    spawnDamageText(player.x, player.y, damage, '#ededed');
                     if (player.hp <= 0) { player.hp = 0; updateUI(); }
                 }
                 if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
@@ -15306,7 +15306,7 @@ async function enemyTurn() {
                     SOUNDS.DAMAGE();
                     player.hp -= damage; player.flashUntil = performance.now() + 200;
                     if (player.hp > 0) animateBounce(player);
-                    spawnDamageText(player.x, player.y, damage, _kingAura ? '#fbbf24' : '#ffffff');
+                    spawnDamageText(player.x, player.y, damage, _kingAura ? '#fbbf24' : '#ededed');
                     if (player.hp <= 0) { player.hp = 0; updateUI(); }
                 }
                 if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
@@ -15383,7 +15383,7 @@ async function enemyTurn() {
                         else SOUNDS.DAMAGE();
                         player.hp -= damage; player.flashUntil = performance.now() + 200;
                         if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
-                        spawnDamageText(player.x, player.y, damage, fatal ? '#ff0000' : '#ffffff');
+                        spawnDamageText(player.x, player.y, damage, fatal ? '#ff0000' : '#ededed');
                         if (player.hp <= 0) { player.hp = 0; updateUI(); }
                     }
                 }
