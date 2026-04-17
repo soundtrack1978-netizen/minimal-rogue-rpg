@@ -8803,11 +8803,15 @@ function drawStatusScreen() {
 
     if (statusPage === 0) {
         // ── 上段: HP / ATTACK / DEFENSE ────────────────────────
-        const atk = 2 + player.level + (player.swordCount * 3);
+        const atk = getPlayerAttack();
+        const def = getPlayerDefense();
+        const atkBase = 2 + player.level;
+        const defBase = Math.floor(player.level / 2);
+
         const main = [
-            { label: 'HP',      val: `${player.hp} / ${player.maxHp}` },
-            { label: 'ATTACK',  val: `${atk}` },
-            { label: 'DEFENSE', val: `${player.armorCount}` },
+            { label: 'HP',      val: `${player.hp} / ${player.maxHp}`,  sub: null },
+            { label: 'ATTACK',  val: `${atk}`,  sub: player.swordCount > 0 ? `(Lv+${atkBase}  sword+${player.swordCount * 3})` : `(Lv+${atkBase})` },
+            { label: 'DEFENSE', val: `${def}`,  sub: player.armorCount > 0 ? `(Lv+${defBase}  armor+${player.armorCount})` : `(Lv+${defBase})` },
         ];
         let y = CY + 50;
         main.forEach(s => {
@@ -8817,6 +8821,12 @@ function drawStatusScreen() {
             ctx.fillText(s.label, sx, y);
             ctx.font = '14px Courier New';
             ctx.fillText(s.val, valX, y);
+            if (s.sub) {
+                ctx.fillStyle = '#666';
+                ctx.font = '12px Courier New';
+                ctx.fillText(s.sub, valX + 36, y);
+                ctx.fillStyle = '#ededed';
+            }
             y += ROW;
         });
 
@@ -8887,6 +8897,14 @@ function drawStatusScreen() {
     ctx.fillStyle = '#555';
     ctx.font = '11px Courier New';
     ctx.fillText('[←→] Page  [X] Back', WX + WW / 2, CY + CH - 10);
+}
+
+// ─── Player Stat Helpers ─────────────────────────────────────────
+function getPlayerAttack() {
+    return 2 + player.level + (player.swordCount * 3);
+}
+function getPlayerDefense() {
+    return Math.floor(player.level / 2) + player.armorCount;
 }
 
 // ─── DQ1-style UI Helpers ────────────────────────────────────────
@@ -10401,7 +10419,7 @@ function detonateBomb(bomb) {
     }
     // プレイヤーへのダメージ
     if (blastTiles.some(t => t.x === player.x && t.y === player.y)) {
-        const reduced = Math.max(1, damage - player.armorCount);
+        const reduced = Math.max(1, damage - getPlayerDefense());
         player.hp -= reduced;
         spawnFloatingText(player.x, player.y, `-${reduced}`, "#ff6b6b");
         if (player.hp <= 0) {
@@ -10572,7 +10590,7 @@ async function dragonWaveAttack(wave = 1) {
         setScreenShake(15, 400);
 
         if (totalPlayerDamage > 0 && !player.isShielded) {
-            const reduced = Math.max(1, totalPlayerDamage - player.armorCount);
+            const reduced = Math.max(1, totalPlayerDamage - getPlayerDefense());
             player.hp -= reduced;
             player.flashUntil = performance.now() + 300;
             spawnFloatingText(player.x, player.y, `-${reduced}`, '#ff6b6b');
@@ -10899,7 +10917,7 @@ async function slidePlayer(dx, dy) {
                 spawnFloatingText(player.x, player.y, "MIMIC!!", "#c084fc");
                 SOUNDS.ENEMY_ATTACK();
                 setScreenShake(10, 300);
-                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                 player.hp -= mimicDmg;
                 player.flashUntil = performance.now() + 300;
                 spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
@@ -12343,7 +12361,7 @@ async function handleAction(dx, dy) {
                     SOUNDS.ENEMY_ATTACK();
                     setScreenShake(10, 300);
                     // ミミックの先制攻撃
-                    const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                     player.hp -= mimicDmg;
                     player.flashUntil = performance.now() + 300;
                     spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
@@ -13736,7 +13754,7 @@ async function summonDragonTraps(e, count = 1, stage = 'CIRCLE') {
 }
 
 async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
-    let damage = Math.max(1, baseDamage - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+    let damage = Math.max(1, baseDamage - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
     if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.25));
 
     breakStealth();
@@ -13882,7 +13900,7 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
                 spawnFloatingText(player.x, player.y, "MIMIC!!", "#c084fc");
                 SOUNDS.ENEMY_ATTACK();
                 setScreenShake(10, 300);
-                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                 player.hp -= mimicDmg;
                 player.flashUntil = performance.now() + 300;
                 spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
@@ -14089,7 +14107,7 @@ async function enemyTurn() {
                     e.offsetX = (player.x - e.x) * 8; e.offsetY = (player.y - e.y) * 8;
                     spawnSlash(player.x, player.y);
                     SOUNDS.ENEMY_ATTACK();
-                    const fmAtk0 = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const fmAtk0 = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                     player.hp -= fmAtk0;
                     player.flashUntil = performance.now() + 300;
                     spawnDamageText(player.x, player.y, fmAtk0, '#f472b6');
@@ -14119,7 +14137,7 @@ async function enemyTurn() {
                     e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
                     spawnSlash(player.x, player.y);
                     SOUNDS.ENEMY_ATTACK();
-                    const fmAtk1 = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const fmAtk1 = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                     if (player.isDefending) {
                         const fmRed = Math.max(1, Math.floor(fmAtk1 * 0.4));
                         player.hp -= fmRed;
@@ -14167,7 +14185,7 @@ async function enemyTurn() {
                     e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
                     spawnSlash(player.x, player.y);
                     SOUNDS.ENEMY_ATTACK();
-                    const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                     player.hp -= mimicAtk;
                     player.flashUntil = performance.now() + 300;
                     spawnDamageText(player.x, player.y, mimicAtk, '#c084fc');
@@ -14218,7 +14236,7 @@ async function enemyTurn() {
                         e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
                         spawnSlash(player.x, player.y);
                         SOUNDS.ENEMY_ATTACK();
-                        const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                        const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                         if (player.isDefending) {
                             const reduced = Math.max(1, Math.floor(mimicAtk * 0.4));
                             player.hp -= reduced;
@@ -14534,7 +14552,7 @@ async function enemyTurn() {
                 setScreenShake(20, 300);
                 spawnSlash(player.x, player.y);
 
-                let damage = Math.max(5, 20 - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(5, 20 - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                 if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.25));
                 breakStealth();
                 player.hp -= damage;
@@ -15081,7 +15099,7 @@ async function enemyTurn() {
                 e.offsetX = (bestTarget.x - e.x) * 10; e.offsetY = (bestTarget.y - e.y) * 10;
                 spawnSlash(bestTarget.x, bestTarget.y);
                 SOUNDS.ENEMY_ATTACK();
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 6) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 6) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.25));
@@ -15319,7 +15337,7 @@ async function enemyTurn() {
                 spawnSlash(bestTarget.x, bestTarget.y);
                 SOUNDS.ENEMY_ATTACK();
                 const _kingAura = enemies.some(k => k.type === 'KING' && k.hp > 0 && !k._dead);
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 3 + (_kingAura ? 3 : 0)) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 3 + (_kingAura ? 3 : 0)) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.25));
@@ -15373,7 +15391,7 @@ async function enemyTurn() {
             if (bestTarget.isPlayer) {
 
                 // プレイヤーへの攻撃（既存ロジック）
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : (e.type === 'MADMAN' ? 8 : (e.type === 'BREAKER' ? 6 : (e.type === 'LAYER' ? 3 : 1)))))) - player.armorCount - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : (e.type === 'MADMAN' ? 8 : (e.type === 'BREAKER' ? 6 : (e.type === 'LAYER' ? 3 : 1)))))) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.25));
