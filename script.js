@@ -8887,33 +8887,61 @@ function drawStatusScreen() {
     ctx.fillText('[Left/Right] Change Page  |  [X] or [I] to Back', canvas.width / 2, canvas.height - 65);
 }
 
-function drawMenuScreen() {
-    const w = 240, h = 220;
-    const x = (canvas.width - w) / 2;
-    const y = (canvas.height - h) / 2;
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+// ─── DQ1-style UI Helpers ────────────────────────────────────────
+function drawDQWindow(x, y, w, h) {
+    ctx.fillStyle = '#000010';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.20)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 6, y + 6, w - 12, h - 12);
+}
 
+function drawDQTitle(x, y, w, title) {
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 20px Courier New';
-    ctx.fillText('-- MENU --', canvas.width / 2, y + 40);
+    ctx.fillStyle = '#ffe04b';
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillText('━ ' + title + ' ━', x + w / 2, y + 22);
+}
 
-    const options = ["1. ITEMS", "2. RINGS", "3. STATUS"];
+// ─── Main Menu ───────────────────────────────────────────────────
+function drawMenuScreen() {
+    const W = 220, H = 138;
+    const x = (canvas.width - W) / 2;
+    const y = (canvas.height - H) / 2;
+
+    drawDQWindow(x, y, W, H);
+    drawDQTitle(x, y, W, 'COMMAND');
+
+    const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+    const options = [
+        { en: 'ITEMS',  ja: 'どうぐ' },
+        { en: 'RINGS',  ja: 'ゆびわ' },
+        { en: 'STATUS', ja: 'じょうたい' },
+    ];
+
     ctx.textAlign = 'left';
     options.forEach((opt, i) => {
-        ctx.font = '16px Courier New';
-        ctx.fillStyle = '#fff';
-        const textX = x + 60;
-        const textY = y + 85 + i * 35;
-        if (i === menuSelection) {
-            ctx.fillText('>', textX - 25, textY);
+        const ty = y + 50 + i * 30;
+        const isSelected = i === menuSelection;
+
+        if (isSelected) {
+            ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
+            ctx.fillRect(x + 12, ty - 17, W - 24, 24);
+            ctx.fillStyle = '#ffe04b';
+            ctx.font = 'bold 15px Courier New';
+            ctx.fillText('▶', x + 14, ty);
         }
-        ctx.fillText(opt, textX, textY);
+
+        ctx.fillStyle = isSelected ? '#ffffff' : '#777';
+        ctx.font = 'bold 15px Courier New';
+        ctx.fillText(opt.en, x + 34, ty);
+
+        ctx.font = '12px ' + JA_FONT;
+        ctx.fillStyle = isSelected ? '#aaa' : '#444';
+        ctx.fillText(opt.ja, x + 140, ty);
     });
 }
 
@@ -9007,294 +9035,402 @@ function drawShopScreen() {
 }
 
 function drawRingsScreen() {
-    const pad = 40;
-    const w = canvas.width - pad * 2;
-    const h = canvas.height - pad * 2;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(pad, pad, w, h);
-    ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(pad, pad, w, h);
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 22px Courier New';
-    ctx.fillText('-- 指輪 RINGS --', canvas.width / 2, pad + 30);
-
-    const ROW_H = 38;
+    const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+    const PAD = 16;
+    const H = canvas.height - PAD * 2;
 
     if (ringEquipPhase === 'SLOT') {
-        // --- フェーズ1: スロット選択 ---
-        ctx.textAlign = 'left';
-        ctx.font = '14px Courier New';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText('どちらのスロットに装備しますか？', pad + 15, pad + 65);
+        // ── Phase 1: Slot selection ─────────────────────────────
+        const W = 480;
+        const X = (canvas.width - W) / 2;
+        drawDQWindow(X, PAD, W, H);
+        drawDQTitle(X, PAD, W, 'RINGS  ゆびわ');
+
+        const ROW_H = 72;
+        const listTop = PAD + 42;
 
         for (let s = 0; s < 2; s++) {
-            const slotY = pad + 100 + s * ROW_H;
+            const sy = listTop + s * ROW_H;
             const ringId = player.equippedRings[s];
             const ring = ringId ? RINGS.find(r => r.id === ringId) : null;
-            const isSelected = ringSlotSelection === s;
+            const isSel = ringSlotSelection === s;
 
-            if (isSelected) {
-                ctx.fillStyle = 'rgba(251, 191, 36, 0.15)';
-                ctx.fillRect(pad + 5, slotY - 18, w - 10, ROW_H - 4);
-                ctx.strokeStyle = '#fbbf24';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(pad + 5, slotY - 18, w - 10, ROW_H - 4);
-                ctx.fillStyle = '#fbbf24';
-                ctx.font = '16px Courier New';
-                ctx.fillText('▶', pad + 14, slotY);
-            } else {
-                ctx.fillStyle = '#555';
-                ctx.font = '16px Courier New';
-                ctx.fillText('  ', pad + 14, slotY);
+            if (isSel) {
+                ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
+                ctx.fillRect(X + 10, sy - 2, W - 20, ROW_H - 8);
+                ctx.fillStyle = '#ffe04b';
+                ctx.font = 'bold 14px Courier New';
+                ctx.textAlign = 'left';
+                ctx.fillText('▶', X + 12, sy + 18);
             }
 
-            ctx.font = '14px Courier New';
-            ctx.fillStyle = isSelected ? '#fff' : '#888';
-            ctx.fillText(`Slot ${s + 1}`, pad + 34, slotY);
+            // Slot label
+            ctx.textAlign = 'left';
+            ctx.font = 'bold 13px Courier New';
+            ctx.fillStyle = isSel ? '#ffe04b' : '#666';
+            ctx.fillText('Slot ' + (s + 1), X + 30, sy + 16);
 
-            ctx.fillStyle = ring ? '#4ade80' : '#555';
-            ctx.fillText(ring ? `  ◎ ${ring.nameJa}` : '  （空き）', pad + 90, slotY);
+            // Ring name box
+            const boxX = X + 86, boxY = sy - 2, boxW = W - 100, boxH = ROW_H - 8;
+            ctx.fillStyle = '#060614';
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeStyle = isSel ? 'rgba(255,224,75,0.5)' : 'rgba(255,255,255,0.12)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-            if (ring && isSelected) {
+            if (ring) {
+                // Symbol
+                ctx.font = '16px Courier New';
+                ctx.fillStyle = '#ffe04b';
+                ctx.fillText(ring.symbol || '◎', boxX + 10, boxY + 22);
+                // Japanese name
+                ctx.font = 'bold 14px ' + JA_FONT;
+                ctx.fillStyle = isSel ? '#fff' : '#ccc';
+                ctx.fillText(ring.nameJa, boxX + 30, boxY + 22);
+                // English name
                 ctx.font = '11px Courier New';
-                ctx.fillStyle = '#aaa';
-                ctx.fillText(`      ${ring.descJa}`, pad + 90, slotY + 16);
+                ctx.fillStyle = '#888';
+                ctx.fillText(ring.name, boxX + 30, boxY + 38);
+                // Description (only when selected)
+                if (isSel) {
+                    ctx.font = '11px ' + JA_FONT;
+                    ctx.fillStyle = '#aaa';
+                    ctx.fillText(ring.descJa, boxX + 10, boxY + 56);
+                }
+            } else {
+                ctx.font = '13px ' + JA_FONT;
+                ctx.fillStyle = '#444';
+                ctx.fillText('（空き）─ 装備なし', boxX + 10, boxY + 22);
             }
         }
 
+        // Footer
         ctx.textAlign = 'center';
-        ctx.font = '12px Courier New';
-        ctx.fillStyle = '#666';
-        ctx.fillText('[↑↓] 選択  [Enter] 決定  [X] 戻る', canvas.width / 2, pad + h - 12);
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = '#555';
+        ctx.fillText('[↑↓] Select  [Enter] Choose Slot  [X] Back', X + W / 2, PAD + H - 10);
 
     } else {
-        // --- フェーズ2: 指輪選択 ---
+        // ── Phase 2: Ring selection (split panel) ───────────────
+        const LEFT_W = 310;
+        const RIGHT_X = PAD + LEFT_W + 8;
+        const RIGHT_W = canvas.width - PAD * 2 - LEFT_W - 8;
+
+        drawDQWindow(PAD, PAD, LEFT_W, H);
+        drawDQWindow(RIGHT_X, PAD, RIGHT_W, H);
+        drawDQTitle(PAD, PAD, LEFT_W, 'SELECT RING');
+        drawDQTitle(RIGHT_X, PAD, RIGHT_W, 'Slot ' + (ringSlotSelection + 1));
+
+        // Slot header in right panel
         const slotRingId = player.equippedRings[ringSlotSelection];
         const slotRing = slotRingId ? RINGS.find(r => r.id === slotRingId) : null;
+        const rx = RIGHT_X + 14;
 
+        ctx.font = '12px ' + JA_FONT;
+        ctx.fillStyle = '#666';
         ctx.textAlign = 'left';
-        ctx.font = '14px Courier New';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText(`Slot ${ringSlotSelection + 1} に装備する指輪を選んでください`, pad + 15, pad + 60);
+        ctx.fillText('現在の装備', rx, PAD + 38);
+        ctx.font = 'bold 13px ' + JA_FONT;
         ctx.fillStyle = slotRing ? '#4ade80' : '#555';
-        ctx.fillText(`現在: ${slotRing ? slotRing.nameJa : '（空き）'}`, pad + 15, pad + 78);
+        ctx.fillText(slotRing ? slotRing.nameJa : '（空き）', rx, PAD + 54);
 
-        // 「外す」オプション + 所持指輪リスト
+        // Divider
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(rx, PAD + 64); ctx.lineTo(RIGHT_X + RIGHT_W - 14, PAD + 64); ctx.stroke();
+
+        // Ring list
         const ownedRings = RINGS.filter(r => player.ownedRings.includes(r.id));
-        // index 0 = 「外す」, 1以降 = 所持指輪
-        const listItems = [{ id: null, nameJa: '（外す）', descJa: 'このスロットを空にする' }, ...ownedRings];
+        const listItems = [{ id: null, nameJa: '（外す）', name: 'Remove', descJa: 'このスロットを空にする' }, ...ownedRings];
 
-        const footerY = pad + h - 12;
-        const listAreaTop = pad + 98;
-        const listAreaBottom = footerY - 20;
-        const maxVisible = Math.floor((listAreaBottom - listAreaTop) / ROW_H);
+        const LIST_TOP = PAD + 36;
+        const LIST_BOT = PAD + H - 28;
+        const ROW_H = 34;
+        const maxVis = Math.floor((LIST_BOT - LIST_TOP) / ROW_H);
 
-        ringScrollOffset = Math.max(0, Math.min(ringScrollOffset, Math.max(0, listItems.length - maxVisible)));
+        ringScrollOffset = Math.max(0, Math.min(ringScrollOffset, Math.max(0, listItems.length - maxVis)));
         if (ringEquipSelection < ringScrollOffset) ringScrollOffset = ringEquipSelection;
-        if (ringEquipSelection >= ringScrollOffset + maxVisible) ringScrollOffset = ringEquipSelection - maxVisible + 1;
+        if (ringEquipSelection >= ringScrollOffset + maxVis) ringScrollOffset = ringEquipSelection - maxVis + 1;
 
         if (ringScrollOffset > 0) {
-            ctx.fillStyle = '#fbbf24'; ctx.textAlign = 'center'; ctx.font = '14px Courier New';
-            ctx.fillText('▲', canvas.width / 2, listAreaTop - 4);
-            ctx.textAlign = 'left';
+            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillText('▲', PAD + LEFT_W / 2, LIST_TOP - 4);
         }
 
-        const visibleItems = listItems.slice(ringScrollOffset, ringScrollOffset + maxVisible);
-        visibleItems.forEach((item, vi) => {
+        const visItems = listItems.slice(ringScrollOffset, ringScrollOffset + maxVis);
+        visItems.forEach((item, vi) => {
             const idx = vi + ringScrollOffset;
-            const yPos = listAreaTop + vi * ROW_H;
-            const isSelected = ringEquipSelection === idx;
+            const iy = LIST_TOP + vi * ROW_H;
+            const isSel = ringEquipSelection === idx;
             const isEquippedHere = item.id && player.equippedRings[ringSlotSelection] === item.id;
             const isEquippedOther = item.id && player.equippedRings[1 - ringSlotSelection] === item.id;
 
-            if (isSelected) {
-                ctx.fillStyle = 'rgba(251, 191, 36, 0.15)';
-                ctx.fillRect(pad + 5, yPos - 14, w - 10, ROW_H - 4);
-                ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1;
-                ctx.strokeRect(pad + 5, yPos - 14, w - 10, ROW_H - 4);
-                ctx.fillStyle = '#fbbf24'; ctx.font = '16px Courier New';
-                ctx.fillText('▶', pad + 14, yPos + 2);
+            if (isSel) {
+                ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
+                ctx.fillRect(PAD + 10, iy - 2, LEFT_W - 20, ROW_H - 4);
+                ctx.fillStyle = '#ffe04b';
+                ctx.font = 'bold 14px Courier New';
+                ctx.textAlign = 'left';
+                ctx.fillText('▶', PAD + 12, iy + 18);
             }
 
-            ctx.font = '14px Courier New';
-            let nameColor = isSelected ? '#fff' : '#ccc';
-            if (item.id === null) nameColor = isSelected ? '#f87171' : '#888';
+            ctx.textAlign = 'left';
+            // Name color
+            let nameColor = isSel ? '#fff' : '#aaa';
+            if (item.id === null) nameColor = isSel ? '#f87171' : '#666';
             else if (isEquippedHere) nameColor = '#4ade80';
             else if (isEquippedOther) nameColor = '#60a5fa';
-            ctx.fillStyle = nameColor;
-            const prefix = item.id ? '◎ ' : '';
-            ctx.fillText(`  ${prefix}${item.nameJa}`, pad + 30, yPos + 2);
 
+            ctx.font = (isSel ? 'bold ' : '') + '13px ' + JA_FONT;
+            ctx.fillStyle = nameColor;
+            ctx.fillText((item.id ? '◎ ' : '✕ ') + item.nameJa, PAD + 30, iy + 18);
+
+            // Status badge
             if (isEquippedHere) {
-                ctx.textAlign = 'right'; ctx.fillStyle = '#4ade80';
-                ctx.fillText('装備中', pad + w - 15, yPos + 2);
+                ctx.textAlign = 'right'; ctx.fillStyle = '#4ade80'; ctx.font = '11px Courier New';
+                ctx.fillText('装備中', PAD + LEFT_W - 14, iy + 18);
                 ctx.textAlign = 'left';
             } else if (isEquippedOther) {
-                ctx.textAlign = 'right'; ctx.fillStyle = '#60a5fa';
-                ctx.fillText(`Slot${2 - ringSlotSelection}`, pad + w - 15, yPos + 2);
+                ctx.textAlign = 'right'; ctx.fillStyle = '#60a5fa'; ctx.font = '11px Courier New';
+                ctx.fillText('Slot' + (2 - ringSlotSelection), PAD + LEFT_W - 14, iy + 18);
                 ctx.textAlign = 'left';
-            }
-
-            if (isSelected) {
-                ctx.font = '11px Courier New'; ctx.fillStyle = '#aaa';
-                ctx.fillText(`  ${item.descJa}`, pad + 30, yPos + 18);
             }
         });
 
-        if (ringScrollOffset + maxVisible < listItems.length) {
-            ctx.fillStyle = '#fbbf24'; ctx.textAlign = 'center'; ctx.font = '14px Courier New';
-            ctx.fillText('▼', canvas.width / 2, listAreaTop + maxVisible * ROW_H + 8);
-            ctx.textAlign = 'left';
+        if (ringScrollOffset + maxVis < listItems.length) {
+            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillText('▼', PAD + LEFT_W / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
 
+        // Left footer
         ctx.textAlign = 'center';
-        ctx.font = '12px Courier New';
-        ctx.fillStyle = '#666';
-        ctx.fillText('[↑↓] 選択  [Enter] 装備  [X] スロット選択に戻る', canvas.width / 2, pad + h - 12);
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = '#444';
+        ctx.fillText('[↑↓] Select', PAD + LEFT_W / 2, PAD + H - 10);
+
+        // Right panel: selected ring detail
+        const selItem = listItems[ringEquipSelection];
+        if (selItem && selItem.id) {
+            let ry = PAD + 76;
+            ctx.font = 'bold 13px ' + JA_FONT;
+            ctx.fillStyle = '#ffe04b';
+            ctx.textAlign = 'left';
+            ctx.fillText(selItem.symbol || '◎', rx, ry);
+            ctx.font = 'bold 15px ' + JA_FONT;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(selItem.nameJa, rx + 20, ry);
+            ry += 18;
+            ctx.font = '12px Courier New';
+            ctx.fillStyle = '#777';
+            ctx.fillText(selItem.name, rx + 20, ry);
+            ry += 16;
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(RIGHT_X + RIGHT_W - 14, ry); ctx.stroke();
+            ry += 14;
+
+            ctx.font = '13px ' + JA_FONT;
+            ctx.fillStyle = '#ccc';
+            ctx.fillText(selItem.descJa, rx, ry);
+        }
+
+        // Right panel footer
+        const footerY = PAD + H - 28;
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(rx, footerY - 14); ctx.lineTo(RIGHT_X + RIGHT_W - 14, footerY - 14); ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 13px Courier New';
+        ctx.fillStyle = '#ffe04b';
+        ctx.fillText('[Enter] Equip', RIGHT_X + RIGHT_W / 2, footerY);
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = '#555';
+        ctx.fillText('[X] Back to Slots', RIGHT_X + RIGHT_W / 2, footerY + 14);
     }
 }
 
 function drawInventoryScreen() {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
+    const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+    const PAD = 16;
+    const LEFT_W = 310;
+    const RIGHT_X = PAD + LEFT_W + 8;
+    const RIGHT_W = canvas.width - PAD * 2 - LEFT_W - 8;
+    const H = canvas.height - PAD * 2;
 
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 24px Courier New';
-    ctx.fillText('-- INVENTORY --', canvas.width / 2, 80);
+    drawDQWindow(PAD, PAD, LEFT_W, H);
+    drawDQWindow(RIGHT_X, PAD, RIGHT_W, H);
+    drawDQTitle(PAD, PAD, LEFT_W, 'ITEM BAG');
+    drawDQTitle(RIGHT_X, PAD, RIGHT_W, 'INFO');
 
+    // アイテムリスト定義（今後増える想定 ─ ここに追加するだけでOK）
     const fullItems = [
-        { name: `${SYMBOLS.BREAKER_TOME} Breaker Tome`, count: player.breakerTomes, desc: "Smash walls for this floor. [7/B]" },
-        { name: `${SYMBOLS.CHARM} Charm Tome`, count: player.charmTomes, desc: "Tame nearby enemies for this floor." },
-        { name: `${SYMBOLS.ESCAPE} Escape Tome`, count: player.escapeTomes, desc: "Warp to a random floor (3F-99F)." },
-        { name: `${SYMBOLS.EXPLOSION} Explosion Tome`, count: player.explosionTomes, desc: "Release a powerful blast around you." },
-        { name: `${SYMBOLS.GUARDIAN} Guardian Tome`, count: player.guardianTomes, desc: "Shield from terrain hazards (poison/lava/laser). [4/G]" },
-        { name: `${SYMBOLS.SPEED} Haste Tome`, count: player.hasteTomes, desc: "Recite to accelerate time." },
-        { name: `${SYMBOLS.HEAL_TOME} Heal Tome`, count: player.healTomes, desc: "Fully restore HP." },
-        { name: `${SYMBOLS.STEALTH} Stealth Tome`, count: player.stealthTomes, desc: "Recite to vanish from sight." },
-        { name: `${SYMBOLS.FAIRY} Fairy`, count: player.fairyCount, desc: "Release nearby. Heads toward the KEY. Enemies flee from it (5 tiles)." }
+        { name: 'Breaker Tome',   nameJa: '破壊の魔導書',  symbol: SYMBOLS.BREAKER_TOME,  count: player.breakerTomes,
+          desc: 'Smash one wall tile on this floor.',          descJa: 'この階の壁を1枚破壊できる。' },
+        { name: 'Charm Tome',     nameJa: '魅了の魔導書',  symbol: SYMBOLS.CHARM,          count: player.charmTomes,
+          desc: 'Tame nearby enemies for this floor.',         descJa: 'この階の周囲の敵をすべて仲間にする。' },
+        { name: 'Escape Tome',    nameJa: '脱出の魔導書',  symbol: SYMBOLS.ESCAPE,         count: player.escapeTomes,
+          desc: 'Warp to a random floor (3F–99F).',            descJa: 'ランダムな階層へワープする。' },
+        { name: 'Explosion Tome', nameJa: '爆発の魔導書',  symbol: SYMBOLS.EXPLOSION,      count: player.explosionTomes,
+          desc: 'Release a powerful blast around you.',        descJa: '周囲に強力な爆発を引き起こす。' },
+        { name: 'Guardian Tome',  nameJa: '守護の魔導書',  symbol: SYMBOLS.GUARDIAN,       count: player.guardianTomes,
+          desc: 'Shield from terrain & laser damage.',         descJa: '地形ダメージとレーザーを無効化する。' },
+        { name: 'Haste Tome',     nameJa: '加速の魔導書',  symbol: SYMBOLS.SPEED,          count: player.hasteTomes,
+          desc: 'Accelerate the flow of time.',                descJa: '時間の流れを加速させる。' },
+        { name: 'Heal Tome',      nameJa: '回復の魔導書',  symbol: SYMBOLS.HEAL_TOME,      count: player.healTomes,
+          desc: 'Fully restore HP.',                           descJa: 'HPを全回復する。' },
+        { name: 'Stealth Tome',   nameJa: '隠身の魔導書',  symbol: SYMBOLS.STEALTH,        count: player.stealthTomes,
+          desc: 'Vanish from sight. Enemies cannot see you.',  descJa: '姿を消し、敵から見えなくなる。' },
+        { name: 'Fairy',          nameJa: '妖精',           symbol: SYMBOLS.FAIRY,          count: player.fairyCount,
+          desc: 'Release a fairy. Heads for the KEY. Enemies flee 5 tiles.', descJa: '鍵へ向かう。周囲5マスの敵を遠ざける。' },
     ];
     const items = fullItems.filter(it => it.count > 0);
 
+    // ── Left panel: item list ────────────────────────────────
     if (items.length === 0) {
         ctx.textAlign = 'center';
-        ctx.font = '16px Courier New';
-        ctx.fillText('(Empty)', canvas.width / 2, canvas.height / 2);
+        ctx.fillStyle = '#555';
+        ctx.font = '14px Courier New';
+        ctx.fillText('(Empty)', PAD + LEFT_W / 2, PAD + H / 2);
     } else {
-        // レイアウト設定（アイテム数に応じて自動調整）
-        const listX = 60;
-        const listY = 120;
-        const listW = 340;
-        const availableH = canvas.height - listY - 80; // 上下の余白を確保
-        const maxVisible = Math.min(items.length, Math.floor(availableH / 30));
-        const itemH = Math.floor(availableH / maxVisible);
+        const LIST_TOP = PAD + 36;
+        const LIST_BOT = PAD + H - 28;
+        const ROW_H = 34;
+        const maxVis = Math.floor((LIST_BOT - LIST_TOP) / ROW_H);
 
-        // スクロール制御
         let startIdx = 0;
-        if (inventorySelection >= maxVisible) {
-            startIdx = inventorySelection - maxVisible + 1;
+        if (inventorySelection >= maxVis) startIdx = inventorySelection - maxVis + 1;
+
+        if (startIdx > 0) {
+            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillText('▲', PAD + LEFT_W / 2, LIST_TOP - 4);
         }
 
-        // リスト表示
-        for (let i = 0; i < maxVisible; i++) {
+        for (let i = 0; i < maxVis; i++) {
             const idx = startIdx + i;
             if (idx >= items.length) break;
             const item = items[idx];
-            const iy = listY + i * itemH;
+            const iy = LIST_TOP + i * ROW_H;
+            const isSel = idx === inventorySelection;
 
-            if (idx === inventorySelection) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-                ctx.fillRect(listX, iy, listW, itemH - 5);
-                ctx.strokeStyle = '#fbbf24';
-                ctx.strokeRect(listX, iy, listW, itemH - 5);
+            if (isSel) {
+                ctx.fillStyle = 'rgba(255, 224, 75, 0.10)';
+                ctx.fillRect(PAD + 10, iy - 2, LEFT_W - 20, ROW_H - 4);
+                ctx.fillStyle = '#ffe04b';
+                ctx.font = 'bold 14px Courier New';
+                ctx.textAlign = 'left';
+                ctx.fillText('▶', PAD + 12, iy + 18);
             }
 
-            ctx.fillStyle = '#fff';
+            // Symbol
+            ctx.font = '14px Courier New';
+            ctx.fillStyle = isSel ? '#ffe04b' : '#777';
             ctx.textAlign = 'left';
-            ctx.font = '18px Courier New';
-            ctx.fillText(`${item.name} x${item.count}`, listX + 10, iy + 28);
+            ctx.fillText(item.symbol, PAD + 30, iy + 18);
+
+            // Name (English)
+            ctx.fillStyle = isSel ? '#ffffff' : '#aaa';
+            ctx.font = (isSel ? 'bold ' : '') + '14px Courier New';
+            ctx.fillText(item.name, PAD + 50, iy + 18);
+
+            // Count (right)
+            ctx.textAlign = 'right';
+            ctx.fillStyle = isSel ? '#ffe04b' : '#666';
+            ctx.font = 'bold 13px Courier New';
+            ctx.fillText('×' + item.count, PAD + LEFT_W - 14, iy + 18);
+            ctx.textAlign = 'left';
         }
 
-        // スクロールインジケータ
-        if (startIdx > 0) ctx.fillText('▲', listX + listW / 2, listY - 10);
-        if (startIdx + maxVisible < items.length) ctx.fillText('▼', listX + listW / 2, listY + maxVisible * itemH);
-
-        // 説明エリア (右側)
-        const descX = 430;
-        const descY = 120;
-        const descW = 310;
-        const descH = 265;
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.strokeRect(descX, descY, descW, descH);
-
-        const selected = items[inventorySelection];
-        if (selected) {
-            // 日本語訳データ
-            const translations = {
-                "Haste Tome": "加速の魔導書。唱えると時間の流れが加速する。",
-                "Charm Tome": "魅了の魔導書。この階の間、周囲の敵をすべて仲間にする。",
-                "Stealth Tome": "隠身の魔導書。唱えると姿を消し、敵から見えなくなる。",
-                "Explosion Tome": "爆発の魔導書。自分の周囲に強力な爆発を引き起こす。",
-                "Guardian Tome": "守護の魔導書。この階の間、地形とレーザーのダメージを無効化する。",
-                "Escape Tome": "脱出の魔導書。クリア済みの階層(1F〜現在-1F)へワープする。",
-                "Heal Tome": "回復の魔導書。HPを全回復する。",
-                "Fairy": "妖精を解き放つ。鍵もしくは出口へ向かう。周囲5マスの敵を遠ざける。"
-            };
-            const itemName = selected.name.split(' ').slice(1).join(' ');
-
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 20px Courier New';
-            ctx.fillText(itemName, descX + 20, descY + 40);
-
-            ctx.font = '14px Courier New';
-            ctx.fillStyle = '#aaa';
-
-            // 英語説明のワードラップ
-            const words = selected.desc.split(' ');
-            let line = '';
-            let lineY = descY + 80;
-            const maxWidth = descW - 40;
-
-            for (let n = 0; n < words.length; n++) {
-                let testLine = line + words[n] + ' ';
-                let metrics = ctx.measureText(testLine);
-                let testWidth = metrics.width;
-                if (testWidth > maxWidth && n > 0) {
-                    ctx.fillText(line, descX + 20, lineY);
-                    line = words[n] + ' ';
-                    lineY += 20;
-                } else {
-                    line = testLine;
-                }
-            }
-            ctx.fillText(line, descX + 20, lineY);
-
-            // 日本語訳の表示
-            const jpDescArray = translations[itemName] ? translations[itemName].split('。') : [];
-            if (jpDescArray.length > 0) {
-                ctx.fillStyle = '#aaa'; // 英字（#aaa）に合わせる
-                ctx.font = '12px "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-                let jpY = descY + 180;
-                jpDescArray.forEach(sentence => {
-                    if (sentence.trim() === '') return;
-                    ctx.fillText(sentence + '。', descX + 20, jpY);
-                    jpY += 20; // 改行
-                });
-            }
+        if (startIdx + maxVis < items.length) {
+            ctx.fillStyle = '#ffe04b'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+            ctx.fillText('▼', PAD + LEFT_W / 2, LIST_TOP + maxVis * ROW_H + 8);
         }
     }
 
+    // Left footer
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
-    ctx.font = '13px Courier New';
-    ctx.fillText('Press [Enter] to Use / [X] to Back', canvas.width / 2, canvas.height - 65);
+    ctx.font = '11px Courier New';
+    ctx.fillStyle = '#444';
+    ctx.fillText('[↑↓] Select', PAD + LEFT_W / 2, PAD + H - 10);
+
+    // ── Right panel: info ────────────────────────────────────
+    const sel = items.length > 0 ? items[inventorySelection] : null;
+    if (sel) {
+        const rx = RIGHT_X + 16;
+        let ry = PAD + 42;
+
+        // Large symbol
+        ctx.font = 'bold 28px Courier New';
+        ctx.fillStyle = '#ffe04b';
+        ctx.textAlign = 'left';
+        ctx.fillText(sel.symbol, rx, ry + 4);
+
+        // English name
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(sel.name, rx + 34, ry);
+
+        // Japanese name
+        ctx.font = '12px ' + JA_FONT;
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(sel.nameJa, rx + 34, ry + 16);
+
+        ry += 34;
+
+        // Divider
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(RIGHT_X + RIGHT_W - 16, ry); ctx.stroke();
+        ry += 16;
+
+        // English description (word wrap)
+        ctx.font = '13px Courier New';
+        ctx.fillStyle = '#ccc';
+        const maxDescW = RIGHT_W - 36;
+        const words = sel.desc.split(' ');
+        let line = '';
+        for (const word of words) {
+            const test = line + word + ' ';
+            if (ctx.measureText(test).width > maxDescW && line) {
+                ctx.fillText(line.trim(), rx, ry); ry += 18; line = word + ' ';
+            } else { line = test; }
+        }
+        if (line.trim()) { ctx.fillText(line.trim(), rx, ry); ry += 18; }
+
+        ry += 6;
+
+        // Japanese description
+        ctx.font = '13px ' + JA_FONT;
+        ctx.fillStyle = '#aaa';
+        // Simple wrap for Japanese
+        const jp = sel.descJa;
+        const jpMaxW = RIGHT_W - 36;
+        if (ctx.measureText(jp).width <= jpMaxW) {
+            ctx.fillText(jp, rx, ry); ry += 20;
+        } else {
+            // split at natural breaks
+            const parts = jp.split('。').filter(s => s.trim());
+            parts.forEach(p => { ctx.fillText(p + '。', rx, ry); ry += 18; });
+        }
+
+        // Use prompt at bottom of right panel
+        const footerY = PAD + H - 28;
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(rx, footerY - 14); ctx.lineTo(RIGHT_X + RIGHT_W - 16, footerY - 14); ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 13px Courier New';
+        ctx.fillStyle = '#ffe04b';
+        ctx.fillText('[Enter] Use Item', RIGHT_X + RIGHT_W / 2, footerY);
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = '#555';
+        ctx.fillText('[X] Back to Menu', RIGHT_X + RIGHT_W / 2, footerY + 14);
+    } else {
+        ctx.textAlign = 'center';
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = '#444';
+        ctx.fillText('[X] Back', RIGHT_X + RIGHT_W / 2, PAD + H - 10);
+    }
 }
 
 function drawConfirmBuy() {
