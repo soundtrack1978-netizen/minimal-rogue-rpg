@@ -10636,17 +10636,65 @@ async function dragonHalfPhase() {
     dragonHalfPhaseTriggered = true;
     const dragon = enemies.find(e => e.type === 'DRAGON');
 
-    // --- 咆吼テキスト＆画面揺れ ---
-    addLog("⚠ The Dragon ROARS — a terrifying shockwave erupts!");
-    spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) - 2, "DRAGON ROAR!", "#ef4444");
+    function isHardWallAt(x, y) {
+        if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return true;
+        return map[y][x] === SYMBOLS.WALL;
+    }
+
+    // === フェーズ1: 約2秒の震動 ===
+    addLog("⚠ The Dragon trembles with rage — the ground shakes!");
+    spawnFloatingText(dragon ? dragon.x : Math.floor(COLS / 2), 2, "RRROAARRR!!", "#ef4444");
     SOUNDS.FATAL();
-    setScreenShake(60, 1000);
-    await new Promise(r => setTimeout(r, 600));
 
+    const shakeEnd = performance.now() + 2000;
+    while (performance.now() < shakeEnd) {
+        setScreenShake(25, 200);
+        if (dragon) {
+            dragon.offsetX = (Math.random() - 0.5) * 8;
+            dragon.offsetY = (Math.random() - 0.5) * 5;
+        }
+        draw();
+        await new Promise(r => setTimeout(r, 80));
+    }
+    if (dragon) { dragon.offsetX = 0; dragon.offsetY = 0; }
+
+    // === フェーズ2: ジャンプ → 着地衝撃 ===
     SOUNDS.RUMBLE();
-    setScreenShake(40, 800);
+    spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) - 2, "IMPACT JUMP!", "#fbbf24");
 
-    // --- すべてのICICLE・設置ブロックを破壊（爆発演出付き）---
+    const jumpPixels = TILE_SIZE * 7; // タイル7枚分ジャンプ
+
+    // 上昇（450ms）
+    const riseStart = performance.now();
+    const riseTime = 450;
+    while (true) {
+        const t = Math.min(1, (performance.now() - riseStart) / riseTime);
+        if (dragon) dragon.offsetY = -jumpPixels * t;
+        draw();
+        if (t >= 1) break;
+        await new Promise(r => setTimeout(r, 16));
+    }
+
+    // 下降・加速落下（300ms）
+    const fallStart = performance.now();
+    const fallTime = 300;
+    while (true) {
+        const t = Math.min(1, (performance.now() - fallStart) / fallTime);
+        if (dragon) dragon.offsetY = -jumpPixels * (1 - t * t); // 二乗加速
+        draw();
+        if (t >= 1) break;
+        await new Promise(r => setTimeout(r, 16));
+    }
+    if (dragon) dragon.offsetY = 0;
+    draw();
+
+    // 着地衝撃
+    SOUNDS.LANDING_THUD();
+    SOUNDS.EXPLODE();
+    setScreenShake(90, 1200);
+    spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2), "SHOCKWAVE!!", "#ef4444");
+
+    // ブロック・つらら全破壊
     const toSmash = tempWalls.filter(w =>
         w.type === 'ICICLE' || w.type === 'BLOCK' || w.type === 'ICE_BLOCK' ||
         w.type === 'FIRE_BLOCK' || w.type === 'ICE_STAR_BLOCK' || w.type === 'BOMB_STAR_BLOCK'
@@ -10656,41 +10704,43 @@ async function dragonHalfPhase() {
         w.type !== 'FIRE_BLOCK' && w.type !== 'ICE_STAR_BLOCK' && w.type !== 'BOMB_STAR_BLOCK'
     );
     for (const w of toSmash) {
-        const tiles = [
-            {x: w.x, y: w.y}, {x: w.x-1, y: w.y}, {x: w.x+1, y: w.y},
-            {x: w.x, y: w.y-1}, {x: w.x, y: w.y+1}
-        ];
-        blastEffects.push({ tiles, endTime: performance.now() + 600 });
+        blastEffects.push({
+            tiles: [{x:w.x,y:w.y},{x:w.x-1,y:w.y},{x:w.x+1,y:w.y},{x:w.x,y:w.y-1},{x:w.x,y:w.y+1}],
+            endTime: performance.now() + 700
+        });
     }
     if (toSmash.length > 0) {
-        SOUNDS.EXPLODE();
-        spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2), "SHATTER!", "#87ceeb");
-        setTimeout(() => SOUNDS.EXPLODE(), 180);
-        setScreenShake(25, 500);
+        addLog("⚡ All blocks and spikes are SHATTERED by the impact!");
+        setTimeout(() => SOUNDS.EXPLODE(), 160);
     }
 
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 600));
 
-    // --- プレイヤーを下の壁際まで吹き飛ばし ---
-    spawnFloatingText(player.x, player.y, "BLOWN AWAY!", "#f97316");
+    // === フェーズ3: 自キャラ＋全敵（ドラゴン除く）を下の壁まで吹き飛ばし ===
     SOUNDS.RUMBLE();
+    spawnFloatingText(player.x, player.y, "BLOWN AWAY!", "#f97316");
 
-    function isHardWallAt(x, y) {
-        if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return true;
-        return map[y][x] === SYMBOLS.WALL;
+    // 敵を一斉に下壁まで瞬間移動（フェアリーと死亡中は除外）
+    for (const e of enemies) {
+        if (e.type === 'DRAGON' || e.hp <= 0 || e._dead || e.isAlly) continue;
+        let ty = e.y;
+        for (let y = e.y + 1; y < ROWS; y++) {
+            if (isHardWallAt(e.x, y) || map[y][e.x] === SYMBOLS.CORE) break;
+            ty = y;
+        }
+        e.y = ty;
     }
 
+    // プレイヤーをアニメーションで吹き飛ばし
     let targetY = player.y;
     for (let y = player.y + 1; y < ROWS; y++) {
         if (isHardWallAt(player.x, y)) break;
         targetY = y;
     }
-
-    // アニメーションで落下
     while (player.y < targetY) {
         player.y++;
         draw();
-        await new Promise(r => setTimeout(r, 28));
+        await new Promise(r => setTimeout(r, 18));
     }
 
     SOUNDS.LANDING_THUD();
@@ -10710,38 +10760,41 @@ async function dragonHalfPhase() {
 
     await new Promise(r => setTimeout(r, 500));
 
-    // --- フロアの約50%を溶岩で覆う ---
+    // === フェーズ4: 渦巻き溶岩 ===
     spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) + 2, "HELLFIRE SURGE!", "#ef4444");
     SOUNDS.FATAL();
 
-    const floorTiles = [];
+    // 渦巻きの中心をドラゴン頭付近に設定
+    const cx = dragon ? dragon.x : Math.floor(COLS / 2);
+    const cy = dragon ? dragon.y + 1 : Math.floor(ROWS / 2);
+    const swirlFactor = 0.5; // 渦の密度（大きいほど巻きがきつい）
+
     for (let y = 1; y < ROWS - 1; y++) {
         for (let x = 1; x < COLS - 1; x++) {
-            if (map[y][x] === SYMBOLS.FLOOR) floorTiles.push({x, y});
+            if (map[y][x] !== SYMBOLS.FLOOR) continue;
+            // プレイヤー周囲2マスは除外
+            if (Math.abs(x - player.x) <= 2 && Math.abs(y - player.y) <= 2) continue;
+            // ドラゴン周囲3マスは除外
+            if (dragon && Math.abs(x - dragon.x) <= 3 && Math.abs(y - dragon.y) <= 2) continue;
+
+            const dx = x - cx;
+            const dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+            // 渦巻き値: 角度 + 距離×係数（アルキメデス螺旋ベース）
+            const swirl = ((angle + dist * swirlFactor) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+            // 渦の「腕」部分（約55%）を溶岩に
+            if (swirl < Math.PI * 1.1) {
+                map[y][x] = SYMBOLS.LAVA;
+            }
         }
-    }
-    // シャッフルして50%選ぶ
-    for (let i = floorTiles.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [floorTiles[i], floorTiles[j]] = [floorTiles[j], floorTiles[i]];
-    }
-    const lavaCount = Math.floor(floorTiles.length * 0.5);
-    const lavaSet = new Set();
-    for (let i = 0; i < lavaCount; i++) {
-        const t = floorTiles[i];
-        // プレイヤーの足元と周囲1マスは除外
-        if (Math.abs(t.x - player.x) <= 1 && Math.abs(t.y - player.y) <= 1) continue;
-        // ドラゴン位置も除外
-        if (dragon && Math.abs(t.x - dragon.x) <= 3 && Math.abs(t.y - dragon.y) <= 3) continue;
-        map[t.y][t.x] = SYMBOLS.LAVA;
-        lavaSet.add(`${t.x},${t.y}`);
     }
 
     setScreenShake(30, 600);
     draw();
     await new Promise(r => setTimeout(r, 400));
 
-    addLog("🔥 The Dragon's fury scorches the floor — LAVA floods the dungeon!");
+    addLog("🔥 The Dragon's fury scorches the floor — LAVA spirals through the dungeon!");
     updateUI();
 }
 
