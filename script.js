@@ -10654,17 +10654,9 @@ async function dragonDeathAnimation(dragon) {
         // 画面震動：徐々に激しく
         setScreenShake(Math.floor(20 + progress * 65), 200);
 
-        // 点滅周期：序盤は速く（150ms）→終盤はゆっくり（500ms）
+        // 点滅のみ（フェードなし）：序盤は速く→終盤はゆっくり
         const blinkInterval = 150 + progress * 350;
-        const blinkOn = Math.floor(elapsed / blinkInterval) % 2 === 0;
-
-        // フェードアウト：最後の1.5秒で完全に消える
-        const fadeStartAt = totalMs - 1500;
-        const maxAlpha = elapsed < fadeStartAt
-            ? 1.0
-            : 1.0 - (elapsed - fadeStartAt) / 1500;
-
-        dragon.alpha = blinkOn ? Math.max(0, maxAlpha) : 0;
+        dragon.alpha = Math.floor(elapsed / blinkInterval) % 2 === 0 ? 1.0 : 0;
 
         // 500msごとに低音インパクトを追加
         if (elapsed - lastRumble > 500) {
@@ -10676,9 +10668,9 @@ async function dragonDeathAnimation(dragon) {
         await new Promise(r => setTimeout(r, 16));
     }
 
-    dragon.alpha = 0;
+    // 点滅を止めて表示させたまま白フラッシュへ（フラッシュで隠れる瞬間に消える）
+    dragon.alpha = 1.0;
     draw();
-    await new Promise(r => setTimeout(r, 80));
 
     // === 白フラッシュ＋完全無音（約1秒）===
     // BGM・SE を即座に停止
@@ -10687,7 +10679,8 @@ async function dragonDeathAnimation(dragon) {
         audioCtx.suspend();
     }
 
-    // 純白で画面を覆う
+    // 純白で画面を覆う瞬間にドラゴンを消す
+    dragon.alpha = 0;
     transition.flashAlpha = 1.0;
     transition.flashColor = '#ffffff';
     draw();
