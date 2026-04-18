@@ -27,12 +27,13 @@ body {
     flex-direction: column;
     gap: 10px;
     border: 1px solid var(--border-color);
-    padding: 20px;
+    padding: 20px 240px;
 }
 
 .stats-bar {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
     font-size: 14px;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--border-color);
@@ -42,6 +43,21 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.stats-group-right {
+    text-align: right;
+}
+
+.stats-group-right .equip-row {
+    justify-content: flex-end;
+}
+
+.stats-center {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 2px;
 }
 
 .equip-row {
@@ -94,11 +110,10 @@ body {
 
 #minimap {
     display: none;
-    margin-top: 6px;
-    line-height: 1.15;
-    letter-spacing: 1px;
-    font-size: 10px;
-    text-align: right;
+    line-height: 1.2;
+    letter-spacing: 2px;
+    font-size: 11px;
+    text-align: center;
     white-space: normal;
 }
 
