@@ -10616,7 +10616,8 @@ function tryPlaceBlock(dx, dy) {
 }
 
 async function slideIceBlock(block, dx, dy) {
-    const trailTiles = new Set([SYMBOLS.FLOOR, SYMBOLS.LAVA, SYMBOLS.POISON, SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS]);
+    // freezable: 通過時にICEに変換するタイル（LAVAは変換しない→溶岩の上で滑り続けるのを防ぐ）
+    const freezable = new Set([SYMBOLS.FLOOR, SYMBOLS.POISON, SYMBOLS.FIRE_FLOOR, SYMBOLS.GRASS]);
     while (true) {
         const nx = block.x + dx;
         const ny = block.y + dy;
@@ -10629,8 +10630,8 @@ async function slideIceBlock(block, dx, dy) {
         // 敵・ウィスプにぶつかったらストップ（ダメージなし）
         if (enemies.some(e => e.x === nx && e.y === ny)) break;
         if (wisps.some(w => w.x === nx && w.y === ny)) break;
-        // 通過したマスを氷の床に変換（溶岩・毒沼・通常床など）
-        if (trailTiles.has(map[block.y][block.x])) map[block.y][block.x] = SYMBOLS.ICE;
+        // 通過したマスをICEに変換（溶岩は変換しない）
+        if (freezable.has(map[block.y][block.x])) map[block.y][block.x] = SYMBOLS.ICE;
         block.x = nx;
         block.y = ny;
         await new Promise(r => setTimeout(r, 55));
