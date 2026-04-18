@@ -10631,6 +10631,56 @@ async function slideIceBlock(block, dx, dy) {
     addLog("The ice block slides!");
 }
 
+// ドラゴン死亡時の演出（5秒間の震動＋点滅フェードアウト）
+async function dragonDeathAnimation(dragon) {
+    addLog("⚠ The Dragon writhes — a final, earth-shattering death cry!");
+    spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) - 2, "THE DRAGON FALLS!!", "#ef4444");
+
+    // 低音を5秒以上鳴らし続ける（複数レイヤーで厚みを出す）
+    playSound(28, 'sawtooth', 6.0, 0.45);
+    playSound(42, 'sine',    6.0, 0.30);
+    playSound(20, 'sawtooth', 6.0, 0.20);
+
+    const totalMs = 5000;
+    const start = performance.now();
+    let lastRumble = 0;
+
+    while (true) {
+        const elapsed = performance.now() - start;
+        if (elapsed >= totalMs) break;
+
+        const progress = elapsed / totalMs; // 0→1
+
+        // 画面震動：徐々に激しく
+        setScreenShake(Math.floor(20 + progress * 65), 200);
+
+        // 点滅周期：序盤は速く（150ms）→終盤はゆっくり（500ms）
+        const blinkInterval = 150 + progress * 350;
+        const blinkOn = Math.floor(elapsed / blinkInterval) % 2 === 0;
+
+        // フェードアウト：最後の1.5秒で完全に消える
+        const fadeStartAt = totalMs - 1500;
+        const maxAlpha = elapsed < fadeStartAt
+            ? 1.0
+            : 1.0 - (elapsed - fadeStartAt) / 1500;
+
+        dragon.alpha = blinkOn ? Math.max(0, maxAlpha) : 0;
+
+        // 500msごとに低音インパクトを追加
+        if (elapsed - lastRumble > 500) {
+            playSound(22 + Math.random() * 16, 'sawtooth', 0.55, 0.30);
+            lastRumble = elapsed;
+        }
+
+        draw();
+        await new Promise(r => setTimeout(r, 16));
+    }
+
+    dragon.alpha = 0;
+    draw();
+    await new Promise(r => setTimeout(r, 300));
+}
+
 // ドラゴンHP50%時の咆吼フェーズ演出
 async function dragonHalfPhase() {
     dragonHalfPhaseTriggered = true;
@@ -13333,6 +13383,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
 
     // ドラゴン撃破時にBGMを停止
     if (enemy.type === 'DRAGON') {
+        await dragonDeathAnimation(enemy);
         stopBGM();
     }
 
