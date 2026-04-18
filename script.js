@@ -6109,15 +6109,15 @@ function initMap() {
     // ===== 78F: FACTION WAR - The Killing Fields =====
     if (floorLevel === 78) {
         addLog("⚔️ EVENT: FACTION WAR — The Killing Fields.");
-        addLog("Two armies of E collide. GREEN vs PURPLE.");
+        addLog("GREEN army charges from the left. PURPLE army from the right.");
 
         // 全面を床にする（モンスターハウス）
         for (let y = 1; y < ROWS - 1; y++)
             for (let x = 1; x < COLS - 1; x++)
                 map[y][x] = SYMBOLS.FLOOR;
 
-        // 岩場・瓦礫（遮蔽物）をランダム配置
-        for (let i = 0; i < 18; i++) {
+        // 瓦礫（遮蔽物）をランダム配置（中央寄りに多め）
+        for (let i = 0; i < 20; i++) {
             const px = Math.floor(Math.random() * (COLS - 10)) + 5;
             const py = Math.floor(Math.random() * (ROWS - 6)) + 3;
             map[py][px] = SYMBOLS.WALL;
@@ -6126,7 +6126,7 @@ function initMap() {
             if (Math.random() < 0.35) map[py + 1][px + 1] = SYMBOLS.WALL;
         }
 
-        // プレイヤーを左端中央に配置、周囲を安全地帯に
+        // プレイヤーを左端中央に配置、周囲3×3を安全地帯に
         player.x = 2;
         player.y = Math.floor(ROWS / 2);
         for (let dy = -2; dy <= 2; dy++)
@@ -6136,7 +6136,7 @@ function initMap() {
                     map[cy][cx] = SYMBOLS.FLOOR;
             }
 
-        // 出口を右端中央に配置、周囲を安全地帯に
+        // 出口を右端中央に配置
         const stX = COLS - 3, stY = Math.floor(ROWS / 2);
         for (let dy = -1; dy <= 1; dy++)
             for (let dx = -1; dx <= 1; dx++) {
@@ -6148,58 +6148,45 @@ function initMap() {
 
         const midX = Math.floor(COLS / 2);
 
-        // ---- CRIMSON 派閥: NORMAL大量（左寄りに配置、緑色で表示）----
-        for (let i = 0; i < 20; i++) {
-            for (let t = 0; t < 120; t++) {
-                const ex = Math.random() < 0.68
-                    ? Math.floor(Math.random() * (midX - 5)) + 4
-                    : Math.floor(Math.random() * (COLS - 8)) + 4;
-                const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
-                if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
-                if (enemies.some(e => e.x === ex && e.y === ey)) continue;
-                if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 7) continue;
-                enemies.push({ type: 'NORMAL', x: ex, y: ey,
-                    hp: 8 + floorLevel, maxHp: 8 + floorLevel,
-                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0,
-                    faction: 'CRIMSON' });
-                break;
-            }
-        }
-
-        // ---- COBALT 派閥: NORMAL大量（右寄りに配置、紫色で表示）----
-        for (let i = 0; i < 20; i++) {
-            for (let t = 0; t < 120; t++) {
-                const ex = Math.random() < 0.68
-                    ? Math.floor(Math.random() * (COLS - midX - 5)) + midX + 2
-                    : Math.floor(Math.random() * (COLS - 8)) + 4;
-                const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
-                if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
-                if (enemies.some(e => e.x === ex && e.y === ey)) continue;
-                if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 7) continue;
-                enemies.push({ type: 'NORMAL', x: ex, y: ey,
-                    hp: 8 + floorLevel, maxHp: 8 + floorLevel,
-                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0,
-                    faction: 'COBALT' });
-                break;
-            }
-        }
-
-        // アイテム（WANDは配置しない）
-        const items78 = [
-            SYMBOLS.SWORD, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.ARMOR,
-            SYMBOLS.HEAL_TOME, SYMBOLS.SPEED, SYMBOLS.ESCAPE, SYMBOLS.CHARM
-        ];
-        for (let i = 0; i < 8; i++) {
-            for (let t = 0; t < 80; t++) {
-                const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
-                const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
-                if (map[iy][ix] === SYMBOLS.FLOOR) {
-                    map[iy][ix] = items78[Math.floor(Math.random() * items78.length)];
+        // 敵配置ヘルパー：指定X範囲に配置
+        const place = (xMin, xMax, type, faction, count) => {
+            const expV = type === 'ORC' ? 40 : type === 'LAYER' ? 20 : 5;
+            const hpBase = type === 'ORC'   ? 40 + floorLevel * 5
+                         : type === 'LAYER' ? 30 + floorLevel * 3
+                         :                   8  + floorLevel;
+            for (let i = 0; i < count; i++) {
+                for (let t = 0; t < 200; t++) {
+                    const ex = Math.floor(Math.random() * (xMax - xMin)) + xMin;
+                    const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                    if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
+                    if (enemies.some(en => en.x === ex && en.y === ey)) continue;
+                    if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 4) continue;
+                    enemies.push({ type, x: ex, y: ey,
+                        hp: hpBase, maxHp: hpBase,
+                        flashUntil: 0, offsetX: 0, offsetY: 0,
+                        expValue: expV, stunTurns: 0, faction });
                     break;
                 }
             }
-        }
+        };
 
+        // ---- CRIMSON 派閥（緑）----
+        // E: 左壁際（x 2〜9）に密集
+        place(2, 9, 'NORMAL', 'CRIMSON', 25);
+        // G: 左寄り中間（x 8〜midX-3）
+        place(8, midX - 3, 'ORC', 'CRIMSON', 4);
+        // L: 中央左寄り（x midX-7〜midX-2）
+        place(midX - 7, midX - 2, 'LAYER', 'CRIMSON', 1);
+
+        // ---- COBALT 派閥（紫）----
+        // E: 右壁際（x COLS-10〜COLS-3）に密集
+        place(COLS - 10, COLS - 3, 'NORMAL', 'COBALT', 25);
+        // G: 右寄り中間（x midX+3〜COLS-9）
+        place(midX + 3, COLS - 9, 'ORC', 'COBALT', 4);
+        // L: 中央右寄り（x midX+2〜midX+7）
+        place(midX + 2, midX + 7, 'LAYER', 'COBALT', 1);
+
+        // アイテムなし
         return;
     }
 
@@ -14614,24 +14601,48 @@ async function enemyTurn() {
         // 眠り状態: プレイヤーに攻撃されるまで行動しない
         if (e.sleeping) continue;
 
-        // 派閥戦争: 異なる派閥の隣接敵を優先攻撃（プレイヤーは攻撃しない）
+        // 派閥戦争: 異なる派閥の敵を遠距離探知して優先追跡・攻撃（プレイヤーは攻撃しない）
         if (e.faction && !e.isAlly) {
-            const factionTarget = enemies.find(t =>
-                t !== e && !t._dead && t.hp > 0 && t.faction && t.faction !== e.faction &&
-                Math.abs(t.x - e.x) <= 1 && Math.abs(t.y - e.y) <= 1
-            );
+            // 全マップから最も近い異派閥の敵を探す
+            let factionTarget = null, factionDist = 999;
+            for (const t of enemies) {
+                if (t === e || t._dead || t.hp <= 0 || !t.faction || t.faction === e.faction) continue;
+                const d = Math.abs(t.x - e.x) + Math.abs(t.y - e.y);
+                if (d < factionDist) { factionDist = d; factionTarget = t; }
+            }
             if (factionTarget) {
-                const atkPow = Math.max(1, (e.type === 'ORC' ? 8 : e.type === 'BREAKER' ? 6 : e.type === 'BLAZE' ? 5 : 3) + Math.floor(floorLevel / 20));
-                factionTarget.hp -= atkPow;
-                factionTarget.flashUntil = performance.now() + 150;
-                e.offsetX = (factionTarget.x - e.x) * 8;
-                e.offsetY = (factionTarget.y - e.y) * 8;
-                spawnDamageText(factionTarget.x, factionTarget.y, atkPow, e.faction === 'CRIMSON' ? '#4ade80' : '#a855f7');
-                SOUNDS.ENEMY_ATTACK();
-                await new Promise(r => setTimeout(r, 80));
-                e.offsetX = 0; e.offsetY = 0;
-                if (factionTarget.hp <= 0) handleEnemyDeath(factionTarget, false);
-                continue;
+                if (factionDist <= 1) {
+                    // 隣接 → 攻撃
+                    const atkPow = Math.max(1, (e.type === 'ORC' ? 8 : e.type === 'BREAKER' ? 6 : e.type === 'BLAZE' ? 5 : e.type === 'LAYER' ? 4 : 3) + Math.floor(floorLevel / 20));
+                    factionTarget.hp -= atkPow;
+                    factionTarget.flashUntil = performance.now() + 150;
+                    e.offsetX = (factionTarget.x - e.x) * 8;
+                    e.offsetY = (factionTarget.y - e.y) * 8;
+                    spawnDamageText(factionTarget.x, factionTarget.y, atkPow, e.faction === 'CRIMSON' ? '#4ade80' : '#a855f7');
+                    SOUNDS.ENEMY_ATTACK();
+                    await new Promise(r => setTimeout(r, 80));
+                    e.offsetX = 0; e.offsetY = 0;
+                    if (factionTarget.hp <= 0) handleEnemyDeath(factionTarget, false);
+                } else {
+                    // 遠い → 異派閥敵に向かって1マス移動
+                    const fdx = factionTarget.x - e.x, fdy = factionTarget.y - e.y;
+                    const fsx = fdx === 0 ? 0 : fdx / Math.abs(fdx);
+                    const fsy = fdy === 0 ? 0 : fdy / Math.abs(fdy);
+                    const canStep = (nx, ny) => canEnemyMove(nx, ny, e) && !enemies.some(o => o !== e && o.x === nx && o.y === ny);
+                    let fmoved = false;
+                    if (Math.abs(fdx) > Math.abs(fdy)) {
+                        if (canStep(e.x + fsx, e.y))       { e.x += fsx; fmoved = true; }
+                        else if (canStep(e.x, e.y + fsy))  { e.y += fsy; fmoved = true; }
+                        else if (canStep(e.x - fsx, e.y))  { e.x -= fsx; fmoved = true; }
+                        else if (canStep(e.x, e.y - fsy))  { e.y -= fsy; fmoved = true; }
+                    } else {
+                        if (canStep(e.x, e.y + fsy))       { e.y += fsy; fmoved = true; }
+                        else if (canStep(e.x + fsx, e.y))  { e.x += fsx; fmoved = true; }
+                        else if (canStep(e.x, e.y - fsy))  { e.y -= fsy; fmoved = true; }
+                        else if (canStep(e.x - fsx, e.y))  { e.x -= fsx; fmoved = true; }
+                    }
+                }
+                continue; // プレイヤーへの行動はしない
             }
         }
 
