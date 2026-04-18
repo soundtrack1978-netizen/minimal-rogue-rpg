@@ -10841,11 +10841,14 @@ async function dragonHalfPhase() {
     spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) + 2, "HELLFIRE SURGE!", "#ef4444");
     SOUNDS.FATAL();
 
-    // 氷タイル（氷ブロックのスライド跡など）をすべてFLOORに戻す
-    // → 溶岩生成の対象になるようにする（氷の上でも溶岩が広がる）
+    // 氷タイルはすべて直接LAVAに変換（溶岩が氷を溶かす）
+    // プレイヤーとドラゴンの周囲だけは除外
     for (let y = 1; y < ROWS - 1; y++) {
         for (let x = 1; x < COLS - 1; x++) {
-            if (map[y][x] === SYMBOLS.ICE) map[y][x] = SYMBOLS.FLOOR;
+            if (map[y][x] !== SYMBOLS.ICE) continue;
+            if (Math.abs(x - player.x) <= 2 && Math.abs(y - player.y) <= 2) continue;
+            if (dragon && Math.abs(x - dragon.x) <= 3 && Math.abs(y - dragon.y) <= 2) continue;
+            map[y][x] = SYMBOLS.LAVA;
         }
     }
 
