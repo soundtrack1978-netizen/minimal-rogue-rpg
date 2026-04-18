@@ -807,6 +807,7 @@ let enemies = [];
 let wisps = []; // {x, y, dirIndex} - 無敵の障害物
 let movingFairies = []; // {x, y, screenX, screenY} - マルチスクリーン用自律移動妖精
 let movingMadmen = []; // {x, y, screenX, screenY, hp, ...} - マルチスクリーン追跡狂人
+let travelingAllies = []; // isAlly=true の仲間敵：画面をまたいでプレイヤーについてくる
 let floorLevel = 1;
 let maxReachedFloor = 1; // 最高到達階層
 let pendingF4Tutorial = false;
@@ -1224,6 +1225,7 @@ function initMap() {
     wisps = []; // ウィルをリセット
     movingFairies = []; // 妖精をリセット
     movingMadmen = []; // 狂人をリセット
+    travelingAllies = []; // 仲間をリセット
     player.hasKey = false;
     player.isStealth = false; // フロア移動で解除
     player.isInfiniteStamina = false; // フロア移動で解除
@@ -1290,7 +1292,9 @@ function initMap() {
             })();
             const _rs = Math.random(), _ss = Math.random();
             // 敵の出現比率（累積閾値: TURRET / TURRET+ORC / TURRET+ORC+BREAKER）
-            const _eStyle = Math.floor(Math.random() * 5);
+            // TURRET要塞(2)の出現を減らすため非均等プール
+            const _eStylePool = [0, 1, 3, 4, 0, 1, 3, 4, 2];
+            const _eStyle = _eStylePool[Math.floor(Math.random() * _eStylePool.length)];
             const _eT = [
                 [0.30, 0.60, 0.80], // 強敵混合
                 [0.03, 0.08, 0.73], // BREAKER支配
@@ -2453,8 +2457,8 @@ function initMap() {
                     addLog(`⚠️ A strange aura... "${bizNames[result.bizType] || '???'}"`);
                     continue;
                 }
-                // ===== POISON WASTELAND スクリーン (90+F: 非特殊画面に約6%で出現) =====
-                if (floorLevel >= 90 && !isSpecial && Math.random() < 0.06) {
+                // ===== POISON WASTELAND スクリーン (90+F: 非特殊画面に約2%で出現) =====
+                if (floorLevel >= 90 && !isSpecial && Math.random() < 0.02) {
                     const pwMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
                     const pwEnemies = [];
 
@@ -2610,8 +2614,8 @@ function initMap() {
                     continue;
                 }
 
-                // ===== TURRET GAUNTLET スクリーン (90+F: 非特殊画面に約10%で出現) =====
-                if (floorLevel >= 90 && !isSpecial && Math.random() < 0.10) {
+                // ===== TURRET GAUNTLET スクリーン (90+F: 非特殊画面に約3%で出現) =====
+                if (floorLevel >= 90 && !isSpecial && Math.random() < 0.03) {
                     const tgMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
                     const tgEnemies = [];
 
@@ -8944,6 +8948,14 @@ function toughDmg(d) {
 function dragonFireResist(dmg) {
     return Math.max(1, Math.floor(dmg * 0.20));
 }
+// 指定座標に溶岩が生成された時、その上にある氷ブロックを溶かして消す
+function meltIceBlockAt(x, y) {
+    const idx = tempWalls.findIndex(w => w.x === x && w.y === y && w.type === 'ICE_BLOCK');
+    if (idx !== -1) {
+        tempWalls.splice(idx, 1);
+        spawnFloatingText(x, y, "MELTED!", '#fb923c');
+    }
+}
 
 // ─── DQ1-style UI Helpers ────────────────────────────────────────
 function drawDQWindow(x, y, w, h) {
@@ -10055,7 +10067,7 @@ function draw(now) {
 
         // 3. エネミー
         enemies.forEach(e => {
-            if (e.hp <= 0) return;
+            if (e.hp <= 0 && !e.dyingAnimation) return;
             // 擬態中のミミックは敵として描画しない（マップのSTAIRSタイルとして見える）
             // ただし変身演出中は点滅させる
             // FAIRY_MIMIC: 擬態中は妖精として描画（ゆっくり脈動）
@@ -10624,24 +10636,36 @@ async function slideIceBlock(block, dx, dy) {
         // マップ端・壁でストップ
         if (nx < 1 || nx >= COLS - 1 || ny < 1 || ny >= ROWS - 1) break;
         if (map[ny][nx] === SYMBOLS.WALL) break;
+        // 溶岩に触れたら氷ブロックは溶けて消滅
+        if (map[ny][nx] === SYMBOLS.LAVA || fireFloors.some(f => f.x === nx && f.y === ny)) {
+            const idx = tempWalls.indexOf(block);
+            if (idx !== -1) tempWalls.splice(idx, 1);
+            spawnFloatingText(nx, ny, "MELTED!", '#fb923c');
+            playSound(220, 'sine', 0.4, 0.3);
+            draw();
+            addLog("The ice block melts in the lava!");
+            return;
+        }
         // 他の tempWall・爆弾でストップ
         if (tempWalls.some(w => w !== block && w.x === nx && w.y === ny)) break;
         if (bombs.some(b => b !== block && b.x === nx && b.y === ny)) break;
         // 敵・ウィスプにぶつかったらストップ（ダメージなし）
         if (enemies.some(e => e.x === nx && e.y === ny)) break;
         if (wisps.some(w => w.x === nx && w.y === ny)) break;
-        // 通過したマスをICEに変換（溶岩は変換しない）
-        // ドラゴンHP50%演出後（溶岩フェーズ中）は一切ICEを生成しない
-        if (!dragonHalfPhaseTriggered && freezable.has(map[block.y][block.x])) map[block.y][block.x] = SYMBOLS.ICE;
+        // 通過したマスをICEに変換（LAVAは freezable に含まれないので自動的にスキップ）
+        if (freezable.has(map[block.y][block.x])) map[block.y][block.x] = SYMBOLS.ICE;
         block.x = nx;
         block.y = ny;
+        draw();
         await new Promise(r => setTimeout(r, 55));
     }
     addLog("The ice block slides!");
 }
 
-// ドラゴン死亡時の演出（5秒間の震動＋点滅フェードアウト）
+// ドラゴン死亡時の演出（5秒間の震動＋白フラッシュで消滅）
 async function dragonDeathAnimation(dragon) {
+    dragon.dyingAnimation = true; // HP0でも描画を維持するフラグ
+    dragon.alpha = 1.0;
     addLog("⚠ The Dragon writhes — a final, earth-shattering death cry!");
     spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) - 2, "THE DRAGON FALLS!!", "#ef4444");
 
@@ -10663,9 +10687,8 @@ async function dragonDeathAnimation(dragon) {
         // 画面震動：徐々に激しく
         setScreenShake(Math.floor(20 + progress * 65), 200);
 
-        // 点滅のみ（フェードなし）：序盤は速く→終盤はゆっくり
-        const blinkInterval = 150 + progress * 350;
-        dragon.alpha = Math.floor(elapsed / blinkInterval) % 2 === 0 ? 1.0 : 0;
+        // 点滅なし — ドラゴンは白フラッシュまで表示したまま
+        dragon.alpha = 1.0;
 
         // 500msごとに低音インパクトを追加
         if (elapsed - lastRumble > 500) {
@@ -10696,6 +10719,7 @@ async function dragonDeathAnimation(dragon) {
     // 白画面が続く中盤（1秒後）にドラゴンを消す
     await new Promise(r => setTimeout(r, 1000));
     dragon.alpha = 0;
+    dragon.dyingAnimation = false;
 
     // さらに1.5秒白画面を維持
     await new Promise(r => setTimeout(r, 1500));
@@ -10707,6 +10731,15 @@ async function dragonDeathAnimation(dragon) {
         audioCtx.resume();
     }
     draw();
+
+    // ドラゴン消滅から3秒後にダンジョンコアを自動破壊してエンディングへ
+    await new Promise(r => setTimeout(r, 3000));
+    if (dungeonCore) {
+        dungeonCore.hp = 0;
+        map[dungeonCore.y][dungeonCore.x] = SYMBOLS.FLOOR;
+    }
+    stopBGM();
+    await triggerEnding();
 }
 
 // ドラゴンHP50%時の咆吼フェーズ演出
@@ -10843,13 +10876,13 @@ async function dragonHalfPhase() {
     SOUNDS.FATAL();
 
     // 氷タイルはすべて直接LAVAに変換（溶岩が氷を溶かす）
-    // プレイヤーとドラゴンの周囲だけは除外
+    // プレイヤー除外なし — ドラゴン周囲のみ除外
     for (let y = 1; y < ROWS - 1; y++) {
         for (let x = 1; x < COLS - 1; x++) {
             if (map[y][x] !== SYMBOLS.ICE) continue;
-            if (Math.abs(x - player.x) <= 2 && Math.abs(y - player.y) <= 2) continue;
             if (dragon && Math.abs(x - dragon.x) <= 3 && Math.abs(y - dragon.y) <= 2) continue;
             map[y][x] = SYMBOLS.LAVA;
+            meltIceBlockAt(x, y);
         }
     }
 
@@ -10878,6 +10911,7 @@ async function dragonHalfPhase() {
             const val = w1 + w2 + w3 + w4 + hash;
             if (val > 0.08) {
                 map[y][x] = SYMBOLS.LAVA;
+                meltIceBlockAt(x, y);
             }
         }
     }
@@ -11085,7 +11119,11 @@ async function dragonWaveAttack(wave = 1) {
     // シャッフルしてランダムな順番で出現
     newFires.sort(() => Math.random() - 0.5);
     for (let i = 0; i < newFires.length; i++) {
-        fireFloors.push({ x: newFires[i].x, y: newFires[i].y, life: 9999 });
+        const nf = newFires[i];
+        fireFloors.push({ x: nf.x, y: nf.y, life: 9999 });
+        // map タイルも LAVA に更新（slidePlayer・tryPlaceBlock などの判定を正しく機能させる）
+        map[nf.y][nf.x] = SYMBOLS.LAVA;
+        meltIceBlockAt(nf.x, nf.y);
         if (i % 2 === 0) {
             draw();
             await new Promise(r => setTimeout(r, 18));
@@ -11980,10 +12018,13 @@ async function handleAction(dx, dy) {
             }
 
             if (canTransition) {
-                // 現在の画面データを保存（MADMANはmovingMadmenへ）
+                // 現在の画面データを保存（MADMANはmovingMadmenへ、仲間はtravelingAlliesへ）
                 const leavingMadmen = enemies.filter(e => e.type === 'MADMAN');
                 leavingMadmen.forEach(m => movingMadmen.push({ ...m, screenX: currentScreen.x, screenY: currentScreen.y }));
-                enemies = enemies.filter(e => e.type !== 'MADMAN');
+                // isAlly な仲間を画面遷移でプレイヤーに追従させる
+                const leavingAllies = enemies.filter(e => e.isAlly && e.type !== 'MADMAN');
+                leavingAllies.forEach(a => travelingAllies.push({ ...a }));
+                enemies = enemies.filter(e => e.type !== 'MADMAN' && !e.isAlly);
                 screenGrid.maps[currentScreen.y][currentScreen.x] = map;
                 screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies;
                 screenGrid.wisps[currentScreen.y][currentScreen.x] = wisps;
@@ -12016,11 +12057,35 @@ async function handleAction(dx, dy) {
                 player.x = newPlayerX;
                 player.y = newPlayerY;
 
-                // 出現位置周辺の敵・ウィスプを排除
-                enemies = enemies.filter(e => !(Math.abs(e.x - newPlayerX) <= 1 && Math.abs(e.y - newPlayerY) <= 1));
+                // 出現位置周辺の敵・ウィスプを排除（仲間は除外）
+                enemies = enemies.filter(e => e.isAlly || !(Math.abs(e.x - newPlayerX) <= 1 && Math.abs(e.y - newPlayerY) <= 1));
                 wisps = wisps.filter(w => !(Math.abs(w.x - newPlayerX) <= 1 && Math.abs(w.y - newPlayerY) <= 1));
                 screenGrid.enemies[newScreenY][newScreenX] = enemies;
                 screenGrid.wisps[newScreenY][newScreenX] = wisps;
+
+                // 仲間をフィルター後にプレイヤー近くの空きマスへ配置
+                const allyDirs = [{x:0,y:1},{x:1,y:0},{x:-1,y:0},{x:0,y:-1},{x:1,y:1},{x:-1,y:1},{x:1,y:-1},{x:-1,y:-1}];
+                for (const ally of travelingAllies) {
+                    let placed = false;
+                    for (const d of allyDirs) {
+                        const ax = newPlayerX + d.x, ay = newPlayerY + d.y;
+                        if (ax < 1 || ax >= COLS - 1 || ay < 1 || ay >= ROWS - 1) continue;
+                        if (map[ay][ax] !== SYMBOLS.FLOOR && map[ay][ax] !== SYMBOLS.ICE) continue;
+                        if (enemies.some(e => e.x === ax && e.y === ay)) continue;
+                        ally.x = ax; ally.y = ay;
+                        ally.offsetX = 0; ally.offsetY = 0;
+                        enemies.push(ally);
+                        placed = true;
+                        break;
+                    }
+                    if (!placed) {
+                        ally.x = newPlayerX; ally.y = newPlayerY;
+                        ally.offsetX = 0; ally.offsetY = 0;
+                        enemies.push(ally);
+                    }
+                }
+                travelingAllies = [];
+                screenGrid.enemies[newScreenY][newScreenX] = enemies;
 
                 // 出現位置が壁や障害物なら床にする
                 if (map[newPlayerY][newPlayerX] !== SYMBOLS.FLOOR) {
@@ -12332,8 +12397,8 @@ async function handleAction(dx, dy) {
         }
         SOUNDS.MOVE();
         player.stamina = Math.min(100, player.stamina + (hasRing('GOLEM_RING') ? 10 : 20));
-    } else if (victim && victim.isAlly && victim.type === 'TURRET') {
-        // 味方タレットには何もしない（攻撃も入れ替わりもしない）
+    } else if (victim && victim.isAlly) {
+        // 仲間には攻撃しない（入れ替わりのみ）
         player.offsetX = dx * 5; player.offsetY = dy * 5;
         await new Promise(r => setTimeout(r, 50));
         player.offsetX = 0; player.offsetY = 0;
@@ -12751,11 +12816,7 @@ async function handleAction(dx, dy) {
         await triggerStage1StaminaTutorial();
     }
 
-    // ゴーレム（G）接近チュートリアル（2マス以内に初めて接近した時）
-    if (!hasShownGolemTut && enemies.some(e => e.type === 'ORC' && e.hp > 0 &&
-        Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 2)) {
-        await triggerGolemEvent();
-    }
+
 
     // 4F BREAKERチュートリアル（前のターンにBREAKERが壁を壊したら次のアクション開始時に表示）
     if (pendingF4BreakerTutorial && !pendingF4Tutorial) {
