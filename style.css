@@ -92,6 +92,16 @@ body {
     padding-bottom: 2px;
 }
 
+#minimap {
+    display: none;
+    margin-top: 6px;
+    line-height: 1.15;
+    letter-spacing: 1px;
+    font-size: 10px;
+    text-align: right;
+    white-space: normal;
+}
+
 .best-floor-panel span {
     color: #666;
     font-size: 13px;

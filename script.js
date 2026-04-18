@@ -912,6 +912,7 @@ let multiScreenMode = false;
 let screenGrid = null;               // { maps: [N][N], enemies: [N][N], wisps: [N][N] }
 let currentScreen = { x: 0, y: 0 };
 let screenGridSize = 2;
+let visitedScreens = null;           // 訪問済み画面フラグ [N][N]
 
 function setScreenShake(intensity, duration) {
     const end = performance.now() + duration;
@@ -1205,6 +1206,36 @@ function updateUI() {
             .filter(n => n);
         ringNode.innerText = names.length ? names.join('  /  ') : '';
     }
+
+    updateMinimap();
+}
+
+function updateMinimap() {
+    const el = document.getElementById('minimap');
+    if (!el) return;
+    if (!multiScreenMode || !visitedScreens) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+    el.style.display = 'block';
+    const N = screenGridSize;
+    let html = '';
+    for (let sy = 0; sy < N; sy++) {
+        for (let sx = 0; sx < N; sx++) {
+            const isCurrent = (sx === currentScreen.x && sy === currentScreen.y);
+            const isVisited = visitedScreens[sy][sx];
+            if (isCurrent) {
+                html += '<span style="color:#fbbf24">■</span>';
+            } else if (isVisited) {
+                html += '<span style="color:#666">■</span>';
+            } else {
+                html += '<span style="color:#2a2a2a">□</span>';
+            }
+        }
+        if (sy < N - 1) html += '<br>';
+    }
+    el.innerHTML = html;
 }
 
 function initMap() {
@@ -1243,6 +1274,7 @@ function initMap() {
     hasSpawnedGoldOn100 = false;
     multiScreenMode = false;
     screenGrid = null;
+    visitedScreens = null;
 
     // 商人出現判定 (約15階おき: 10F, 25F, 40F, 55F, 70F, 85F確定、±2Fは30%の確率)
     // ただし直前の商人出現から5F以内は出現しない
@@ -1279,6 +1311,9 @@ function initMap() {
             wind: Array.from({ length: screenGridSize }, () =>
                 Array.from({ length: screenGridSize }, () => false))
         };
+        // 訪問済みフラグ初期化（スタート画面[0,0]は訪問済み）
+        visitedScreens = Array.from({ length: screenGridSize }, () => Array(screenGridSize).fill(false));
+        visitedScreens[0][0] = true;
         // 深層テーマ: 101F+でフロアごとにランダムに変化するパラメータセット
         let deepTheme = null;
         if (floorLevel >= 101) {
@@ -12103,7 +12138,10 @@ async function handleAction(dx, dy) {
                 transition.active = false;
                 transition.alpha = 0;
 
+                // 新画面を訪問済みにしてミニマップ更新
+                if (visitedScreens) visitedScreens[newScreenY][newScreenX] = true;
                 updateUI();
+                updateMinimap();
                 SOUNDS.SCREEN_TRANSITION();
                 addLog(`Screen [${newScreenX},${newScreenY}]`);
 
