@@ -6109,7 +6109,7 @@ function initMap() {
     // ===== 78F: FACTION WAR - The Killing Fields =====
     if (floorLevel === 78) {
         addLog("⚔️ EVENT: FACTION WAR — The Killing Fields.");
-        addLog("CRIMSON and COBALT armies clash. Stay out of the crossfire.");
+        addLog("Two armies of E collide. GREEN vs PURPLE.");
 
         // 全面を床にする（モンスターハウス）
         for (let y = 1; y < ROWS - 1; y++)
@@ -6148,9 +6148,8 @@ function initMap() {
 
         const midX = Math.floor(COLS / 2);
 
-        // ---- CRIMSON 派閥: ORC + BREAKER + BLAZE（左寄りに配置）----
-        const crimsonPool = ['ORC','ORC','ORC','BREAKER','BREAKER','BLAZE','ORC','BREAKER','BLAZE','ORC','BREAKER','BLAZE','ORC','BREAKER'];
-        for (const type of crimsonPool) {
+        // ---- CRIMSON 派閥: NORMAL大量（左寄りに配置、緑色で表示）----
+        for (let i = 0; i < 20; i++) {
             for (let t = 0; t < 120; t++) {
                 const ex = Math.random() < 0.68
                     ? Math.floor(Math.random() * (midX - 5)) + 4
@@ -6159,20 +6158,16 @@ function initMap() {
                 if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
                 if (enemies.some(e => e.x === ex && e.y === ey)) continue;
                 if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 7) continue;
-                let hp, exp;
-                if (type === 'ORC')       { hp = 40 + floorLevel * 5; exp = 40; }
-                else if (type === 'BREAKER') { hp = 50 + floorLevel * 4; exp = 45; }
-                else                      { hp = 20 + floorLevel * 2; exp = 15; } // BLAZE
-                enemies.push({ type, x: ex, y: ey, hp, maxHp: hp,
-                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0,
+                enemies.push({ type: 'NORMAL', x: ex, y: ey,
+                    hp: 8 + floorLevel, maxHp: 8 + floorLevel,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0,
                     faction: 'CRIMSON' });
                 break;
             }
         }
 
-        // ---- COBALT 派閥: FROST + NORMAL + LAYER（右寄りに配置）----
-        const cobaltPool = ['FROST','NORMAL','FROST','NORMAL','NORMAL','FROST','FROST','NORMAL','FROST','NORMAL','NORMAL','LAYER','LAYER','FROST','NORMAL'];
-        for (const type of cobaltPool) {
+        // ---- COBALT 派閥: NORMAL大量（右寄りに配置、紫色で表示）----
+        for (let i = 0; i < 20; i++) {
             for (let t = 0; t < 120; t++) {
                 const ex = Math.random() < 0.68
                     ? Math.floor(Math.random() * (COLS - midX - 5)) + midX + 2
@@ -6181,23 +6176,20 @@ function initMap() {
                 if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
                 if (enemies.some(e => e.x === ex && e.y === ey)) continue;
                 if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 7) continue;
-                let hp, exp;
-                if (type === 'FROST')      { hp = 20 + floorLevel * 2; exp = 15; }
-                else if (type === 'LAYER') { hp = 30 + floorLevel * 3; exp = 25; }
-                else                      { hp = 8 + floorLevel;       exp = 5;  } // NORMAL
-                enemies.push({ type, x: ex, y: ey, hp, maxHp: hp,
-                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0,
+                enemies.push({ type: 'NORMAL', x: ex, y: ey,
+                    hp: 8 + floorLevel, maxHp: 8 + floorLevel,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0,
                     faction: 'COBALT' });
                 break;
             }
         }
 
-        // アイテムを戦場に散らす
+        // アイテム（WANDは配置しない）
         const items78 = [
             SYMBOLS.SWORD, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.ARMOR,
-            SYMBOLS.HEAL_TOME, SYMBOLS.SPEED, SYMBOLS.ESCAPE, SYMBOLS.CHARM, SYMBOLS.WAND
+            SYMBOLS.HEAL_TOME, SYMBOLS.SPEED, SYMBOLS.ESCAPE, SYMBOLS.CHARM
         ];
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 8; i++) {
             for (let t = 0; t < 80; t++) {
                 const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
                 const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
@@ -10330,9 +10322,9 @@ function draw(now) {
                     ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 20;
                 }
                 if (e.isAlly) eColor = '#60a5fa';
-                // 派閥グロー
-                if (e.faction === 'CRIMSON' && !e.isAlly) { ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 14; }
-                else if (e.faction === 'COBALT' && !e.isAlly) { ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 14; }
+                // 派閥カラーオーバーライド（文字色＋グロー）
+                if (e.faction === 'CRIMSON' && !e.isAlly) { eColor = '#4ade80'; ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 14; }
+                else if (e.faction === 'COBALT' && !e.isAlly) { eColor = '#a855f7'; ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 14; }
                 // 王の加護グロー（KINGが生存中は全非KING敵が金色にほんのり光る）
                 if (e.type !== 'KING' && !e.isAlly && enemies.some(k => k.type === 'KING' && k.hp > 0 && !k._dead)) {
                     ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = Math.max(ctx.shadowBlur, 8);
@@ -14634,7 +14626,7 @@ async function enemyTurn() {
                 factionTarget.flashUntil = performance.now() + 150;
                 e.offsetX = (factionTarget.x - e.x) * 8;
                 e.offsetY = (factionTarget.y - e.y) * 8;
-                spawnDamageText(factionTarget.x, factionTarget.y, atkPow, e.faction === 'CRIMSON' ? '#ef4444' : '#60a5fa');
+                spawnDamageText(factionTarget.x, factionTarget.y, atkPow, e.faction === 'CRIMSON' ? '#4ade80' : '#a855f7');
                 SOUNDS.ENEMY_ATTACK();
                 await new Promise(r => setTimeout(r, 80));
                 e.offsetX = 0; e.offsetY = 0;
