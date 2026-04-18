@@ -63,20 +63,20 @@ const SYMBOLS = {
 };
 
 const RINGS = [
-  { id: 'FIRE_RING',     name: 'Fire Ring',     nameJa: '炎の指輪',     desc: 'Nullify lava & fire damage',           descJa: '溶岩・炎床のダメージを無効化',       cost: 200, symbol: '◎' },
-  { id: 'POISON_RING',   name: 'Poison Ring',   nameJa: '毒の指輪',     desc: 'Halve poison stamina drain',           descJa: '毒沼のスタミナ減少を緩和',           cost: 120, symbol: '◎' },
-  { id: 'CRITICAL_RING', name: 'Critical Ring', nameJa: '会心の指輪',   desc: 'Critical hit chance 10% -> 20%',       descJa: '会心の一撃の確率が2倍に',             cost: 250, symbol: '◎' },
-  { id: 'STAMINA_RING',  name: 'Stamina Ring',  nameJa: '活力の指輪',   desc: 'Attack stamina cost 20 -> 12',         descJa: '攻撃時のスタミナ消費を軽減',         cost: 150, symbol: '◎' },
-  { id: 'KNOCKBACK_RING',name: 'Knockback Ring', nameJa: '突風の指輪',  desc: 'Attacks push enemies back 1 tile',     descJa: '攻撃で敵を1マス押し戻す',             cost: 500, symbol: '◎' },
-  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Recover 1 HP every turn',              descJa: '毎ターンHP1回復',                     cost: 200, symbol: '◎' },
-  { id: 'TOUGH_RING',    name: 'Tough Ring',    nameJa: '堅守の指輪',   desc: '+1 armor (damage reduction)',           descJa: '防御力+1（被ダメージ軽減）',          cost: 180, symbol: '◎' },
-  { id: 'BREAKER_RING',  name: 'Breaker Ring',  nameJa: '壁壊しの指輪', desc: 'Break 1 wall when stamina is full (costs all stamina)', descJa: 'スタミナ満タン時に壁を1マス破壊（スタミナ全消費）', cost: 300, symbol: '◎' },
-  { id: 'BOMB_RING',     name: 'Bomb Ring',     nameJa: '爆弾の指輪',   desc: 'Place bombs instead of blocks (explode in 5 turns)', descJa: 'ブロックの代わりに爆弾を設置（5ターンで爆発）', cost: 350, symbol: '◎' },
-  { id: 'STEALTH_RING',    name: 'Stealth Ring',    nameJa: '隠密の指輪',   desc: 'Reduces enemy detection range (8 -> 5)',                    descJa: '敵の探知範囲を狭める（8→5）',                      cost: 220, symbol: '◎' },
-  { id: 'ICE_BLOCK_RING',  name: 'Ice Block Ring',  nameJa: '氷塊の指輪',   desc: 'Place ice blocks that slide when attacked',                 descJa: '攻撃で滑る氷ブロックを設置',                         cost: 260, symbol: '◎' },
-  { id: 'STAR_RING',       name: 'Star Ring',       nameJa: '星の指輪',     desc: 'Place star blocks that shoot flames when attacked',         descJa: '攻撃で炎を発射する星ブロックを設置',                  cost: 400, symbol: '◎' },
-  { id: 'GOLEM_RING',     name: 'Golem Ring',      nameJa: 'ゴーレムの指輪', desc: 'At full stamina, attacks knock back enemies (Golem Smash!)', descJa: 'スタミナ満タン時の攻撃で敵を強制的に押し飛ばす',       cost: 450, symbol: '◎' },
-  { id: 'NECRO_RING',     name: 'Necro Ring',      nameJa: '死者活性の指輪', desc: 'Enemies you defeat are revived as your allies',              descJa: '倒した敵が仲間として蘇る',                             cost: 700, symbol: '◎' },
+  { id: 'FIRE_RING',     name: 'Fire Ring',     nameJa: '炎の指輪',     desc: 'Nullify lava & fire damage',           descJa: '溶岩・炎床のダメージを無効化',       cost: 200, symbol: '◎', color: '#ef4444' },
+  { id: 'POISON_RING',   name: 'Poison Ring',   nameJa: '毒の指輪',     desc: 'Nullifies all poison swamp effects',   descJa: '毒沼の効果を完全に無効化する',           cost: 120, symbol: '◎', color: '#a855f7' },
+  { id: 'CRITICAL_RING', name: 'Critical Ring', nameJa: '会心の指輪',   desc: 'Critical hit chance 10% -> 20%',       descJa: '会心の一撃の確率が2倍に',             cost: 250, symbol: '◎', color: '#fbbf24' },
+  { id: 'STAMINA_RING',  name: 'Stamina Ring',  nameJa: '活力の指輪',   desc: 'Attack stamina cost 20 -> 12',         descJa: '攻撃時のスタミナ消費を軽減',         cost: 150, symbol: '◎', color: '#f97316' },
+  { id: 'KNOCKBACK_RING',name: 'Knockback Ring', nameJa: '突風の指輪',  desc: 'Attacks push enemies back 1 tile',     descJa: '攻撃で敵を1マス押し戻す',             cost: 500, symbol: '◎', color: '#38bdf8' },
+  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Recover 1 HP every turn',              descJa: '毎ターンHP1回復',                     cost: 200, symbol: '◎', color: '#4ade80' },
+  { id: 'TOUGH_RING',    name: 'Tough Ring',    nameJa: '堅守の指輪',   desc: 'Reduces all damage taken by 25%',       descJa: '被ダメージを25%軽減する',          cost: 180, symbol: '◎', color: '#94a3b8' },
+  { id: 'BREAKER_RING',  name: 'Breaker Ring',  nameJa: '壁壊しの指輪', desc: 'Break 1 wall when stamina is full (costs all stamina)', descJa: 'スタミナ満タン時に壁を1マス破壊（スタミナ全消費）', cost: 300, symbol: '◎', color: '#d97706' },
+  { id: 'BOMB_RING',     name: 'Bomb Ring',     nameJa: '爆弾の指輪',   desc: 'Place bombs instead of blocks (explode in 5 turns)', descJa: 'ブロックの代わりに爆弾を設置（5ターンで爆発）', cost: 350, symbol: '◎', color: '#fb923c' },
+  { id: 'STEALTH_RING',    name: 'Stealth Ring',    nameJa: '隠密の指輪',   desc: 'Reduces enemy detection range (8 -> 5)',                    descJa: '敵の探知範囲を狭める（8→5）',                      cost: 220, symbol: '◎', color: '#8b5cf6' },
+  { id: 'ICE_BLOCK_RING',  name: 'Ice Block Ring',  nameJa: '氷塊の指輪',   desc: 'Place ice blocks that slide when attacked',                 descJa: '攻撃で滑る氷ブロックを設置',                         cost: 260, symbol: '◎', color: '#7dd3fc' },
+  { id: 'STAR_RING',       name: 'Star Ring',       nameJa: '星の指輪',     desc: 'Place star blocks that shoot flames when attacked',         descJa: '攻撃で炎を発射する星ブロックを設置',                  cost: 400, symbol: '◎', color: '#fde047' },
+  { id: 'GOLEM_RING',     name: 'Golem Ring',      nameJa: 'ゴーレムの指輪', desc: 'At full stamina, attacks knock back enemies (Golem Smash!)', descJa: 'スタミナ満タン時の攻撃で敵を強制的に押し飛ばす',       cost: 450, symbol: '◎', color: '#a8a29e' },
+  { id: 'NECRO_RING',     name: 'Necro Ring',      nameJa: '死者活性の指輪', desc: 'Enemies you defeat are revived as your allies',              descJa: '倒した敵が仲間として蘇る',                             cost: 700, symbol: '◎', color: '#7c3aed' },
 ];
 
 // オープニング演出用データ
@@ -8924,6 +8924,10 @@ function getPlayerAttack() {
 function getPlayerDefense() {
     return Math.floor(player.level / 2) + player.armorCount;
 }
+// 堅守の指輪: 被ダメージを25%軽減
+function toughDmg(d) {
+    return hasRing('TOUGH_RING') ? Math.floor(d * 0.75) : d;
+}
 
 // ─── DQ1-style UI Helpers ────────────────────────────────────────
 function drawDQWindow(x, y, w, h) {
@@ -9093,16 +9097,17 @@ function drawShopScreen() {
 }
 
 function drawRingsScreen() {
-    const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+    const JA_FONT = '"Hiragino Mincho ProN", "Yu Mincho", "游明朝", "Georgia", serif';
     const CY = 12, CH = canvas.height - 24;
 
     if (ringEquipPhase === 'SLOT') {
-        // ── Phase 1: CMD (dimmed) + SLOTS window ─────────────────
+        // ── Phase 1: CMD (dimmed) + SLOTS window (top 190px, same as Phase 2) ──
+        const SLOT_H = 190; // Phase 2と同じ高さ
         dqCmdBackground(1);
-        const SX = 154; // 12 + 152 - 10 (overlap)
+        const SX = 154;
         const SW = canvas.width - SX - 12;
-        drawDQWindow(SX, CY, SW, CH);
-        drawDQTitle(SX, CY, SW, 'RINGS  指輪');
+        drawDQWindow(SX, CY, SW, SLOT_H);
+        drawDQTitle(SX, CY, SW, 'RINGS');
 
         const ROW_H = 72;
         const listTop = CY + 42;
@@ -9127,85 +9132,121 @@ function drawRingsScreen() {
             ctx.fillStyle = isSel ? '#ededed' : '#666';
             ctx.fillText('Slot ' + (s + 1), SX + 30, sy + 16);
 
-            const boxX = SX + 86, boxY = sy - 2, boxW = SW - 100, boxH = ROW_H - 8;
-            ctx.fillStyle = '#060614';
-            ctx.fillRect(boxX, boxY, boxW, boxH);
-            ctx.strokeStyle = isSel ? 'rgba(237,237,237,0.40)' : 'rgba(237,237,237,0.12)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(boxX, boxY, boxW, boxH);
+            const boxX = SX + 86, boxY = sy - 2;
 
+            const RX = SX + SW - 20; // 右端基準
             if (ring) {
-                ctx.font = '16px Courier New';
-                ctx.fillStyle = '#ededed';
-                ctx.fillText(ring.symbol || '◎', boxX + 10, boxY + 22);
-                ctx.font = 'bold 14px ' + JA_FONT;
+                // 左：英語名
+                ctx.font = 'bold 14px Courier New';
                 ctx.fillStyle = isSel ? '#ededed' : '#ccc';
-                ctx.fillText(ring.nameJa, boxX + 30, boxY + 22);
-                ctx.font = '11px Courier New';
-                ctx.fillStyle = '#888';
-                ctx.fillText(ring.name, boxX + 30, boxY + 38);
-                if (isSel) {
-                    ctx.font = '11px ' + JA_FONT;
-                    ctx.fillStyle = '#aaa';
-                    ctx.fillText(ring.descJa, boxX + 10, boxY + 56);
-                }
+                ctx.textAlign = 'left';
+                ctx.fillText(ring.name, boxX, boxY + 22);
+                // 右：日本語名 + カラーアイコン
+                ctx.font = 'bold 14px ' + JA_FONT;
+                const nameW = ctx.measureText(ring.nameJa).width;
+                const icx = RX - nameW - 14, icy = boxY + 17;
+                ctx.save();
+                ctx.fillStyle = isSel ? ring.color : ring.color + '99';
+                ctx.beginPath(); ctx.arc(icx, icy, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#060614';
+                ctx.beginPath(); ctx.arc(icx, icy, 2.5, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+                ctx.fillStyle = isSel ? '#ededed' : '#aaa';
+                ctx.textAlign = 'right';
+                ctx.fillText(ring.nameJa, RX, boxY + 22);
+                // 右：効能（日本語）
+                ctx.font = '11px ' + JA_FONT;
+                ctx.fillStyle = isSel ? '#aaa' : '#555';
+                ctx.fillText(ring.descJa || '', RX, boxY + 40);
             } else {
-                ctx.font = '13px ' + JA_FONT;
+                ctx.font = '13px Courier New';
                 ctx.fillStyle = '#444';
-                ctx.fillText('（空き）─ 装備なし', boxX + 10, boxY + 22);
+                ctx.textAlign = 'left';
+                ctx.fillText('-- empty --', boxX + 20, boxY + 22);
             }
         }
 
         ctx.textAlign = 'center';
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#555';
-        ctx.fillText('[↑↓] Select  [Enter] Choose Slot  [X] Back', SX + SW / 2, CY + CH - 10);
+        ctx.fillText('[↑↓] Select  [Enter] Choose Slot  [X] Back', SX + SW / 2, CY + SLOT_H - 10);
 
     } else {
-        // ── Phase 2: CMD (dimmed) + SLOT SUMMARY (dimmed) + RING LIST (active) ──
+        // ── Phase 2: TOP (dimmed) Slots + BOTTOM (active) Ring List ──
+        const TOP_Y = CY;       // 12
+        const TOP_H = 190;
+        const BOT_Y = 210;
+        const BOT_H = canvas.height - BOT_Y - 12; // 280
+
+        // --- 上部: dimmed CMD + dimmed スロットウィンドウ ---
         dqCmdBackground(1);
+        const SL_X = 154, SL_W = canvas.width - SL_X - 12; // 634
+        drawDQWindowDim(SL_X, TOP_Y, SL_W, TOP_H);
 
-        // Slot summary panel (dimmed, cascade level 1)
-        const SS_X = 154, SS_W = 178;
-        drawDQWindowDim(SS_X, CY, SS_W, CH);
-        const slotRingId = player.equippedRings[ringSlotSelection];
-        const slotRing = slotRingId ? RINGS.find(r => r.id === slotRingId) : null;
         ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(237,237,237,0.28)';
+        ctx.fillStyle = 'rgba(237,237,237,0.22)';
         ctx.font = 'bold 13px Courier New';
-        ctx.fillText('━ SLOT ' + (ringSlotSelection + 1) + ' ━', SS_X + SS_W / 2, CY + 20);
-        ctx.textAlign = 'left';
-        ctx.font = '11px ' + JA_FONT;
-        ctx.fillStyle = 'rgba(237,237,237,0.25)';
-        ctx.fillText('現在の装備', SS_X + 14, CY + 38);
-        ctx.font = 'bold 12px ' + JA_FONT;
-        ctx.fillStyle = slotRing ? 'rgba(74,222,128,0.60)' : 'rgba(237,237,237,0.20)';
-        ctx.fillText(slotRing ? slotRing.nameJa : '（空き）', SS_X + 14, CY + 54);
+        ctx.fillText('RINGS  指輪', SL_X + SL_W / 2, TOP_Y + 20);
 
-        // Ring list+detail panel (active, cascade level 2)
-        const RL_X = SS_X + SS_W - 10; // 322
-        const RL_W = canvas.width - RL_X - 12; // 466
-        drawDQWindow(RL_X, CY, RL_W, CH);
-        drawDQTitle(RL_X, CY, RL_W, 'SELECT RING');
+        const ROW_H_SLOT = 72;
+        const slotListTop = TOP_Y + 36;
+        for (let s = 0; s < 2; s++) {
+            const sy = slotListTop + s * ROW_H_SLOT;
+            const ringId = player.equippedRings[s];
+            const ring = ringId ? RINGS.find(r => r.id === ringId) : null;
+            const isSel = ringSlotSelection === s;
 
-        // Internal split: left=list (220px), right=detail
-        const LIST_W = 220;
+            ctx.textAlign = 'left';
+            ctx.font = 'bold 13px Courier New';
+            ctx.fillStyle = isSel ? 'rgba(237,237,237,0.45)' : 'rgba(237,237,237,0.18)';
+            ctx.fillText('Slot ' + (s + 1), SL_X + 30, sy + 16);
+
+            const boxX = SL_X + 86, boxY = sy - 2, boxW = SL_W - 100, boxH = ROW_H_SLOT - 8;
+            ctx.fillStyle = 'rgba(6,6,20,0.5)';
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeStyle = isSel ? 'rgba(237,237,237,0.22)' : 'rgba(237,237,237,0.07)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            if (ring) {
+                ctx.font = 'bold 13px ' + JA_FONT;
+                ctx.fillStyle = isSel ? 'rgba(237,237,237,0.55)' : 'rgba(237,237,237,0.22)';
+                ctx.fillText(ring.nameJa, boxX + 10, boxY + 22);
+                ctx.font = '11px Courier New';
+                ctx.fillStyle = isSel ? 'rgba(237,237,237,0.30)' : 'rgba(237,237,237,0.15)';
+                ctx.fillText(ring.name, boxX + 10, boxY + 38);
+            } else {
+                ctx.font = '13px ' + JA_FONT;
+                ctx.fillStyle = 'rgba(237,237,237,0.15)';
+                ctx.fillText('（空き）─ 装備なし', boxX + 10, boxY + 22);
+            }
+        }
+
+        // --- 下部: active SELECT RING ウィンドウ ---
+        const RL_X = 12;
+        const RL_W = canvas.width - 24; // 776
+        const LIST_W = 250;
         const DETAIL_X = RL_X + LIST_W;
         const DETAIL_W = RL_W - LIST_W;
 
+        drawDQWindow(RL_X, BOT_Y, RL_W, BOT_H);
+        drawDQTitle(RL_X, BOT_Y, RL_W, 'SELECT RING  ─  Slot ' + (ringSlotSelection + 1));
+
+        // 縦仕切り線
         ctx.strokeStyle = 'rgba(237,237,237,0.12)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(DETAIL_X, CY + 8);
-        ctx.lineTo(DETAIL_X, CY + CH - 8);
+        ctx.moveTo(DETAIL_X, BOT_Y + 8);
+        ctx.lineTo(DETAIL_X, BOT_Y + BOT_H - 8);
         ctx.stroke();
 
-        // Ring list
+        // 指輪リスト
         const ownedRings = RINGS.filter(r => player.ownedRings.includes(r.id));
-        const listItems = [{ id: null, nameJa: '（外す）', name: 'Remove', descJa: 'このスロットを空にする' }, ...ownedRings];
+        const removeItem = { id: null, nameJa: '（外す）', name: 'Remove', descJa: 'このスロットを空にする' };
+        const listItems = [...ownedRings, removeItem];
 
-        const LIST_TOP = CY + 36;
-        const LIST_BOT = CY + CH - 28;
+        const LIST_TOP = BOT_Y + 36;
+        const LIST_BOT = BOT_Y + BOT_H - 28;
         const ROW_H = 34;
         const maxVis = Math.floor((LIST_BOT - LIST_TOP) / ROW_H);
 
@@ -9236,43 +9277,32 @@ function drawRingsScreen() {
             }
 
             ctx.textAlign = 'left';
-            let nameColor = isSel ? '#ededed' : '#aaa';
-            if (item.id === null) nameColor = isSel ? '#f87171' : '#666';
-            else if (isEquippedHere) nameColor = '#4ade80';
-            else if (isEquippedOther) nameColor = '#60a5fa';
+            const nameColor = isSel ? '#ededed' : '#aaa';
 
-            // アイコン描画
+            // アイコン描画（指輪カラー、Removeは空白）
             if (item.id) {
-                // マップと同じ金色の丸（リング形状）
+                const itemRing = RINGS.find(r => r.id === item.id);
+                const ringColor = itemRing ? itemRing.color : '#b8960c';
                 const icx = RL_X + 37, icy = iy + 11;
                 ctx.save();
-                ctx.fillStyle = isSel ? '#fffde7' : '#b8960c';
+                ctx.fillStyle = isSel ? ringColor : ringColor + '99';
                 ctx.beginPath(); ctx.arc(icx, icy, 5, 0, Math.PI * 2); ctx.fill();
                 ctx.fillStyle = '#060614';
                 ctx.beginPath(); ctx.arc(icx, icy, 2.5, 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
-            } else {
-                ctx.font = '13px Courier New';
-                ctx.fillStyle = isSel ? '#f87171' : '#555';
-                ctx.fillText('✕', RL_X + 32, iy + 15);
             }
-            // 英語名（Courier New）
+
             ctx.font = (isSel ? 'bold ' : '') + '13px Courier New';
             ctx.fillStyle = nameColor;
             ctx.fillText(item.name, RL_X + 48, iy + 14);
-            // 日本語名（小さく下）
             ctx.font = '11px ' + JA_FONT;
-            ctx.fillStyle = item.id === null ? (isSel ? 'rgba(248,113,113,0.7)' : '#444')
-                          : (isSel ? '#999' : '#555');
+            ctx.fillStyle = isSel ? '#999' : '#555';
             ctx.fillText(item.nameJa, RL_X + 48, iy + 27);
 
-            if (isEquippedHere) {
-                ctx.textAlign = 'right'; ctx.fillStyle = '#4ade80'; ctx.font = '11px Courier New';
-                ctx.fillText('装備中', RL_X + LIST_W - 14, iy + 18);
-                ctx.textAlign = 'left';
-            } else if (isEquippedOther) {
-                ctx.textAlign = 'right'; ctx.fillStyle = '#60a5fa'; ctx.font = '11px Courier New';
-                ctx.fillText('Slot' + (2 - ringSlotSelection), RL_X + LIST_W - 14, iy + 18);
+            if (isEquippedHere || isEquippedOther) {
+                const slotNum = isEquippedHere ? (ringSlotSelection + 1) : (2 - ringSlotSelection);
+                ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = '11px Courier New';
+                ctx.fillText('Slot ' + slotNum, RL_X + LIST_W - 14, iy + 18);
                 ctx.textAlign = 'left';
             }
         });
@@ -9285,24 +9315,33 @@ function drawRingsScreen() {
         ctx.textAlign = 'center';
         ctx.font = '11px Courier New';
         ctx.fillStyle = '#444';
-        ctx.fillText('[↑↓] Select', RL_X + LIST_W / 2, CY + CH - 10);
+        ctx.fillText('[↑↓] Select', RL_X + LIST_W / 2, BOT_Y + BOT_H - 10);
 
-        // Detail panel (right of divider)
+        // 詳細パネル（右側）
         const selItem = listItems[ringEquipSelection];
         const dx = DETAIL_X + 14;
         if (selItem && selItem.id) {
-            let ry = CY + 42;
-            ctx.font = 'bold 13px ' + JA_FONT;
-            ctx.fillStyle = '#ededed';
-            ctx.textAlign = 'left';
-            ctx.fillText(selItem.symbol || '◎', dx, ry);
+            const selRing = RINGS.find(r => r.id === selItem.id);
+            let ry = BOT_Y + 64;
+
+            // カラーアイコン
+            if (selRing) {
+                ctx.save();
+                ctx.fillStyle = selRing.color;
+                ctx.beginPath(); ctx.arc(dx + 6, ry - 5, 6, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#060614';
+                ctx.beginPath(); ctx.arc(dx + 6, ry - 5, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+
             ctx.font = 'bold 15px ' + JA_FONT;
             ctx.fillStyle = '#ededed';
-            ctx.fillText(selItem.nameJa, dx + 20, ry);
+            ctx.textAlign = 'left';
+            ctx.fillText(selItem.nameJa, dx + 18, ry);
             ry += 18;
             ctx.font = '12px Courier New';
             ctx.fillStyle = '#777';
-            ctx.fillText(selItem.name, dx + 20, ry);
+            ctx.fillText(selItem.name, dx + 18, ry);
             ry += 16;
 
             ctx.strokeStyle = 'rgba(237,237,237,0.12)';
@@ -9322,7 +9361,7 @@ function drawRingsScreen() {
             }
         }
 
-        const footerY = CY + CH - 28;
+        const footerY = BOT_Y + BOT_H - 28;
         ctx.strokeStyle = 'rgba(237,237,237,0.12)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(dx, footerY - 14); ctx.lineTo(RL_X + RL_W - 14, footerY - 14); ctx.stroke();
         ctx.textAlign = 'center';
@@ -10950,7 +10989,7 @@ async function slidePlayer(dx, dy) {
                 spawnFloatingText(player.x, player.y, "MIMIC!!", "#c084fc");
                 SOUNDS.ENEMY_ATTACK();
                 setScreenShake(10, 300);
-                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                const mimicDmg = Math.max(1, toughDmg(Math.floor(floorLevel / 2 + 8) - getPlayerDefense()));
                 player.hp -= mimicDmg;
                 player.flashUntil = performance.now() + 300;
                 spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
@@ -10967,7 +11006,7 @@ async function slidePlayer(dx, dy) {
         }
 
         // 毒沼チェック
-        if (map[player.y][player.x] === SYMBOLS.POISON) {
+        if (map[player.y][player.x] === SYMBOLS.POISON && !hasRing('POISON_RING')) {
             player.hp -= 1;
             if (!player.isInfiniteStamina) player.stamina = Math.max(0, Math.floor(player.stamina / 2));
             player.flashUntil = performance.now() + 200;
@@ -11563,8 +11602,8 @@ async function handleAction(dx, dy) {
     if (dx > 0) player.facing = 'RIGHT';
     else if (dx < 0) player.facing = 'LEFT';
 
-    // 毒沼スロー: 2ターンに1回のみ行動可能
-    if (map[player.y][player.x] === SYMBOLS.POISON) {
+    // 毒沼スロー: 2ターンに1回のみ行動可能（POISON_RING で無効化）
+    if (map[player.y][player.x] === SYMBOLS.POISON && !hasRing('POISON_RING')) {
         if (player.poisonStagger) {
             player.poisonStagger = false;
             isProcessing = true;
@@ -12394,7 +12433,7 @@ async function handleAction(dx, dy) {
                     SOUNDS.ENEMY_ATTACK();
                     setScreenShake(10, 300);
                     // ミミックの先制攻撃
-                    const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const mimicDmg = Math.max(1, toughDmg(Math.floor(floorLevel / 2 + 8) - getPlayerDefense()));
                     player.hp -= mimicDmg;
                     player.flashUntil = performance.now() + 300;
                     spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
@@ -12411,11 +12450,11 @@ async function handleAction(dx, dy) {
         }
     }
 
-    // 毒沼ダメージ（プレイヤー）- POISON_RING でスタミナ減少緩和
-    if (map[player.y][player.x] === SYMBOLS.POISON && !player.isShielded) {
+    // 毒沼ダメージ（プレイヤー）- POISON_RING で完全無効化
+    if (map[player.y][player.x] === SYMBOLS.POISON && !player.isShielded && !hasRing('POISON_RING')) {
         breakStealth();
         player.hp -= 1;
-        if (!player.isInfiniteStamina) player.stamina = Math.max(0, Math.floor(player.stamina * (hasRing('POISON_RING') ? 0.75 : 0.5)));
+        if (!player.isInfiniteStamina) player.stamina = Math.max(0, Math.floor(player.stamina * 0.5));
         player.flashUntil = performance.now() + 200;
         if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
         spawnDamageText(player.x, player.y, 1, '#a855f7');
@@ -13787,7 +13826,7 @@ async function summonDragonTraps(e, count = 1, stage = 'CIRCLE') {
 }
 
 async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
-    let damage = Math.max(1, baseDamage - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+    let damage = Math.max(1, toughDmg(baseDamage - getPlayerDefense()));
     if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.25));
 
     breakStealth();
@@ -13933,7 +13972,7 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
                 spawnFloatingText(player.x, player.y, "MIMIC!!", "#c084fc");
                 SOUNDS.ENEMY_ATTACK();
                 setScreenShake(10, 300);
-                const mimicDmg = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                const mimicDmg = Math.max(1, toughDmg(Math.floor(floorLevel / 2 + 8) - getPlayerDefense()));
                 player.hp -= mimicDmg;
                 player.flashUntil = performance.now() + 300;
                 spawnDamageText(player.x, player.y, mimicDmg, '#c084fc');
@@ -14140,7 +14179,7 @@ async function enemyTurn() {
                     e.offsetX = (player.x - e.x) * 8; e.offsetY = (player.y - e.y) * 8;
                     spawnSlash(player.x, player.y);
                     SOUNDS.ENEMY_ATTACK();
-                    const fmAtk0 = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const fmAtk0 = Math.max(1, toughDmg(Math.floor(floorLevel / 2 + 8) - getPlayerDefense()));
                     player.hp -= fmAtk0;
                     player.flashUntil = performance.now() + 300;
                     spawnDamageText(player.x, player.y, fmAtk0, '#f472b6');
@@ -14170,7 +14209,7 @@ async function enemyTurn() {
                     e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
                     spawnSlash(player.x, player.y);
                     SOUNDS.ENEMY_ATTACK();
-                    const fmAtk1 = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const fmAtk1 = Math.max(1, toughDmg(Math.floor(floorLevel / 2 + 8) - getPlayerDefense()));
                     if (player.isDefending) {
                         const fmRed = Math.max(1, Math.floor(fmAtk1 * 0.4));
                         player.hp -= fmRed;
@@ -14218,7 +14257,7 @@ async function enemyTurn() {
                     e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
                     spawnSlash(player.x, player.y);
                     SOUNDS.ENEMY_ATTACK();
-                    const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                    const mimicAtk = Math.max(1, toughDmg(Math.floor(floorLevel / 2 + 8) - getPlayerDefense()));
                     player.hp -= mimicAtk;
                     player.flashUntil = performance.now() + 300;
                     spawnDamageText(player.x, player.y, mimicAtk, '#c084fc');
@@ -14269,7 +14308,7 @@ async function enemyTurn() {
                         e.offsetX = (player.x - e.x) * 10; e.offsetY = (player.y - e.y) * 10;
                         spawnSlash(player.x, player.y);
                         SOUNDS.ENEMY_ATTACK();
-                        const mimicAtk = Math.max(1, Math.floor(floorLevel / 2 + 8) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                        const mimicAtk = Math.max(1, toughDmg(Math.floor(floorLevel / 2 + 8) - getPlayerDefense()));
                         if (player.isDefending) {
                             const reduced = Math.max(1, Math.floor(mimicAtk * 0.4));
                             player.hp -= reduced;
@@ -14585,7 +14624,7 @@ async function enemyTurn() {
                 setScreenShake(20, 300);
                 spawnSlash(player.x, player.y);
 
-                let damage = Math.max(5, 20 - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(5, toughDmg(20 - getPlayerDefense()));
                 if (player.isDefending) damage = Math.max(1, Math.floor(damage * 0.25));
                 breakStealth();
                 player.hp -= damage;
@@ -15132,7 +15171,7 @@ async function enemyTurn() {
                 e.offsetX = (bestTarget.x - e.x) * 10; e.offsetY = (bestTarget.y - e.y) * 10;
                 spawnSlash(bestTarget.x, bestTarget.y);
                 SOUNDS.ENEMY_ATTACK();
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 6) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(1, toughDmg((Math.floor(floorLevel / 2) + 6) - getPlayerDefense()));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.25));
@@ -15370,7 +15409,7 @@ async function enemyTurn() {
                 spawnSlash(bestTarget.x, bestTarget.y);
                 SOUNDS.ENEMY_ATTACK();
                 const _kingAura = enemies.some(k => k.type === 'KING' && k.hp > 0 && !k._dead);
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + 3 + (_kingAura ? 3 : 0)) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(1, toughDmg((Math.floor(floorLevel / 2) + 3 + (_kingAura ? 3 : 0)) - getPlayerDefense()));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.25));
@@ -15424,7 +15463,7 @@ async function enemyTurn() {
             if (bestTarget.isPlayer) {
 
                 // プレイヤーへの攻撃（既存ロジック）
-                let damage = Math.max(1, (Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : (e.type === 'MADMAN' ? 8 : (e.type === 'BREAKER' ? 6 : (e.type === 'LAYER' ? 3 : 1)))))) - getPlayerDefense() - (hasRing('TOUGH_RING') ? 1 : 0));
+                let damage = Math.max(1, toughDmg((Math.floor(floorLevel / 2) + (e.type === 'SNAKE' ? 5 : (e.type === 'ORC' ? 10 : (e.type === 'MADMAN' ? 8 : (e.type === 'BREAKER' ? 6 : (e.type === 'LAYER' ? 3 : 1)))))) - getPlayerDefense()));
                 if (player.isDefending) {
                     if (Math.random() < 0.03) { SOUNDS.PARRY(); spawnFloatingText(player.x, player.y, "PARRY!", "#fff"); damage = 0; }
                     else damage = Math.max(1, Math.floor(damage * 0.25));
@@ -16577,7 +16616,7 @@ window.addEventListener('keydown', async e => {
             } else {
                 // 指輪決定
                 const ownedRings = RINGS.filter(r => player.ownedRings.includes(r.id));
-                const listItems = [null, ...ownedRings]; // index0=外す
+                const listItems = [...ownedRings, null]; // 末尾がRemove（表示と同順）
                 const chosen = listItems[ringEquipSelection];
                 if (chosen === null) {
                     // 外す
@@ -16585,10 +16624,10 @@ window.addEventListener('keydown', async e => {
                     player.equippedRings[ringSlotSelection] = null;
                     if (prev) addLog(`Slot ${ringSlotSelection + 1} の指輪を外した。`);
                 } else {
-                    // 同じ指輪が他スロットに入っていたら外す
                     const otherSlot = 1 - ringSlotSelection;
                     if (player.equippedRings[otherSlot] === chosen.id) {
-                        player.equippedRings[otherSlot] = null;
+                        // 反対スロットの指輪を選んだ場合はスワップ
+                        player.equippedRings[otherSlot] = player.equippedRings[ringSlotSelection];
                     }
                     player.equippedRings[ringSlotSelection] = chosen.id;
                     SOUNDS.GET_ITEM();
