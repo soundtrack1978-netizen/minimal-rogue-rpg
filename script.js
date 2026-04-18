@@ -1285,7 +1285,7 @@ function initMap() {
     const isMerchantFloor = floorLevel >= 10 && floorLevel < 100 && merchantCooldownOk && (isExactMerchantFloor || (isNearMerchantFloor && Math.random() < 0.3));
 
     // --- MULTI-SCREEN FLOOR (Floor 50+: 固定ステージ以外 / 101F+: DEEP TEST 10x10) ---
-    const fixedStageFloors = [50, 53, 57, 63, 66, 70, 75, 77, 80, 83, 85, 86, 88, 93, 99, 100];
+    const fixedStageFloors = [50, 53, 57, 63, 66, 70, 75, 77, 78, 80, 83, 85, 86, 88, 93, 99, 100];
     if ((floorLevel >= 50 && floorLevel < 100 && !fixedStageFloors.includes(floorLevel)) || floorLevel >= 101) {
         multiScreenMode = true;
         if (floorLevel >= 101) {
@@ -6101,6 +6101,111 @@ function initMap() {
             }
         }
         addLog("WARNING: The Arena is filled with wandering spirits and chaos...");
+
+        return;
+    }
+
+    // ===== 78F: FACTION WAR - The Killing Fields =====
+    if (floorLevel === 78) {
+        addLog("⚔️ EVENT: FACTION WAR — The Killing Fields.");
+        addLog("CRIMSON and COBALT armies clash. Stay out of the crossfire.");
+
+        // 全面を床にする（モンスターハウス）
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.FLOOR;
+
+        // 岩場・瓦礫（遮蔽物）をランダム配置
+        for (let i = 0; i < 18; i++) {
+            const px = Math.floor(Math.random() * (COLS - 10)) + 5;
+            const py = Math.floor(Math.random() * (ROWS - 6)) + 3;
+            map[py][px] = SYMBOLS.WALL;
+            if (Math.random() < 0.6) map[py][px + 1] = SYMBOLS.WALL;
+            if (Math.random() < 0.6) map[py + 1][px] = SYMBOLS.WALL;
+            if (Math.random() < 0.35) map[py + 1][px + 1] = SYMBOLS.WALL;
+        }
+
+        // プレイヤーを左端中央に配置、周囲を安全地帯に
+        player.x = 2;
+        player.y = Math.floor(ROWS / 2);
+        for (let dy = -2; dy <= 2; dy++)
+            for (let dx = -2; dx <= 2; dx++) {
+                const cx = player.x + dx, cy = player.y + dy;
+                if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1)
+                    map[cy][cx] = SYMBOLS.FLOOR;
+            }
+
+        // 出口を右端中央に配置、周囲を安全地帯に
+        const stX = COLS - 3, stY = Math.floor(ROWS / 2);
+        for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+                const cx = stX + dx, cy = stY + dy;
+                if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1)
+                    map[cy][cx] = SYMBOLS.FLOOR;
+            }
+        map[stY][stX] = SYMBOLS.STAIRS;
+
+        const midX = Math.floor(COLS / 2);
+
+        // ---- CRIMSON 派閥: ORC + BREAKER + BLAZE（左寄りに配置）----
+        const crimsonPool = ['ORC','ORC','ORC','BREAKER','BREAKER','BLAZE','ORC','BREAKER','BLAZE','ORC','BREAKER','BLAZE','ORC','BREAKER'];
+        for (const type of crimsonPool) {
+            for (let t = 0; t < 120; t++) {
+                const ex = Math.random() < 0.68
+                    ? Math.floor(Math.random() * (midX - 5)) + 4
+                    : Math.floor(Math.random() * (COLS - 8)) + 4;
+                const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
+                if (enemies.some(e => e.x === ex && e.y === ey)) continue;
+                if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 7) continue;
+                let hp, exp;
+                if (type === 'ORC')       { hp = 40 + floorLevel * 5; exp = 40; }
+                else if (type === 'BREAKER') { hp = 50 + floorLevel * 4; exp = 45; }
+                else                      { hp = 20 + floorLevel * 2; exp = 15; } // BLAZE
+                enemies.push({ type, x: ex, y: ey, hp, maxHp: hp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0,
+                    faction: 'CRIMSON' });
+                break;
+            }
+        }
+
+        // ---- COBALT 派閥: FROST + NORMAL + LAYER（右寄りに配置）----
+        const cobaltPool = ['FROST','NORMAL','FROST','NORMAL','NORMAL','FROST','FROST','NORMAL','FROST','NORMAL','NORMAL','LAYER','LAYER','FROST','NORMAL'];
+        for (const type of cobaltPool) {
+            for (let t = 0; t < 120; t++) {
+                const ex = Math.random() < 0.68
+                    ? Math.floor(Math.random() * (COLS - midX - 5)) + midX + 2
+                    : Math.floor(Math.random() * (COLS - 8)) + 4;
+                const ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
+                if (enemies.some(e => e.x === ex && e.y === ey)) continue;
+                if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 7) continue;
+                let hp, exp;
+                if (type === 'FROST')      { hp = 20 + floorLevel * 2; exp = 15; }
+                else if (type === 'LAYER') { hp = 30 + floorLevel * 3; exp = 25; }
+                else                      { hp = 8 + floorLevel;       exp = 5;  } // NORMAL
+                enemies.push({ type, x: ex, y: ey, hp, maxHp: hp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0,
+                    faction: 'COBALT' });
+                break;
+            }
+        }
+
+        // アイテムを戦場に散らす
+        const items78 = [
+            SYMBOLS.SWORD, SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.ARMOR,
+            SYMBOLS.HEAL_TOME, SYMBOLS.SPEED, SYMBOLS.ESCAPE, SYMBOLS.CHARM, SYMBOLS.WAND
+        ];
+        for (let i = 0; i < 10; i++) {
+            for (let t = 0; t < 80; t++) {
+                const ix = Math.floor(Math.random() * (COLS - 4)) + 2;
+                const iy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (map[iy][ix] === SYMBOLS.FLOOR) {
+                    map[iy][ix] = items78[Math.floor(Math.random() * items78.length)];
+                    break;
+                }
+            }
+        }
 
         return;
     }
