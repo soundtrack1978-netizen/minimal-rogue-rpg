@@ -15224,7 +15224,11 @@ async function enemyTurn() {
                 if (d < allyMinDist) { allyMinDist = d; allyBestTarget = t; }
             });
 
-            if (allyBestTarget && allyMinDist <= 8) {
+            // プレイヤーが離れすぎている場合は敵より先にプレイヤーを追う
+            const dPlayerNow = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
+            const shouldFollowPlayer = dPlayerNow > 8;
+
+            if (allyBestTarget && allyMinDist <= 8 && !shouldFollowPlayer) {
                 // 敵を優先して行動
                 if (allyMinDist === 1) {
                     // 攻撃
@@ -15391,7 +15395,7 @@ async function enemyTurn() {
                     }
                 }
             } else {
-                // 敵がいないのでプレイヤーを追いかける
+                // 敵がいない or プレイヤーが遠い → プレイヤーを追いかける
                 const dP = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
                 if (dP > 1) { // 隣接していなければ近づく
                     const oldPos = { x: e.x, y: e.y };
@@ -15413,12 +15417,20 @@ async function enemyTurn() {
                     };
                     const tryFollowMove = e.type === 'BREAKER' ? allyBreakerFollow : (nx, ny) => canEnemyMove(nx, ny, e);
 
+                    // 優先2方向を試す
                     if (Math.abs(dx) > Math.abs(dy)) {
                         if (tryFollowMove(e.x + sx, e.y)) { e.x += sx; moved = true; }
                         else if (tryFollowMove(e.x, e.y + sy)) { e.y += sy; moved = true; }
                     } else {
                         if (tryFollowMove(e.x, e.y + sy)) { e.y += sy; moved = true; }
                         else if (tryFollowMove(e.x + sx, e.y)) { e.x += sx; moved = true; }
+                    }
+                    // 詰まった場合は残りの2方向も試す（壁回避）
+                    if (!moved) {
+                        const fallbacks = [[sx, 0], [0, sy], [-sy, sx], [sy, -sx]].filter(([fx, fy]) => fx !== 0 || fy !== 0);
+                        for (const [fx, fy] of fallbacks) {
+                            if (tryFollowMove(e.x + fx, e.y + fy)) { e.x += fx; e.y += fy; moved = true; break; }
+                        }
                     }
                     if (moved) {
                         if (e.type === 'SNAKE') {
