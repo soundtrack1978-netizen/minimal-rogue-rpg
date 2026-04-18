@@ -14366,7 +14366,7 @@ async function enemyTurn() {
         if (tile === SYMBOLS.POISON || tile === SYMBOLS.LAVA) {
             // ブレイズは溶岩ダメージ無効、オークは軽減、KEY_RUNNERは全地形免疫
             if (tile === SYMBOLS.LAVA) {
-                if (e.type === 'BLAZE' || e.type === 'KEY_RUNNER') {
+                if (e.type === 'BLAZE' || e.type === 'KEY_RUNNER' || e.type === 'DRAGON') {
                     // 無効
                 } else if (e.type === 'BOMBER') {
                     // BOMBERは溶岩で即死 → 連鎖爆発
