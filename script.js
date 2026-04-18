@@ -10631,7 +10631,8 @@ async function slideIceBlock(block, dx, dy) {
         if (enemies.some(e => e.x === nx && e.y === ny)) break;
         if (wisps.some(w => w.x === nx && w.y === ny)) break;
         // 通過したマスをICEに変換（溶岩は変換しない）
-        if (freezable.has(map[block.y][block.x])) map[block.y][block.x] = SYMBOLS.ICE;
+        // ドラゴンHP50%演出後（溶岩フェーズ中）は一切ICEを生成しない
+        if (!dragonHalfPhaseTriggered && freezable.has(map[block.y][block.x])) map[block.y][block.x] = SYMBOLS.ICE;
         block.x = nx;
         block.y = ny;
         await new Promise(r => setTimeout(r, 55));
@@ -11200,6 +11201,8 @@ async function slidePlayer(dx, dy) {
             SOUNDS.MOVE(); // 壁や敵に当たった
             break;
         }
+        // 溶岩タイルには滑り込まない（ICEの上を滑って溶岩に突入するのを防ぐ）
+        if (map[ny][nx] === SYMBOLS.LAVA) break;
 
         // ウィルへの衝突: その場で停止してダメージ
         const hitWisp = wisps.find(w => w.x === nx && w.y === ny);
