@@ -8940,6 +8940,10 @@ function getPlayerDefense() {
 function toughDmg(d) {
     return hasRing('TOUGH_RING') ? Math.floor(d * 0.75) : d;
 }
+// ドラゴンの炎・爆発耐性（80%軽減、最低1）
+function dragonFireResist(dmg) {
+    return Math.max(1, Math.floor(dmg * 0.20));
+}
 
 // ─── DQ1-style UI Helpers ────────────────────────────────────────
 function drawDQWindow(x, y, w, h) {
@@ -10491,7 +10495,10 @@ function detonateBomb(bomb) {
                     spawnFloatingText(e.x, e.y, "CHAIN!", "#f97316");
                     handleEnemyDeath(e, true);
                 } else {
-                    const eDmg = e.hp;
+                    // ドラゴンは炎・爆発に強い耐性を持つ（即死を防ぐ）
+                    const eDmg = e.type === 'DRAGON'
+                        ? dragonFireResist(damage)
+                        : e.hp;
                     e.hp -= eDmg;
                     spawnFloatingText(e.x, e.y, `-${eDmg}`, "#ef4444");
                     if (e.hp <= 0) {
@@ -16255,7 +16262,8 @@ async function moveFlameProjectiles() {
                 ((e.x === fp.x && e.y === fp.y) ||
                  ((e.type === 'DRAGON' || e.type === 'SNAKE') && e.body && e.body.some(s => s.x === fp.x && s.y === fp.y))));
             if (atCurrent) {
-                const dmg = Math.min(atCurrent.hp, getPlayerAttack() * 2);
+                let dmg = Math.min(atCurrent.hp, getPlayerAttack() * 2);
+                if (atCurrent.type === 'DRAGON') dmg = dragonFireResist(dmg);
                 atCurrent.hp -= dmg;
                 atCurrent.flashUntil = performance.now() + 100;
                 spawnDamageText(fp.x, fp.y, dmg, '#f97316');
@@ -16317,7 +16325,8 @@ async function moveFlameProjectiles() {
                 ((e.x === nx && e.y === ny) ||
                  ((e.type === 'DRAGON' || e.type === 'SNAKE') && e.body && e.body.some(s => s.x === nx && s.y === ny))));
             if (hitEnemy) {
-                const dmg = Math.min(hitEnemy.hp, getPlayerAttack() * 2);
+                let dmg = Math.min(hitEnemy.hp, getPlayerAttack() * 2);
+                if (hitEnemy.type === 'DRAGON') dmg = dragonFireResist(dmg);
                 hitEnemy.hp -= dmg;
                 hitEnemy.flashUntil = performance.now() + 100;
                 spawnDamageText(nx, ny, dmg, '#f97316');
@@ -17298,7 +17307,9 @@ async function tryExplode() {
             inRange = e.body.some(seg => Math.abs(seg.x - player.x) + Math.abs(seg.y - player.y) <= range);
         }
         if (inRange) {
-            const dmg = 150 + (player.level * 10);
+            const baseDmg = 150 + (player.level * 10);
+            // ドラゴンは爆発耐性（80%軽減）
+            const dmg = e.type === 'DRAGON' ? dragonFireResist(baseDmg) : baseDmg;
             e.hp -= dmg;
             e.flashUntil = performance.now() + 300;
             spawnDamageText(e.x, e.y, dmg, '#ef4444');
