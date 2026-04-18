@@ -13592,17 +13592,22 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
         }
 
         if (enemy.type === 'GOLD') {
-            player.hp = getPlayerMaxHp(); // HP全快
-            player.stamina = 100; // せっかくなので現在の値もMAXに
-            player.isInfiniteStamina = true; // スタミナ減らなくなる
-            SOUNDS.SHAKIN(); // シャキーン！
+            // 3レベルアップ
+            for (let i = 0; i < 3; i++) {
+                player.level++;
+                player.exp = 0;
+                player.nextExp = player.level <= 5 ? player.level * 7 : player.level * 10;
+                player.maxHp += 10;
+                player.hp = getPlayerMaxHp();
+            }
+            SOUNDS.LEVEL_UP();
             updateUI();
-            spawnFloatingText(player.x, player.y, "MAX HP & STAMINA!!", "#fbbf24");
+            spawnFloatingText(player.x, player.y, `3 LV UP! → Lv${player.level}`, "#fbbf24");
 
             if (!hasShownGoldTut) {
                 await triggerGoldLogStory();
             } else {
-                addLog("Defeated a Golden E! HP restored & Infinite Stamina for this floor!");
+                addLog(`Defeated a Golden E! Gained 3 levels! (Lv ${player.level})`);
             }
         }
     } else {
@@ -15430,16 +15435,33 @@ async function enemyTurn() {
         const detectRange = (e.type !== 'ORC' && hasRing('STEALTH_RING')) ? 5 : baseDetect;
 
         if (e.type === 'GOLD' && minDist <= detectRange) {
-            // GOLDはとにかくプレイヤーから逃げ回る
+            // GOLDはとにかくプレイヤーから逃げ回る（1ターン2マス移動）
             const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-            let bestMove = { x: e.x, y: e.y, score: minDist };
-            dirs.forEach(d => {
-                if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
-                    const nd = Math.abs(player.x - (e.x + d.x)) + Math.abs(player.y - (e.y + d.y));
-                    if (nd > bestMove.score) bestMove = { x: e.x + d.x, y: e.y + d.y, score: nd };
+            for (let step = 0; step < 2; step++) {
+                const curDist = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
+                let bestMove = { x: e.x, y: e.y, score: curDist };
+                dirs.forEach(d => {
+                    if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
+                        const nd = Math.abs(player.x - (e.x + d.x)) + Math.abs(player.y - (e.y + d.y));
+                        if (nd > bestMove.score) bestMove = { x: e.x + d.x, y: e.y + d.y, score: nd };
+                    }
+                });
+                if (bestMove.x !== e.x || bestMove.y !== e.y) {
+                    if (step === 0) SOUNDS.GOLD_FLIGHT();
+                    const mdx = bestMove.x - e.x;
+                    const mdy = bestMove.y - e.y;
+                    e.offsetX = -mdx * TILE_SIZE;
+                    e.offsetY = -mdy * TILE_SIZE;
+                    e.x = bestMove.x;
+                    e.y = bestMove.y;
+                    draw();
+                    await new Promise(r => setTimeout(r, 70));
+                    e.offsetX = 0;
+                    e.offsetY = 0;
+                    draw();
+                    await new Promise(r => setTimeout(r, 30));
                 }
-            });
-            if (bestMove.x !== e.x || bestMove.y !== e.y) { SOUNDS.GOLD_FLIGHT(); e.x = bestMove.x; e.y = bestMove.y; }
+            }
             if (!enemies.includes(e)) continue;
         } else if (e.type === 'BREAKER') {
             // BREAKERの移動AI: 直進優先で遠くまで掘り進む
