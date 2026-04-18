@@ -1222,18 +1222,19 @@ function updateMinimap() {
     const N = screenGridSize;
     let html = '';
     for (let sy = 0; sy < N; sy++) {
+        html += '<div class="minimap-row">';
         for (let sx = 0; sx < N; sx++) {
             const isCurrent = (sx === currentScreen.x && sy === currentScreen.y);
             const isVisited = visitedScreens[sy][sx];
             if (isCurrent) {
-                html += '<span style="color:#fbbf24">■</span>';
+                html += '<span style="color:#ededed">■</span>';
             } else if (isVisited) {
                 html += '<span style="color:#666">■</span>';
             } else {
                 html += '<span style="color:#2a2a2a">□</span>';
             }
         }
-        if (sy < N - 1) html += '<br>';
+        html += '</div>';
     }
     el.innerHTML = html;
 }
