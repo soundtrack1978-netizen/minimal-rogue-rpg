@@ -10672,20 +10672,24 @@ async function dragonDeathAnimation(dragon) {
     dragon.alpha = 1.0;
     draw();
 
-    // === 白フラッシュ＋完全無音（約1秒）===
+    // === 白フラッシュ＋完全無音（約2.5秒）===
     // BGM・SE を即座に停止
     stopBGM();
     if (typeof audioCtx !== 'undefined' && audioCtx.state === 'running') {
         audioCtx.suspend();
     }
 
-    // 純白で画面を覆う瞬間にドラゴンを消す
-    dragon.alpha = 0;
+    // 白画面開始（ドラゴンはまだ alpha=1 のまま → 白で隠れる）
     transition.flashAlpha = 1.0;
     transition.flashColor = '#ffffff';
     draw();
 
+    // 白画面が続く中盤（1秒後）にドラゴンを消す
     await new Promise(r => setTimeout(r, 1000));
+    dragon.alpha = 0;
+
+    // さらに1.5秒白画面を維持
+    await new Promise(r => setTimeout(r, 1500));
 
     // フラッシュ解除・オーディオ再開（以降の処理用）
     transition.flashAlpha = 0;
