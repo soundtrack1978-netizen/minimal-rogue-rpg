@@ -15951,7 +15951,54 @@ async function enemyTurn() {
                 bestTarget.obj.hp -= dmg;
                 bestTarget.obj.flashUntil = performance.now() + 100;
                 spawnDamageText(bestTarget.x, bestTarget.y, dmg, '#f87171');
-                if (bestTarget.obj.hp <= 0) handleEnemyDeath(bestTarget.obj);
+                SOUNDS.HIT();
+
+                if (bestTarget.obj.hp <= 0) {
+                    handleEnemyDeath(bestTarget.obj);
+                } else if (e.type === 'ORC' && bestTarget.obj.type !== 'DRAGON' && bestTarget.obj.type !== 'SUMMONER') {
+                    // ORCによる仲間（isAlly）への突き飛ばし
+                    addLog("The Orc's mighty blow sends the ally flying!");
+                    SOUNDS.FATAL();
+                    const tgt = bestTarget.obj;
+                    let kx = tgt.x - e.x, ky = tgt.y - e.y;
+                    const isRealWall = (tx, ty) => {
+                        if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) return true;
+                        return (map[ty][tx] === SYMBOLS.WALL || map[ty][tx] === SYMBOLS.DOOR || map[ty][tx] === SYMBOLS.CORE);
+                    };
+                    if (isRealWall(tgt.x + kx, tgt.y + ky)) {
+                        const cands = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+                        for (let i = cands.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [cands[i], cands[j]] = [cands[j], cands[i]];
+                        }
+                        for (const c of cands) {
+                            if (tgt.x + c.x === e.x && tgt.y + c.y === e.y) continue;
+                            if (!isRealWall(tgt.x + c.x, tgt.y + c.y)) { kx = c.x; ky = c.y; break; }
+                        }
+                    }
+                    let slideSteps = 0;
+                    while (slideSteps < 10) {
+                        const nx = tgt.x + kx, ny = tgt.y + ky;
+                        if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || map[ny][nx] === SYMBOLS.WALL || map[ny][nx] === SYMBOLS.DOOR || map[ny][nx] === SYMBOLS.CORE) {
+                            SOUNDS.EXPLODE(); break;
+                        }
+                        const bwIdx = tempWalls.findIndex(w => w.x === nx && w.y === ny);
+                        if (bwIdx !== -1) {
+                            tempWalls.splice(bwIdx, 1);
+                            addLog("CRASH! The ally smashed the block!");
+                            SOUNDS.EXPLODE(); setScreenShake(10, 200);
+                        }
+                        tgt.x = nx; tgt.y = ny;
+                        slideSteps++;
+                        draw();
+                        await new Promise(r => setTimeout(r, 15));
+                        if (isRealHole(tgt.x, tgt.y)) {
+                            addLog("The ally was knocked into the hole!");
+                            tgt.hp = 0; break;
+                        }
+                    }
+                    if (tgt.hp <= 0) handleEnemyDeath(tgt);
+                }
             }
             attackOccurred = true;
             await new Promise(r => setTimeout(r, 60));
