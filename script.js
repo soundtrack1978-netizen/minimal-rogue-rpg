@@ -10810,14 +10810,9 @@ async function dragonHalfPhase() {
 
     await new Promise(r => setTimeout(r, 500));
 
-    // === フェーズ4: 渦巻き溶岩 ===
+    // === フェーズ4: 沼地状溶岩 ===
     spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) + 2, "HELLFIRE SURGE!", "#ef4444");
     SOUNDS.FATAL();
-
-    // 渦巻きの中心をドラゴン頭付近に設定
-    const cx = dragon ? dragon.x : Math.floor(COLS / 2);
-    const cy = dragon ? dragon.y + 1 : Math.floor(ROWS / 2);
-    const swirlFactor = 0.5; // 渦の密度（大きいほど巻きがきつい）
 
     for (let y = 1; y < ROWS - 1; y++) {
         for (let x = 1; x < COLS - 1; x++) {
@@ -10827,14 +10822,22 @@ async function dragonHalfPhase() {
             // ドラゴン周囲3マスは除外
             if (dragon && Math.abs(x - dragon.x) <= 3 && Math.abs(y - dragon.y) <= 2) continue;
 
-            const dx = x - cx;
-            const dy = y - cy;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(dy, dx);
-            // 渦巻き値: 角度 + 距離×係数（アルキメデス螺旋ベース）
-            const swirl = ((angle + dist * swirlFactor) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-            // 渦の「腕」部分（約55%）を溶岩に
-            if (swirl < Math.PI * 1.1) {
+            // 横長・途切れ途切れの沼地パターン
+            // xの周波数を低めにして横長に、複数波の重ね合わせで有機的な形状に
+            const fx = x * 0.27;  // 横方向：周波数低め＝引き伸ばし
+            const fy = y * 0.52;  // 縦方向
+
+            const w1 =  Math.sin(fx        + fy * 0.30 + 0.7) * 0.45; // 主成分（横流れ）
+            const w2 =  Math.sin(fx * 1.85 - fy * 0.65 + 2.1) * 0.28; // 斜め交差
+            const w3 =  Math.sin(fx * 0.55 + fy * 1.40 - 1.3) * 0.18; // 縦の乱れ
+            const w4 =  Math.sin(fx * 3.10 - fy * 0.35 + 0.5) * 0.10; // 細かい断片
+
+            // 決定論的ハッシュノイズ（タイルごとに固定）→「途切れ」を作る
+            const h  = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+            const hash = (h - Math.floor(h)) * 0.28 - 0.14;
+
+            const val = w1 + w2 + w3 + w4 + hash;
+            if (val > 0.08) {
                 map[y][x] = SYMBOLS.LAVA;
             }
         }
@@ -10844,7 +10847,7 @@ async function dragonHalfPhase() {
     draw();
     await new Promise(r => setTimeout(r, 400));
 
-    addLog("🔥 The Dragon's fury scorches the floor — LAVA spirals through the dungeon!");
+    addLog("🔥 The Dragon's fury scorches the floor — LAVA floods the dungeon!");
     updateUI();
 }
 
