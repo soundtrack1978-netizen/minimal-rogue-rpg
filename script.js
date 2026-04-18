@@ -68,7 +68,7 @@ const RINGS = [
   { id: 'CRITICAL_RING', name: 'Critical Ring', nameJa: '会心の指輪',   desc: 'Critical hit chance 10% -> 20%',       descJa: '会心の一撃の確率が2倍に',             cost: 250, symbol: '◎', color: '#fbbf24' },
   { id: 'STAMINA_RING',  name: 'Stamina Ring',  nameJa: '活力の指輪',   desc: 'Attack stamina cost 20 -> 12',         descJa: '攻撃時のスタミナ消費を軽減',         cost: 150, symbol: '◎', color: '#f97316' },
   { id: 'KNOCKBACK_RING',name: 'Knockback Ring', nameJa: '突風の指輪',  desc: 'Attacks push enemies back 1 tile',     descJa: '攻撃で敵を1マス押し戻す',             cost: 500, symbol: '◎', color: '#38bdf8' },
-  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Recover 1 HP every turn',              descJa: '毎ターンHP1回復',                     cost: 200, symbol: '◎', color: '#4ade80' },
+  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Max HP +50%',                           descJa: '最大HPが50%上昇する',                     cost: 200, symbol: '◎', color: '#4ade80' },
   { id: 'TOUGH_RING',    name: 'Tough Ring',    nameJa: '堅守の指輪',   desc: 'Reduces all damage taken by 25%',       descJa: '被ダメージを25%軽減する',          cost: 180, symbol: '◎', color: '#94a3b8' },
   { id: 'BREAKER_RING',  name: 'Breaker Ring',  nameJa: '壁壊しの指輪', desc: 'Break 1 wall when stamina is full (costs all stamina)', descJa: 'スタミナ満タン時に壁を1マス破壊（スタミナ全消費）', cost: 300, symbol: '◎', color: '#d97706' },
   { id: 'BOMB_RING',     name: 'Bomb Ring',     nameJa: '爆弾の指輪',   desc: 'Place bombs instead of blocks (explode in 5 turns)', descJa: 'ブロックの代わりに爆弾を設置（5ターンで爆発）', cost: 350, symbol: '◎', color: '#fb923c' },
@@ -77,6 +77,7 @@ const RINGS = [
   { id: 'STAR_RING',       name: 'Star Ring',       nameJa: '星の指輪',     desc: 'Place star blocks that shoot flames when attacked',         descJa: '攻撃で炎を発射する星ブロックを設置',                  cost: 400, symbol: '◎', color: '#fde047' },
   { id: 'GOLEM_RING',     name: 'Golem Ring',      nameJa: 'ゴーレムの指輪', desc: 'At full stamina, attacks knock back enemies (Golem Smash!)', descJa: 'スタミナ満タン時の攻撃で敵を強制的に押し飛ばす',       cost: 450, symbol: '◎', color: '#a8a29e' },
   { id: 'NECRO_RING',     name: 'Necro Ring',      nameJa: '死者活性の指輪', desc: 'Enemies you defeat are revived as your allies',              descJa: '倒した敵が仲間として蘇る',                             cost: 700, symbol: '◎', color: '#7c3aed' },
+  { id: 'RED_TEAR_RING', name: 'Red Tear Ring',   nameJa: '赤涙の指輪',   desc: 'HP below 20%: attack power x5',        descJa: 'HP20%未満で攻撃力が5倍になる',       cost: 600, symbol: '◎', color: '#dc2626' },
 ];
 
 // オープニング演出用データ
@@ -900,6 +901,7 @@ const MERCHANT_PATTERNS = [
 let dungeonCore = null; // {x, y, hp}
 let hasSpawnedDragon = false; // ドラゴンが出現したか
 let hasSpawnedGoldOn100 = false; // 100階でGOLDが出現したか
+let dragonHalfPhaseTriggered = false; // ドラゴンHP50%演出済みフラグ
 
 let transition = { active: false, text: "", alpha: 0, mode: 'FADE', playerY: 0, particles: [], flashAlpha: 0 };
 let screenShake = { x: 0, y: 0, until: 0 };
@@ -1114,10 +1116,7 @@ function saveGame() {
 }
 
 function updateUI() {
-    // LIFE_RING: 毎ターンHP+1回復
-    if (hasRing('LIFE_RING') && player.hp < player.maxHp) {
-        player.hp = Math.min(player.maxHp, player.hp + 1);
-    }
+    // LIFE_RING: HP上限50%増加（getPlayerMaxHp()で反映）
     // 爆弾のターン経過処理
     bombs.forEach(b => b.timer--);
     let hasDetonation = true;
@@ -1137,7 +1136,7 @@ function updateUI() {
         if (windTimer === 4) addLog("The wind is picking up...");
     }
     isPlayerVisible = true; // 確実に表示状態にする
-    hpElement.innerText = `${player.hp}/${player.maxHp}`;
+    hpElement.innerText = `${player.hp}/${getPlayerMaxHp()}`;
     if (player.isShielded) {
         hpElement.style.color = '#4ade80'; // 守護状態は緑色に
     } else if (player.isBreaker) {
@@ -1196,6 +1195,14 @@ function updateUI() {
     const goldNode = document.getElementById('gold-status');
     if (goldNode) {
         goldNode.innerText = player.gold > 0 ? `${player.gold}G` : '';
+    }
+    // 装備指輪表示
+    const ringNode = document.getElementById('ring-status');
+    if (ringNode) {
+        const names = player.equippedRings
+            .map(id => id ? (RINGS.find(r => r.id === id)?.name || '') : '')
+            .filter(n => n);
+        ringNode.innerText = names.length ? names.join('  /  ') : '';
     }
 }
 
@@ -7896,7 +7903,7 @@ async function startFloorTransition() {
         }
     }
     // 階段降下時にHP全回復
-    player.hp = player.maxHp;
+    player.hp = getPlayerMaxHp();
     player.isSpeeding = false;
     player.isExtraTurn = false;
     player.isShielded = false;
@@ -8685,7 +8692,7 @@ function drawTitle() {
         const pulse = Math.sin(performance.now() / 600) * 0.3 + 0.7;
         ctx.save();
         ctx.globalAlpha = pulse;
-        ctx.fillStyle = '#38bdf8';
+        ctx.fillStyle = '#ededed';
         ctx.font = "12px 'Courier New', Courier, monospace";
         ctx.fillText('— THE ABYSS AWAITS —', canvas.width / 2, canvas.height / 3 + 30);
         ctx.restore();
@@ -8707,7 +8714,7 @@ function drawTitle() {
         let text = opt;
         if (i === 1 && deepUnlocked) {
             text = 'DESCEND INTO THE ABYSS';
-            ctx.fillStyle = isSelected ? '#38bdf8' : '#1e6fa8';
+            ctx.fillStyle = isSelected ? '#ededed' : '#666';
         } else {
             ctx.fillStyle = isSelected ? '#ededed' : (isDisabled ? '#333' : '#666');
         }
@@ -8731,11 +8738,11 @@ function drawTitle() {
                 ctx.fillStyle = '#ededed';
             } else if (i === 1 && deepUnlocked) {
                 ctx.font = '12px Courier New';
-                ctx.fillStyle = '#38bdf8';
+                ctx.fillStyle = '#aaa';
                 const deepSubText = saveFloor != null ? `Beyond floor 100 lies the unknown...  (B${saveFloor}F)` : 'Beyond floor 100 lies the unknown...';
                 ctx.fillText(deepSubText, canvas.width / 2, menuY + i * 40 + 25);
                 ctx.font = '24px Courier New';
-                ctx.fillStyle = '#38bdf8';
+                ctx.fillStyle = '#ededed';
             }
             if (i === 2) {
                 ctx.font = '12px Courier New';
@@ -8801,7 +8808,7 @@ function drawStatusScreen() {
         const def = getPlayerDefense();
 
         const main = [
-            { label: 'HP',      val: `${player.hp} / ${player.maxHp}`,  sub: null },
+            { label: 'HP',      val: `${player.hp} / ${getPlayerMaxHp()}`,  sub: null },
             { label: 'ATTACK',  val: `${atk}`,  sub: `(+${player.swordCount * 3})` },
             { label: 'DEFENSE', val: `${def}`,   sub: `(+${player.armorCount})` },
         ];
@@ -8918,8 +8925,13 @@ function drawStatusScreen() {
 }
 
 // ─── Player Stat Helpers ─────────────────────────────────────────
+function getPlayerMaxHp() {
+    return hasRing('LIFE_RING') ? Math.floor(player.maxHp * 1.5) : player.maxHp;
+}
 function getPlayerAttack() {
-    return 2 + player.level + (player.swordCount * 3);
+    const base = 2 + player.level + (player.swordCount * 3);
+    if (hasRing('RED_TEAR_RING') && player.hp < getPlayerMaxHp() * 0.2) return base * 5;
+    return base;
 }
 function getPlayerDefense() {
     return Math.floor(player.level / 2) + player.armorCount;
@@ -10431,7 +10443,7 @@ function draw(now) {
     if (gameState === 'ENDING') {
         ctx.save(); ctx.fillStyle = 'black'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        const credits = ["STAFF", "", "GAME DESIGN", "HIROTAKA ADACHI", "", "PROGRAMMING", "HIROTAKA ADACHI", "", "GRAPHICS", "HIROTAKA ADACHI", "", "MUSIC", "SUNO AI", "", "SPECIAL THANKS", "YOU", "", "THANK YOU FOR PLAYING!", "", "THE END"];
+        const credits = ["STAFF", "", "GAME DESIGN", "HIROTAKA ADACHI", "", "PROGRAMMING", "Claude Code", "", "GRAPHICS", "HIROTAKA ADACHI", "", "MUSIC", "SUNO AI", "", "SPECIAL THANKS", "YOU", "", "THANK YOU FOR PLAYING!", "", "THE END"];
         credits.forEach((txt, i) => {
             ctx.fillStyle = (i === 0 || txt === "THE END") ? '#ededed' : '#ccc';
             ctx.font = (i === 0) ? "bold 20px 'Courier New'" : (txt === "THE END" ? "bold 24px 'Courier New'" : "14px 'Courier New'");
@@ -10617,6 +10629,120 @@ async function slideIceBlock(block, dx, dy) {
         await new Promise(r => setTimeout(r, 55));
     }
     addLog("The ice block slides!");
+}
+
+// ドラゴンHP50%時の咆吼フェーズ演出
+async function dragonHalfPhase() {
+    dragonHalfPhaseTriggered = true;
+    const dragon = enemies.find(e => e.type === 'DRAGON');
+
+    // --- 咆吼テキスト＆画面揺れ ---
+    addLog("⚠ The Dragon ROARS — a terrifying shockwave erupts!");
+    spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) - 2, "DRAGON ROAR!", "#ef4444");
+    SOUNDS.FATAL();
+    setScreenShake(60, 1000);
+    await new Promise(r => setTimeout(r, 600));
+
+    SOUNDS.RUMBLE();
+    setScreenShake(40, 800);
+
+    // --- すべてのICICLE・設置ブロックを破壊（爆発演出付き）---
+    const toSmash = tempWalls.filter(w =>
+        w.type === 'ICICLE' || w.type === 'BLOCK' || w.type === 'ICE_BLOCK' ||
+        w.type === 'FIRE_BLOCK' || w.type === 'ICE_STAR_BLOCK' || w.type === 'BOMB_STAR_BLOCK'
+    );
+    tempWalls = tempWalls.filter(w =>
+        w.type !== 'ICICLE' && w.type !== 'BLOCK' && w.type !== 'ICE_BLOCK' &&
+        w.type !== 'FIRE_BLOCK' && w.type !== 'ICE_STAR_BLOCK' && w.type !== 'BOMB_STAR_BLOCK'
+    );
+    for (const w of toSmash) {
+        const tiles = [
+            {x: w.x, y: w.y}, {x: w.x-1, y: w.y}, {x: w.x+1, y: w.y},
+            {x: w.x, y: w.y-1}, {x: w.x, y: w.y+1}
+        ];
+        blastEffects.push({ tiles, endTime: performance.now() + 600 });
+    }
+    if (toSmash.length > 0) {
+        SOUNDS.EXPLODE();
+        spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2), "SHATTER!", "#87ceeb");
+        setTimeout(() => SOUNDS.EXPLODE(), 180);
+        setScreenShake(25, 500);
+    }
+
+    await new Promise(r => setTimeout(r, 400));
+
+    // --- プレイヤーを下の壁際まで吹き飛ばし ---
+    spawnFloatingText(player.x, player.y, "BLOWN AWAY!", "#f97316");
+    SOUNDS.RUMBLE();
+
+    function isHardWallAt(x, y) {
+        if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return true;
+        return map[y][x] === SYMBOLS.WALL;
+    }
+
+    let targetY = player.y;
+    for (let y = player.y + 1; y < ROWS; y++) {
+        if (isHardWallAt(player.x, y)) break;
+        targetY = y;
+    }
+
+    // アニメーションで落下
+    while (player.y < targetY) {
+        player.y++;
+        draw();
+        await new Promise(r => setTimeout(r, 28));
+    }
+
+    SOUNDS.LANDING_THUD();
+    setScreenShake(50, 700);
+
+    // 着地ダメージ（防御後、最低1）
+    const fallDmg = Math.max(1, 15 - getPlayerDefense());
+    if (!player.isShielded) {
+        player.hp -= fallDmg;
+        player.flashUntil = performance.now() + 300;
+        spawnDamageText(player.x, player.y, fallDmg, '#f97316');
+        SOUNDS.DAMAGE();
+        if (player.hp <= 0) {
+            player.hp = 0; updateUI(); triggerGameOver(); return;
+        }
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+
+    // --- フロアの約50%を溶岩で覆う ---
+    spawnFloatingText(Math.floor(COLS / 2), Math.floor(ROWS / 2) + 2, "HELLFIRE SURGE!", "#ef4444");
+    SOUNDS.FATAL();
+
+    const floorTiles = [];
+    for (let y = 1; y < ROWS - 1; y++) {
+        for (let x = 1; x < COLS - 1; x++) {
+            if (map[y][x] === SYMBOLS.FLOOR) floorTiles.push({x, y});
+        }
+    }
+    // シャッフルして50%選ぶ
+    for (let i = floorTiles.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [floorTiles[i], floorTiles[j]] = [floorTiles[j], floorTiles[i]];
+    }
+    const lavaCount = Math.floor(floorTiles.length * 0.5);
+    const lavaSet = new Set();
+    for (let i = 0; i < lavaCount; i++) {
+        const t = floorTiles[i];
+        // プレイヤーの足元と周囲1マスは除外
+        if (Math.abs(t.x - player.x) <= 1 && Math.abs(t.y - player.y) <= 1) continue;
+        // ドラゴン位置も除外
+        if (dragon && Math.abs(t.x - dragon.x) <= 3 && Math.abs(t.y - dragon.y) <= 3) continue;
+        map[t.y][t.x] = SYMBOLS.LAVA;
+        lavaSet.add(`${t.x},${t.y}`);
+    }
+
+    setScreenShake(30, 600);
+    draw();
+    await new Promise(r => setTimeout(r, 400));
+
+    addLog("🔥 The Dragon's fury scorches the floor — LAVA floods the dungeon!");
+    updateUI();
 }
 
 async function dragonWaveAttack(wave = 1) {
@@ -12800,7 +12926,43 @@ function moveFairies() {
                 }
             }
         }
-        if (goalX < 0) continue;
+        if (goalX < 0) {
+            // 目標なし: ドラゴンがいれば逃げながら壁際を徘徊する
+            const dragon = enemies.find(e => e.type === 'DRAGON' && e.hp > 0);
+            if (dragon && f.waitTurns === 0) {
+                const dirs4f = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+                let bestDir = null, bestScore = -Infinity;
+                for (const d of dirs4f) {
+                    const nx = f.x + d.x, ny = f.y + d.y;
+                    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+                    if (map[ny][nx] === SYMBOLS.WALL) continue;
+                    if (tempWalls.some(w => w.x === nx && w.y === ny)) continue;
+                    if (enemies.some(e => e.x === nx && e.y === ny)) continue;
+                    // ドラゴンからの距離（大きいほど良い）
+                    const distToDragon = Math.abs(nx - dragon.x) + Math.abs(ny - dragon.y);
+                    // 隣接壁の数（壁際ボーナス）
+                    const wallAdj = dirs4f.filter(d2 => {
+                        const wx = nx + d2.x, wy = ny + d2.y;
+                        return wx < 0 || wx >= COLS || wy < 0 || wy >= ROWS || map[wy][wx] === SYMBOLS.WALL;
+                    }).length;
+                    // 下側（高いy）ほど優先
+                    const score = distToDragon * 4 + wallAdj * 2 + ny;
+                    if (score > bestScore) { bestScore = score; bestDir = d; }
+                }
+                if (bestDir) {
+                    if (map[f.y][f.x] === SYMBOLS.FAIRY) map[f.y][f.x] = f.underTile ?? SYMBOLS.FLOOR;
+                    f.x += bestDir.x; f.y += bestDir.y;
+                    const prev = map[f.y][f.x];
+                    if (prev !== SYMBOLS.KEY && prev !== SYMBOLS.STAIRS && prev !== SYMBOLS.FAIRY)
+                        map[f.y][f.x] = SYMBOLS.FAIRY;
+                    f.underTile = (prev !== SYMBOLS.WALL && prev !== SYMBOLS.FAIRY) ? prev : SYMBOLS.FLOOR;
+                    f.stopped = false;
+                    // 2ターンに1回だけ動く（せわしなくなりすぎないよう）
+                    f.waitTurns = 1;
+                }
+            }
+            continue;
+        }
 
         // KEY_RUNNER以外: 目標の1マス手前で停止（stopped = true → 取得可能・点滅終了）
         if (goalSym !== 'KEY_RUNNER' && Math.abs(f.x - goalX) + Math.abs(f.y - goalY) <= 1) {
@@ -13221,7 +13383,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
         }
 
         if (enemy.type === 'GOLD') {
-            player.hp = player.maxHp; // HP全快
+            player.hp = getPlayerMaxHp(); // HP全快
             player.stamina = 100; // せっかくなので現在の値もMAXに
             player.isInfiniteStamina = true; // スタミナ減らなくなる
             SOUNDS.SHAKIN(); // シャキーン！
@@ -13526,6 +13688,11 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
             player.stamina = 0; // 突き飛ばし後はスタミナ0
             updateUI();
         }
+    }
+
+    // ドラゴンHP50%フェーズ演出トリガー
+    if (enemy.type === 'DRAGON' && !dragonHalfPhaseTriggered && enemy.hp <= enemy.maxHp * 0.5 && enemy.hp > 0) {
+        await dragonHalfPhase();
     }
 
     if (enemy.hp <= 0) {
@@ -13909,10 +14076,18 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
                 // 通常ブロックと同様に突き抜けて飛び続ける
             } else if (block.type === 'ICICLE') {
                 if (destroyIcicles) {
-                    tempWalls.splice(blockIdx, 1);
-                    addLog("CRASH! You smashed the rock spike!");
-                    SOUNDS.EXPLODE();
-                    setScreenShake(10, 200);
+                    block.hp--;
+                    if (block.hp <= 0) {
+                        tempWalls.splice(blockIdx, 1);
+                        addLog("CRASH! You smashed the rock spike!");
+                        SOUNDS.EXPLODE();
+                        setScreenShake(10, 200);
+                    } else {
+                        addLog("The rock spike cracked!");
+                        SOUNDS.HIT();
+                        setScreenShake(5, 100);
+                        break;
+                    }
                 } else {
                     SOUNDS.HIT();
                     setScreenShake(5, 100);
@@ -15942,13 +16117,18 @@ async function moveFlameProjectiles() {
         for (let i = flameProjectiles.length - 1; i >= 0; i--) {
             const fp = flameProjectiles[i];
             // 現在位置に敵がいれば即ヒット（隣接敵への一瞬表示後に当たる）
-            const atCurrent = enemies.find(e => e.x === fp.x && e.y === fp.y && e.hp > 0 && !e._dead && !e.isAlly);
+            const atCurrent = enemies.find(e => e.hp > 0 && !e._dead && !e.isAlly &&
+                ((e.x === fp.x && e.y === fp.y) ||
+                 ((e.type === 'DRAGON' || e.type === 'SNAKE') && e.body && e.body.some(s => s.x === fp.x && s.y === fp.y))));
             if (atCurrent) {
-                const dmg = atCurrent.hp;
+                const dmg = Math.min(atCurrent.hp, getPlayerAttack() * 2);
                 atCurrent.hp -= dmg;
                 atCurrent.flashUntil = performance.now() + 100;
                 spawnDamageText(fp.x, fp.y, dmg, '#f97316');
                 addLog("🔥 Flames hit the enemy!");
+                if (atCurrent.type === 'DRAGON' && !dragonHalfPhaseTriggered && atCurrent.hp <= atCurrent.maxHp * 0.5 && atCurrent.hp > 0) {
+                    await dragonHalfPhase();
+                }
                 if (atCurrent.hp <= 0) handleEnemyDeath(atCurrent);
                 flameProjectiles.splice(i, 1);
                 continue;
@@ -15998,14 +16178,19 @@ async function moveFlameProjectiles() {
                 flameProjectiles.splice(i, 1);
                 continue;
             }
-            // 敵へのダメージ（味方以外）
-            const hitEnemy = enemies.find(e => e.x === nx && e.y === ny && e.hp > 0 && !e._dead && !e.isAlly);
+            // 敵へのダメージ（味方以外、ドラゴン・スネークは胴体にも当たる）
+            const hitEnemy = enemies.find(e => e.hp > 0 && !e._dead && !e.isAlly &&
+                ((e.x === nx && e.y === ny) ||
+                 ((e.type === 'DRAGON' || e.type === 'SNAKE') && e.body && e.body.some(s => s.x === nx && s.y === ny))));
             if (hitEnemy) {
-                const dmg = hitEnemy.hp;
+                const dmg = Math.min(hitEnemy.hp, getPlayerAttack() * 2);
                 hitEnemy.hp -= dmg;
                 hitEnemy.flashUntil = performance.now() + 100;
                 spawnDamageText(nx, ny, dmg, '#f97316');
                 addLog("🔥 Flames hit the enemy!");
+                if (hitEnemy.type === 'DRAGON' && !dragonHalfPhaseTriggered && hitEnemy.hp <= hitEnemy.maxHp * 0.5 && hitEnemy.hp > 0) {
+                    await dragonHalfPhase();
+                }
                 if (hitEnemy.hp <= 0) handleEnemyDeath(hitEnemy);
                 flameProjectiles.splice(i, 1);
                 continue;
@@ -16077,7 +16262,7 @@ function gainExp(amount) {
     player.exp += amount;
     if (player.exp >= player.nextExp) {
         player.level++; player.exp = 0; player.nextExp = player.level <= 5 ? player.level * 7 : player.level * 10;
-        player.maxHp += 10; player.hp = player.maxHp;
+        player.maxHp += 10; player.hp = getPlayerMaxHp();
         SOUNDS.LEVEL_UP(); addLog(`LEVEL UP! (Lv ${player.level})`);
         spawnFloatingText(player.x, player.y, `LV UP! ${player.level}`, "#fbbf24");
         updateUI();
@@ -16160,7 +16345,7 @@ async function startGame(startFloor = 1, isTestMode = false) {
 
     // レベルに合わせてステータスを補正
     player.maxHp = 20 + (player.level * 10);
-    player.hp = player.maxHp;
+    player.hp = getPlayerMaxHp();
     player.nextExp = player.level <= 5 ? player.level * 7 : player.level * 10;
 
     // テストプレイ（ステージセレクト）用：壁破壊の魔導書を所持 & ゴールド大量 & 全指輪所持 & 妖精3匹
@@ -16633,6 +16818,15 @@ window.addEventListener('keydown', async e => {
                     SOUNDS.GET_ITEM();
                     addLog(`Slot ${ringSlotSelection + 1} に ${chosen.nameJa} を装備した！`);
                 }
+                // 装備変更後すぐに表示を更新
+                hpElement.innerText = `${player.hp}/${getPlayerMaxHp()}`;
+                const _ringNode = document.getElementById('ring-status');
+                if (_ringNode) {
+                    const _names = player.equippedRings
+                        .map(id => id ? (RINGS.find(r => r.id === id)?.name || '') : '')
+                        .filter(n => n);
+                    _ringNode.innerText = _names.length ? _names.join('  /  ') : '';
+                }
                 // スロット選択に戻る
                 ringEquipPhase = 'SLOT';
                 SOUNDS.SELECT();
@@ -17090,7 +17284,7 @@ async function useGuardianTome() {
 async function useHealTome() {
     await animateTomeRead();
     player.healTomes--;
-    player.hp = player.maxHp;
+    player.hp = getPlayerMaxHp();
     SOUNDS.HEAL();
     addLog("Recited the Heal Tome! HP fully restored!");
     spawnFloatingText(player.x, player.y, "FULL HEAL!!", "#4ade80");
