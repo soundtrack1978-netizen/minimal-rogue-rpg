@@ -10383,7 +10383,7 @@ function draw(now) {
     if (transition.flashAlpha > 0) {
         ctx.save();
         ctx.globalAlpha = transition.flashAlpha;
-        ctx.fillStyle = '#ededed';
+        ctx.fillStyle = transition.flashColor || '#ededed';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
     }
@@ -10678,7 +10678,29 @@ async function dragonDeathAnimation(dragon) {
 
     dragon.alpha = 0;
     draw();
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 80));
+
+    // === 白フラッシュ＋完全無音（約1秒）===
+    // BGM・SE を即座に停止
+    stopBGM();
+    if (typeof audioCtx !== 'undefined' && audioCtx.state === 'running') {
+        audioCtx.suspend();
+    }
+
+    // 純白で画面を覆う
+    transition.flashAlpha = 1.0;
+    transition.flashColor = '#ffffff';
+    draw();
+
+    await new Promise(r => setTimeout(r, 1000));
+
+    // フラッシュ解除・オーディオ再開（以降の処理用）
+    transition.flashAlpha = 0;
+    transition.flashColor = null;
+    if (typeof audioCtx !== 'undefined' && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    draw();
 }
 
 // ドラゴンHP50%時の咆吼フェーズ演出
