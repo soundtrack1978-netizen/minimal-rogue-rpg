@@ -12181,19 +12181,21 @@ function tickScrollWallLines() {
     scrollWallLines = scrollWallLines.filter(l => l.life > 0);
 
     // 新しい横線を 1〜2 本生成
-    const newCount = Math.random() < 0.6 ? 1 : 2; // 6割は1本、4割は2本（途切れを多く）
-    const usedYs = new Set(scrollWallLines.map(l => l.y));
+    const newCount = Math.random() < 0.5 ? 1 : 2;
+    const usedYs = scrollWallLines.map(l => l.y);
     for (let i = 0; i < newCount; i++) {
         let lineY = -1;
-        for (let t = 0; t < 30; t++) {
+        for (let t = 0; t < 40; t++) {
             const candidate = 1 + Math.floor(Math.random() * (ROWS - 2));
-            if (candidate !== scrollWallProtectedY && !usedYs.has(candidate)) {
+            // 既存ラインから3マス以上離れた位置のみ許可
+            const tooClose = usedYs.some(y => Math.abs(y - candidate) < 3);
+            if (candidate !== scrollWallProtectedY && !tooClose) {
                 lineY = candidate; break;
             }
         }
         if (lineY !== -1) {
-            usedYs.add(lineY);
-            scrollWallLines.push({ y: lineY, life: 3 + Math.floor(Math.random() * 4) }); // 長さ 3〜6（短め＝途切れ多）
+            usedYs.push(lineY);
+            scrollWallLines.push({ y: lineY, life: 2 + Math.floor(Math.random() * 3) }); // 長さ 2〜4
         }
     }
 
