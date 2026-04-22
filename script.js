@@ -12363,12 +12363,19 @@ async function advanceScrollWalls() {
     // 2. 壁を1マス左へ移動（左端を超えたものは削除）
     scrollWalls = scrollWalls.map(w => ({ x: w.x - 1, y: w.y })).filter(w => w.x >= 1);
 
-    // 3. pushedByWall タレットを壁で押し出す
-    for (const e of enemies) {
-        if (!e.pushedByWall || e.hp <= 0 || e._dead) continue;
-        if (scrollWalls.some(w => w.x === e.x && w.y === e.y)) {
-            if (e.x - 1 >= 1) e.x -= 1;
-        }
+    // 3. 敵を壁で押し出す（固定系以外はすべて押される。左端に行けない場合はその場に留まる）
+    //    左にいる敵から順に処理することで、横並びの複数敵も連鎖して押される
+    const WALL_FIXED = new Set(['TURRET', 'HOPPER_TURRET']);
+    const pushable = enemies
+        .filter(e => !e._dead && e.hp > 0 && !WALL_FIXED.has(e.type) && !e.immuneToWind)
+        .sort((a, b) => a.x - b.x); // 左端から処理
+    for (const e of pushable) {
+        if (!scrollWalls.some(w => w.x === e.x && w.y === e.y)) continue;
+        const tx = e.x - 1;
+        if (tx < 1) continue; // 左端 → 留まる
+        // 押し先に別の敵がいなければ移動
+        if (!enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === tx && o.y === e.y))
+            e.x = tx;
     }
 
     // 4. プレイヤーと同じタイルに壁が来た場合の判定（毒沼上でも押す）
