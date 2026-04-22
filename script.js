@@ -5245,12 +5245,13 @@ function initMap() {
         scrollWallProtectedY = 3;
         map[scrollWallProtectedY][COLS - 4] = SYMBOLS.STAIRS;
 
-        // タレット：出口の左隣、左向きレーザー
+        // タレット：出口の左隣、左向きレーザー（突風で押されないよう immuneToWind）
         const tHp36 = 30 + floorLevel * 3;
         enemies.push({
             type: 'TURRET', x: COLS - 5, y: scrollWallProtectedY, dir: 3,
             hp: tHp36, maxHp: tHp36,
-            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0,
+            immuneToWind: true
         });
 
         // BREAKER(W)：マップ中央付近
@@ -12406,7 +12407,7 @@ async function windGustSlide() {
         if (map[y][player.x] === SYMBOLS.STAIRS) { playerFallsIntoHole = true; break; }
     }
     // 敵の最終Y（下の敵から計算して重なり防止。穴に落ちた敵は死亡）
-    const sortedEnemies = enemies.filter(e => e.hp > 0).sort((a, b) => b.y - a.y);
+    const sortedEnemies = enemies.filter(e => e.hp > 0 && !e.immuneToWind).sort((a, b) => b.y - a.y);
     const enemyTargets = new Map();
     const enemyFallsIntoHole = new Set();
     const occupied = new Set();
