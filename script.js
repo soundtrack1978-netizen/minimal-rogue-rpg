@@ -3975,7 +3975,7 @@ function initMap() {
                 }
             }
         };
-        placeEnemy13('NORMAL', 3);
+        placeEnemy13('NORMAL', 6);
         placeEnemy13('ORC', 2);
 
         // プレイヤー：左上
