@@ -3904,23 +3904,13 @@ function initMap() {
         // 出口：右下エリア
         map[scrollWallProtectedY][COLS - 4] = SYMBOLS.STAIRS;
 
-        // タレット：出口の左隣（固定）+ その上に4体（壁に押されて左へ流れる）
+        // タレット：出口の左隣、左向きレーザー（固定）
         const tHp13 = 30 + floorLevel * 3;
-        // 固定タレット（保護ライン上）
         enemies.push({
             type: 'TURRET', x: COLS - 5, y: scrollWallProtectedY, dir: 3,
             hp: tHp13, maxHp: tHp13,
             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0
         });
-        // 上方向に4体（スクロール壁に押されて左へ移動する）
-        for (let i = 1; i <= 4; i++) {
-            enemies.push({
-                type: 'TURRET', x: COLS - 5, y: scrollWallProtectedY - i, dir: 3,
-                hp: tHp13, maxHp: tHp13,
-                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0,
-                pushedByWall: true
-            });
-        }
 
         // BREAKER(W)：マップ中央付近
         const wHp13 = 20 + floorLevel * 3;
