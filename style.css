@@ -27,7 +27,7 @@ body {
     flex-direction: column;
     gap: 10px;
     border: 1px solid var(--border-color);
-    padding: 20px 240px;
+    padding: 20px;
 }
 
 .stats-bar {
@@ -183,4 +183,17 @@ body {
     animation: stamina-glow 0.8s infinite alternate !important;
     border: 1px solid #fff;
     box-sizing: border-box;
+}
+
+.death-count-panel {
+    font-size: 11px;
+    color: #444;
+    text-align: right;
+    padding-top: 8px;
+    margin-top: 4px;
+    border-top: 1px solid #1a1a1a;
+}
+
+.death-count-panel span {
+    color: #555;
 }

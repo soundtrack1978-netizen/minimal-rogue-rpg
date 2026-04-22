@@ -8555,6 +8555,10 @@ function initMap() {
     // 33階：派閥敵を追加（突風ステージ＋派閥エリア）
     if (floorLevel === 33) {
         const midX33 = Math.floor(COLS / 2);
+        // 通常生成された敵を位置に応じてCRIMSON/COBALTに振り分け（赤い敵をなくす）
+        enemies.forEach(e => {
+            if (!e.faction) e.faction = e.x < midX33 ? 'CRIMSON' : 'COBALT';
+        });
         const place33 = (xMin, xMax, type, faction, count) => {
             const expV = type === 'ORC' ? 35 : type === 'LAYER' ? 18 : 5;
             const hpBase = type === 'ORC'   ? 25 + floorLevel * 3
