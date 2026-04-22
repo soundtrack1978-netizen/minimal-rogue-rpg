@@ -3920,35 +3920,11 @@ function initMap() {
             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30, stunTurns: 0
         });
 
-        // 毒沼：山形（下が広く、上が狭い）＋散在する小さな毒
-        const pCenterX = Math.floor(COLS / 2) + Math.floor((Math.random() - 0.5) * 8);
-        const pPeakY   = 11 + Math.floor(Math.random() * 3);      // 山頂 y≈11〜13
-        const pBaseY   = scrollWallProtectedY - 2;                 // 山裾 y≈19（保護ラインの2つ上）
-        const pBaseHW  = 9 + Math.floor(Math.random() * 4);       // 裾の半幅 9〜12
-        for (let y = pPeakY; y <= pBaseY; y++) {
-            if (y < 1 || y >= ROWS - 1) continue;
-            const t = (y - pPeakY) / Math.max(1, pBaseY - pPeakY);
-            const halfW = Math.max(1, Math.round(pBaseHW * t));
-            for (let dx = -halfW; dx <= halfW; dx++) {
-                const x = pCenterX + dx + (Math.random() < 0.25 ? (Math.random() < 0.5 ? -1 : 1) : 0);
-                if (x < 2 || x >= COLS - 2) continue;
-                if (x < 5 && y < 6) continue; // プレイヤー開始エリアを避ける
-                if (Math.random() < 0.12) continue; // 端をギザギザに
-                map[y][x] = SYMBOLS.POISON;
-            }
-        }
-        // 散在する小さな毒スポット
-        for (let i = 0; i < 10; i++) {
-            const sx = 4 + Math.floor(Math.random() * (COLS - 8));
-            const sy = 6 + Math.floor(Math.random() * (ROWS - 10));
-            if (map[sy][sx] !== SYMBOLS.FLOOR) continue;
-            if (sx < 5 && sy < 6) continue;
-            map[sy][sx] = SYMBOLS.POISON;
-            if (Math.random() < 0.4) {
-                const d = [{x:0,y:1},{x:1,y:0},{x:0,y:-1},{x:-1,y:0}][Math.floor(Math.random()*4)];
-                const nx = sx+d.x, ny = sy+d.y;
-                if (nx>=2&&nx<COLS-2&&ny>=2&&ny<ROWS-2&&map[ny][nx]===SYMBOLS.FLOOR) map[ny][nx]=SYMBOLS.POISON;
-            }
+        // 毒沼：下の壁から4マスのライン（y = ROWS-5）を全面に。穴付近（右端）は除外
+        const poisonLineY = ROWS - 5; // y = 20
+        const poisonClearX = COLS - 7; // x >= 33 は除外（穴・タレット付近）
+        for (let x = 2; x < poisonClearX; x++) {
+            map[poisonLineY][x] = SYMBOLS.POISON;
         }
 
         // NORMAL(E) と ORC(G) を配置
