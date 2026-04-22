@@ -7627,11 +7627,16 @@ function initMap() {
     }
 
     // 風フロアのランダム発生 (36階以降、3%の確率。固定ステージには発生しない)
-    const fixedStages = [7, 35, 40, 50, 66, 75, 80, 88, 100];
+    const fixedStages = [7, 25, 35, 40, 50, 66, 75, 80, 88, 100];
     if (floorLevel === 7 && !isWindFloor) {
         isWindFloor = true;
         windTimer = 4;
         addLog("💨 FLOOR 7: A gale tears through the dungeon!");
+    }
+    if (floorLevel === 25 && !isWindFloor) {
+        isWindFloor = true;
+        windTimer = 4;
+        addLog("💨 FLOOR 25: Violent winds sweep through the labyrinth!");
     }
     if (floorLevel === 45 && !isWindFloor) {
         isWindFloor = true;
