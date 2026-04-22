@@ -12373,8 +12373,15 @@ async function advanceScrollWalls() {
     }
 
     // 5. 新位置に WALL を置く（元タイルを underTile に保存）
+    //    設置ブロック（tempWalls）がある場合は壁に押されて破壊
     for (const w of scrollWalls) {
         if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1) {
+            const twIdx = tempWalls.findIndex(tw => tw.x === w.x && tw.y === w.y);
+            if (twIdx !== -1) {
+                tempWalls.splice(twIdx, 1);
+                spawnFloatingText(w.x, w.y, "CRUSH!", "#aaa", 600);
+                SOUNDS.WALL_BREAK();
+            }
             w.underTile = map[w.y][w.x]; // FLOOR or POISON を記憶
             map[w.y][w.x] = SYMBOLS.WALL;
         }
