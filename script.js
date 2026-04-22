@@ -5281,26 +5281,41 @@ function initMap() {
         place36('NORMAL', 6);
         place36('ORC', 2);
 
-        // 毒の床：中心付近にランダム散布
-        const p36cx = Math.floor(COLS / 2) + Math.floor((Math.random() - 0.5) * 10);
-        const p36cy = Math.floor(ROWS / 2) + Math.floor((Math.random() - 0.5) * 6);
-        const p36tiles = new Set([`${p36cx},${p36cy}`]);
-        const p36queue = [{ x: p36cx, y: p36cy }];
-        const p36dirs = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
-        while (p36queue.length > 0 && p36tiles.size < 25) {
-            const cur = p36queue.shift();
-            for (const d of p36dirs) {
-                const nx = cur.x + d.x, ny = cur.y + d.y;
-                const key = `${nx},${ny}`;
-                if (nx < 2 || nx >= COLS - 2 || ny < 2 || ny >= ROWS - 2) continue;
-                if (ny === scrollWallProtectedY) continue;
-                if (p36tiles.has(key)) continue;
-                if (Math.random() < 0.5) { p36tiles.add(key); p36queue.push({ x: nx, y: ny }); }
+        // 毒の床：逆さ山形（上が広く、下が狭い）＋散在スポット — 13階の上下反転
+        const p36CenterX = Math.floor(COLS / 2) + Math.floor((Math.random() - 0.5) * 8);
+        const p36BaseY   = scrollWallProtectedY + 2;           // 山裾（上・広い）y≈5
+        const p36PeakY   = ROWS - 11 + Math.floor(Math.random() * 3); // 山頂（下・狭い）y≈14〜16
+        const p36BaseHW  = 9 + Math.floor(Math.random() * 4);         // 裾の半幅 9〜12
+        for (let y = p36BaseY; y <= p36PeakY; y++) {
+            if (y < 1 || y >= ROWS - 1) continue;
+            const t = (y - p36BaseY) / Math.max(1, p36PeakY - p36BaseY); // 上=0, 下=1
+            const halfW = Math.max(1, Math.round(p36BaseHW * (1 - t)));   // 上が広く、下が狭い
+            for (let dx = -halfW; dx <= halfW; dx++) {
+                const x = p36CenterX + dx + (Math.random() < 0.25 ? (Math.random() < 0.5 ? -1 : 1) : 0);
+                if (x < 2 || x >= COLS - 2) continue;
+                if (Math.random() < 0.12) continue;
+                map[y][x] = SYMBOLS.POISON;
             }
         }
-        for (const key of p36tiles) {
-            const [px, py] = key.split(',').map(Number);
-            if (map[py][px] === SYMBOLS.FLOOR) map[py][px] = SYMBOLS.POISON;
+        // 上から1〜4行（保護ラインの直下）をほぼ全面毒で埋める（13階の下部に相当）
+        for (let y = scrollWallProtectedY + 1; y <= scrollWallProtectedY + 4; y++) {
+            for (let x = 2; x < COLS - 2; x++) {
+                if (map[y][x] === SYMBOLS.STAIRS) continue;
+                if (Math.random() < 0.06) continue;
+                map[y][x] = SYMBOLS.POISON;
+            }
+        }
+        // 散在する小さな毒スポット
+        for (let i = 0; i < 10; i++) {
+            const sx = 4 + Math.floor(Math.random() * (COLS - 8));
+            const sy = 6 + Math.floor(Math.random() * (ROWS - 12));
+            if (map[sy][sx] !== SYMBOLS.FLOOR) continue;
+            map[sy][sx] = SYMBOLS.POISON;
+            if (Math.random() < 0.4) {
+                const d = [{x:0,y:1},{x:1,y:0},{x:0,y:-1},{x:-1,y:0}][Math.floor(Math.random()*4)];
+                const nx = sx+d.x, ny = sy+d.y;
+                if (nx>=2&&nx<COLS-2&&ny>=2&&ny<ROWS-2&&map[ny][nx]===SYMBOLS.FLOOR) map[ny][nx]=SYMBOLS.POISON;
+            }
         }
 
         // プレイヤー：左下
