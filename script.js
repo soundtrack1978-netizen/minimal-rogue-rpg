@@ -4951,135 +4951,6 @@ function initMap() {
         return;
     }
 
-    // --- FLOOR 33: THE SUNKEN ARENA — 溶岩堀の闘技場 ---
-    if (floorLevel === 33) {
-        addLog("⚔️ EVENT: THE SUNKEN ARENA");
-        addLog("Two factions fight around a ring of fire.");
-        addLog("A lava moat separates the outer world from the arena floor.");
-
-        // 全面を床に
-        for (let y = 1; y < ROWS - 1; y++)
-            for (let x = 1; x < COLS - 1; x++)
-                map[y][x] = SYMBOLS.FLOOR;
-
-        const cx = 20, cy = 12;
-        // アリーナ外周（溶岩堀の外側の壁）
-        const ax1 = 11, ax2 = 29, ay1 = 6, ay2 = 18;
-
-        // 溶岩堀（外周1マス）
-        for (let y = ay1; y <= ay2; y++) {
-            for (let x = ax1; x <= ax2; x++) {
-                const edge = y === ay1 || y === ay2 || x === ax1 || x === ax2;
-                if (edge) map[y][x] = SYMBOLS.LAVA;
-            }
-        }
-
-        // 4方向の橋
-        map[cy][ax1] = SYMBOLS.FLOOR; // 西
-        map[cy][ax2] = SYMBOLS.FLOOR; // 東
-        map[ay1][cx] = SYMBOLS.FLOOR; // 北
-        map[ay2][cx] = SYMBOLS.FLOOR; // 南（プレイヤー入場）
-
-        // アリーナ内部の中心に十字型溶岩池
-        for (let d = -2; d <= 2; d++) {
-            if (cy + d >= 1 && cy + d < ROWS - 1) map[cy + d][cx] = SYMBOLS.LAVA;
-            if (cx + d >= 1 && cx + d < COLS - 1) map[cy][cx + d] = SYMBOLS.LAVA;
-        }
-        map[cy][cx] = SYMBOLS.FLOOR; // 十字の中心1マスは床
-
-        // アリーナ内部の4隅に壁柱
-        const pillars = [
-            [ay1 + 3, ax1 + 3], [ay1 + 3, ax2 - 3],
-            [ay2 - 3, ax1 + 3], [ay2 - 3, ax2 - 3],
-        ];
-        for (const [py, px] of pillars) {
-            map[py][px] = SYMBOLS.WALL;
-            map[py][px + 1] = SYMBOLS.WALL;
-            map[py + 1][px] = SYMBOLS.WALL;
-        }
-
-        // 外周エリアに仕切り壁（雰囲気のある観客席風）
-        // 左側（x=2〜ax1-2）に縦壁×2本
-        for (let y = 2; y < ROWS - 2; y++) {
-            if (Math.abs(y - cy) > 2) {
-                if (ax1 - 4 >= 1) map[y][ax1 - 4] = SYMBOLS.WALL;
-            }
-        }
-        // 右側（ax2+2〜COLS-2）に縦壁×2本
-        for (let y = 2; y < ROWS - 2; y++) {
-            if (Math.abs(y - cy) > 2) {
-                if (ax2 + 4 < COLS - 1) map[y][ax2 + 4] = SYMBOLS.WALL;
-            }
-        }
-
-        // プレイヤーを南橋の下に配置
-        player.x = cx; player.y = ay2 + 2;
-        if (player.y >= ROWS - 1) player.y = ROWS - 3;
-        for (let dy = -1; dy <= 1; dy++)
-            for (let dx = -2; dx <= 2; dx++) {
-                const px = player.x + dx, py = player.y + dy;
-                if (px >= 1 && px < COLS - 1 && py >= 1 && py < ROWS - 1)
-                    map[py][px] = SYMBOLS.FLOOR;
-            }
-
-        // 出口（北橋の上）
-        map[ay1 - 2][cx] = SYMBOLS.FLOOR;
-        map[ay1 - 2][cx] = SYMBOLS.STAIRS;
-        for (let dx = -1; dx <= 1; dx++) {
-            const sx = cx + dx;
-            if (sx >= 1 && sx < COLS - 1) map[ay1 - 1][sx] = SYMBOLS.FLOOR;
-        }
-
-        // 敵配置ヘルパー
-        const place33 = (xMin, xMax, yMin, yMax, type, faction, count) => {
-            const expV = type === 'ORC' ? 35 : type === 'LAYER' ? 18 : 5;
-            const hpBase = type === 'ORC'   ? 25 + floorLevel * 3
-                         : type === 'LAYER' ? 18 + floorLevel * 2
-                         :                    6  + floorLevel;
-            for (let i = 0; i < count; i++) {
-                for (let t = 0; t < 300; t++) {
-                    const ex = xMin + Math.floor(Math.random() * (xMax - xMin + 1));
-                    const ey = yMin + Math.floor(Math.random() * (yMax - yMin + 1));
-                    if (ex < 1 || ex >= COLS - 1 || ey < 1 || ey >= ROWS - 1) continue;
-                    if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
-                    if (enemies.some(en => en.x === ex && en.y === ey)) continue;
-                    if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 4) continue;
-                    enemies.push({ type, x: ex, y: ey,
-                        hp: hpBase, maxHp: hpBase,
-                        flashUntil: 0, offsetX: 0, offsetY: 0,
-                        expValue: expV, stunTurns: 0, faction });
-                    break;
-                }
-            }
-        };
-
-        // CRIMSON（緑）：左の外周エリアに密集
-        place33(1, ax1 - 1, 1, ROWS - 2, 'NORMAL', 'CRIMSON', 10);
-        place33(1, ax1 - 2, 2, ROWS - 3, 'ORC',    'CRIMSON', 2);
-        place33(1, ax1 - 2, 2, ROWS - 3, 'LAYER',  'CRIMSON', 1);
-
-        // COBALT（紫）：右の外周エリアに密集
-        place33(ax2 + 1, COLS - 2, 1, ROWS - 2, 'NORMAL', 'COBALT', 10);
-        place33(ax2 + 2, COLS - 2, 2, ROWS - 3, 'ORC',    'COBALT', 2);
-        place33(ax2 + 2, COLS - 2, 2, ROWS - 3, 'LAYER',  'COBALT', 1);
-
-        // アリーナ内部にも少数の中立（派閥なし）敵を配置（混戦演出）
-        place33(ax1 + 1, ax2 - 1, ay1 + 1, ay2 - 1, 'NORMAL', null, 4);
-
-        // アリーナ内にウィスプ2体（不気味な演出）
-        for (let i = 0; i < 2; i++) {
-            for (let t = 0; t < 100; t++) {
-                const wx = ax1 + 2 + Math.floor(Math.random() * (ax2 - ax1 - 4));
-                const wy = ay1 + 2 + Math.floor(Math.random() * (ay2 - ay1 - 4));
-                if (map[wy][wx] !== SYMBOLS.FLOOR) continue;
-                if (enemies.some(e => e.x === wx && e.y === wy)) continue;
-                wisps.push({ x: wx, y: wy, dir: Math.floor(Math.random() * 4), mode: 'FOLLOW' });
-                break;
-            }
-        }
-
-        return;
-    }
 
     // --- WIND STAGE (Floor 35): 突風の間 ---
     if (floorLevel === 35) {
@@ -7757,7 +7628,7 @@ function initMap() {
     }
 
     // 風フロアのランダム発生 (36階以降、3%の確率。固定ステージには発生しない)
-    const fixedStages = [7, 25, 35, 40, 50, 66, 75, 80, 88, 100];
+    const fixedStages = [7, 25, 33, 35, 40, 50, 66, 75, 80, 88, 100];
     if (floorLevel === 7 && !isWindFloor) {
         isWindFloor = true;
         windTimer = 4;
@@ -7767,6 +7638,11 @@ function initMap() {
         isWindFloor = true;
         windTimer = 4;
         addLog("💨 FLOOR 25: Violent winds sweep through the labyrinth!");
+    }
+    if (floorLevel === 33 && !isWindFloor) {
+        isWindFloor = true;
+        windTimer = 4;
+        addLog("💨 FLOOR 33: A howling gale rips through the ruins!");
     }
     if (floorLevel === 45 && !isWindFloor) {
         isWindFloor = true;
