@@ -3904,6 +3904,14 @@ function initMap() {
         // 出口：右下エリア
         map[scrollWallProtectedY][COLS - 4] = SYMBOLS.STAIRS;
 
+        // タレット：出口の左隣、左向きレーザー
+        const tHp13 = 30 + floorLevel * 3;
+        enemies.push({
+            type: 'TURRET', x: COLS - 5, y: scrollWallProtectedY, dir: 3,
+            hp: tHp13, maxHp: tHp13,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0
+        });
+
         // プレイヤー：左上
         player.x = 3;
         player.y = 3;
