@@ -102,6 +102,7 @@ and returns early, skipping random generation.
 |-------|------|-------|
 | 7 | Wind | random dungeon + wind from turn 1 |
 | 12 | Normal | guaranteed CRAZY_G spawn added post-gen |
+| 13 | Scroll walls | walls scroll right→left every turn; protected row y=3; crushed at x=1 = death |
 | 20 | Faction | fixed layout, CRIMSON left / COBALT right |
 | 25 | Wind | random dungeon + wind |
 | 33 | Wind+Faction | random dungeon + wind + faction post-processing |

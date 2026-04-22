@@ -804,6 +804,9 @@ let nextSlideAction = null; // 氷の上で滑っている最中の入力を保�
 let isIceFloor = false; // 現在のフロアが氷のフロアかどうか
 let isWindFloor = false; // 突風の間
 let isSanctuaryFloor = false; // 深層：聖域の階（全敵が友好的）
+let isScrollWallFloor = false; // 13F: スクロール壁ステージ
+let scrollWalls = []; // {x, y} スクロール壁タイル
+let scrollWallProtectedY = -1; // 出口のある行（壁生成禁止）
 let windTimer = 0;
 let windGustEndTime = 0; // 突風エフェクト終了時刻
 let testFloor = 1;    // テストプレイ用の開始階層
@@ -1307,6 +1310,7 @@ function initMap() {
     blastEffects = []; // 爆風エフェクトをリセット
     isWindFloor = false; windTimer = 0;
     isSanctuaryFloor = false;
+    isScrollWallFloor = false; scrollWalls = []; scrollWallProtectedY = -1;
     wisps = []; // ウィルをリセット
     movingFairies = []; // 妖精をリセット
     movingMadmen = []; // 狂人をリセット
@@ -3875,6 +3879,32 @@ function initMap() {
             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30,
             stunTurns: 0
         });
+
+        return;
+    }
+
+    // --- FLOOR 13: THE GRINDER ---
+    if (floorLevel === 13) {
+        addLog("⚠️ FLOOR 13: THE GRINDER");
+        addLog("Walls scroll left every turn. Reach the exit — safe passage at the TOP.");
+        addLog("Crushed against the left wall = instant DEATH.");
+
+        isScrollWallFloor = true;
+        scrollWalls = [];
+
+        // 全面を床に
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.FLOOR;
+
+        // 出口のある行（壁生成禁止ライン）：上から3行目
+        scrollWallProtectedY = 3;
+        // 出口：右上エリア
+        map[scrollWallProtectedY][COLS - 4] = SYMBOLS.STAIRS;
+
+        // プレイヤー：左側の中央やや下
+        player.x = 3;
+        player.y = Math.floor(ROWS / 2) + 3;
 
         return;
     }
@@ -7642,7 +7672,7 @@ function initMap() {
     }
 
     // 風フロアのランダム発生 (36階以降、3%の確率。固定ステージには発生しない)
-    const fixedStages = [7, 25, 33, 35, 40, 50, 66, 75, 80, 88, 100];
+    const fixedStages = [7, 13, 25, 33, 35, 40, 50, 66, 75, 80, 88, 100];
     if (floorLevel === 7 && !isWindFloor) {
         isWindFloor = true;
         windTimer = 4;
@@ -12116,7 +12146,82 @@ async function dragonWaveAttack(wave = 1) {
     await new Promise(r => setTimeout(r, 400));
 }
 
+// ===== SECTION: SCROLL WALL SYSTEM (Floor 13) =====
+
+function spawnScrollWallStripe() {
+    const x = COLS - 2;
+    const newTiles = [];
+    let y = 1;
+    while (y <= ROWS - 2) {
+        if (y === scrollWallProtectedY) { y++; continue; }
+        if (Math.random() < 0.52) {
+            // 連続したブロック状の壁（2〜4タイル）
+            const run = 2 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < run; i++) {
+                const wy = y + i;
+                if (wy > ROWS - 2 || wy === scrollWallProtectedY) break;
+                newTiles.push({ x, y: wy });
+            }
+            y += run + 1 + Math.floor(Math.random() * 2); // ギャップ1〜2
+        } else {
+            y++;
+        }
+    }
+    for (const t of newTiles) {
+        scrollWalls.push(t);
+        if (map[t.y] && map[t.y][t.x] === SYMBOLS.FLOOR) map[t.y][t.x] = SYMBOLS.WALL;
+    }
+}
+
+async function advanceScrollWalls() {
+    if (!isScrollWallFloor) return;
+
+    // 現在の壁タイルをマップから消去
+    for (const w of scrollWalls) {
+        if (w.y >= 0 && w.y < ROWS && w.x >= 0 && w.x < COLS)
+            if (map[w.y][w.x] === SYMBOLS.WALL) map[w.y][w.x] = SYMBOLS.FLOOR;
+    }
+
+    // 壁を1マス左へ移動（左端を超えたものは削除）
+    scrollWalls = scrollWalls.map(w => ({ x: w.x - 1, y: w.y })).filter(w => w.x >= 1);
+
+    // プレイヤーと同じタイルに壁が来た場合の判定
+    const wallOnPlayer = scrollWalls.find(w => w.x === player.x && w.y === player.y);
+    if (wallOnPlayer) {
+        const leftX = player.x - 1;
+        const leftIsWall = leftX < 1 || scrollWalls.some(w => w.x === leftX && w.y === player.y);
+        if (leftIsWall) {
+            // 即死：壁に挟まれた
+            spawnFloatingText(player.x, player.y, "CRUSHED!", "#ff4444", 1500);
+            addLog("💀 Crushed between the wall and the edge!");
+            for (const w of scrollWalls) {
+                if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1)
+                    if (map[w.y][w.x] === SYMBOLS.FLOOR) map[w.y][w.x] = SYMBOLS.WALL;
+            }
+            draw();
+            await triggerGameOver();
+            return;
+        }
+        // 左へ押し出す
+        player.x = leftX;
+        addLog("Pushed left by the wall!");
+    }
+
+    // 壁タイルをマップへ反映
+    for (const w of scrollWalls) {
+        if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1)
+            if (map[w.y][w.x] === SYMBOLS.FLOOR) map[w.y][w.x] = SYMBOLS.WALL;
+    }
+
+    // 右端に新しい壁ストライプを生成
+    spawnScrollWallStripe();
+
+    draw();
+    await new Promise(r => setTimeout(r, 60));
+}
+
 async function windGustSlide() {
+    if (isScrollWallFloor) { await advanceScrollWalls(); if (gameState !== 'PLAYING') return; }
     if (!isWindFloor || windTimer < 5) return;
     windTimer = 0;
     addLog("A strong gust blows!");
