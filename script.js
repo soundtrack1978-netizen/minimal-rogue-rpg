@@ -807,6 +807,7 @@ let isSanctuaryFloor = false; // 深層：聖域の階（全敵が友好的）
 let isScrollWallFloor = false; // 13F: スクロール壁ステージ
 let scrollWalls = []; // {x, y} スクロール壁タイル
 let scrollWallProtectedY = -1; // 出口のある行（壁生成禁止）
+let scrollWallLines = []; // {y, life} 横線ジェネレーター
 let windTimer = 0;
 let windGustEndTime = 0; // 突風エフェクト終了時刻
 let testFloor = 1;    // テストプレイ用の開始階層
@@ -1310,7 +1311,7 @@ function initMap() {
     blastEffects = []; // 爆風エフェクトをリセット
     isWindFloor = false; windTimer = 0;
     isSanctuaryFloor = false;
-    isScrollWallFloor = false; scrollWalls = []; scrollWallProtectedY = -1;
+    isScrollWallFloor = false; scrollWalls = []; scrollWallProtectedY = -1; scrollWallLines = [];
     wisps = []; // ウィルをリセット
     movingFairies = []; // 妖精をリセット
     movingMadmen = []; // 狂人をリセット
@@ -3886,25 +3887,26 @@ function initMap() {
     // --- FLOOR 13: THE GRINDER ---
     if (floorLevel === 13) {
         addLog("⚠️ FLOOR 13: THE GRINDER");
-        addLog("Walls scroll left every turn. Reach the exit — safe passage at the TOP.");
-        addLog("Crushed against the left wall = instant DEATH.");
+        addLog("Lines of walls scroll in from the right every turn.");
+        addLog("Reach the exit at the BOTTOM-RIGHT. Crushed at the left edge = DEATH.");
 
         isScrollWallFloor = true;
         scrollWalls = [];
+        scrollWallLines = [];
 
         // 全面を床に
         for (let y = 1; y < ROWS - 1; y++)
             for (let x = 1; x < COLS - 1; x++)
                 map[y][x] = SYMBOLS.FLOOR;
 
-        // 出口のある行（壁生成禁止ライン）：上から3行目
-        scrollWallProtectedY = 3;
-        // 出口：右上エリア
+        // 出口のある行（壁生成禁止ライン）：下から4行目
+        scrollWallProtectedY = ROWS - 4;
+        // 出口：右下エリア
         map[scrollWallProtectedY][COLS - 4] = SYMBOLS.STAIRS;
 
-        // プレイヤー：左側の中央やや下
+        // プレイヤー：左上
         player.x = 3;
-        player.y = Math.floor(ROWS / 2) + 3;
+        player.y = 3;
 
         return;
     }
@@ -12148,25 +12150,37 @@ async function dragonWaveAttack(wave = 1) {
 
 // ===== SECTION: SCROLL WALL SYSTEM (Floor 13) =====
 
-function spawnScrollWallStripe() {
+function tickScrollWallLines() {
     const x = COLS - 2;
     const newTiles = [];
-    let y = 1;
-    while (y <= ROWS - 2) {
-        if (y === scrollWallProtectedY) { y++; continue; }
-        if (Math.random() < 0.52) {
-            // 連続したブロック状の壁（2〜4タイル）
-            const run = 2 + Math.floor(Math.random() * 3);
-            for (let i = 0; i < run; i++) {
-                const wy = y + i;
-                if (wy > ROWS - 2 || wy === scrollWallProtectedY) break;
-                newTiles.push({ x, y: wy });
-            }
-            y += run + 1 + Math.floor(Math.random() * 2); // ギャップ1〜2
-        } else {
-            y++;
+
+    // アクティブな横線を延伸
+    for (const line of scrollWallLines) {
+        if (line.life > 0) {
+            line.life--;
+            if (line.y >= 1 && line.y <= ROWS - 2 && line.y !== scrollWallProtectedY)
+                newTiles.push({ x, y: line.y });
         }
     }
+    scrollWallLines = scrollWallLines.filter(l => l.life > 0);
+
+    // 新しい横線を 1〜2 本生成
+    const newCount = 1 + Math.floor(Math.random() * 2);
+    const usedYs = new Set(scrollWallLines.map(l => l.y));
+    for (let i = 0; i < newCount; i++) {
+        let lineY = -1;
+        for (let t = 0; t < 30; t++) {
+            const candidate = 1 + Math.floor(Math.random() * (ROWS - 2));
+            if (candidate !== scrollWallProtectedY && !usedYs.has(candidate)) {
+                lineY = candidate; break;
+            }
+        }
+        if (lineY !== -1) {
+            usedYs.add(lineY);
+            scrollWallLines.push({ y: lineY, life: 4 + Math.floor(Math.random() * 6) }); // 長さ 4〜9
+        }
+    }
+
     for (const t of newTiles) {
         scrollWalls.push(t);
         if (map[t.y] && map[t.y][t.x] === SYMBOLS.FLOOR) map[t.y][t.x] = SYMBOLS.WALL;
@@ -12213,8 +12227,8 @@ async function advanceScrollWalls() {
             if (map[w.y][w.x] === SYMBOLS.FLOOR) map[w.y][w.x] = SYMBOLS.WALL;
     }
 
-    // 右端に新しい壁ストライプを生成
-    spawnScrollWallStripe();
+    // 右端に新しい横線を生成・延伸
+    tickScrollWallLines();
 
     draw();
     await new Promise(r => setTimeout(r, 60));
