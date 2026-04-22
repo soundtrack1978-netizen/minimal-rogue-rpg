@@ -5281,6 +5281,28 @@ function initMap() {
         place36('NORMAL', 6);
         place36('ORC', 2);
 
+        // 毒の床：中心付近にランダム散布
+        const p36cx = Math.floor(COLS / 2) + Math.floor((Math.random() - 0.5) * 10);
+        const p36cy = Math.floor(ROWS / 2) + Math.floor((Math.random() - 0.5) * 6);
+        const p36tiles = new Set([`${p36cx},${p36cy}`]);
+        const p36queue = [{ x: p36cx, y: p36cy }];
+        const p36dirs = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+        while (p36queue.length > 0 && p36tiles.size < 25) {
+            const cur = p36queue.shift();
+            for (const d of p36dirs) {
+                const nx = cur.x + d.x, ny = cur.y + d.y;
+                const key = `${nx},${ny}`;
+                if (nx < 2 || nx >= COLS - 2 || ny < 2 || ny >= ROWS - 2) continue;
+                if (ny === scrollWallProtectedY) continue;
+                if (p36tiles.has(key)) continue;
+                if (Math.random() < 0.5) { p36tiles.add(key); p36queue.push({ x: nx, y: ny }); }
+            }
+        }
+        for (const key of p36tiles) {
+            const [px, py] = key.split(',').map(Number);
+            if (map[py][px] === SYMBOLS.FLOOR) map[py][px] = SYMBOLS.POISON;
+        }
+
         // プレイヤー：左下
         player.x = 3;
         player.y = ROWS - 4;
