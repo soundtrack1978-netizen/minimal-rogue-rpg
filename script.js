@@ -76,7 +76,7 @@ const RINGS = [
   { id: 'ICE_BLOCK_RING',  name: 'Ice Block Ring',  nameJa: '氷塊の指輪',   desc: 'Place ice blocks that slide when attacked',                 descJa: '攻撃で滑る氷ブロックを設置',                         cost: 260, symbol: '◎', color: '#7dd3fc' },
   { id: 'STAR_RING',       name: 'Star Ring',       nameJa: '星の指輪',     desc: 'Place star blocks that shoot flames when attacked',         descJa: '攻撃で炎を発射する星ブロックを設置',                  cost: 400, symbol: '◎', color: '#fde047' },
   { id: 'GOLEM_RING',     name: 'Golem Ring',      nameJa: 'ゴーレムの指輪', desc: 'At full stamina, attacks knock back enemies (Golem Smash!)', descJa: 'スタミナ満タン時の攻撃で敵を強制的に押し飛ばす',       cost: 450, symbol: '◎', color: '#a8a29e' },
-  { id: 'NECRO_RING',     name: 'Necro Ring',      nameJa: '死者活性の指輪', desc: 'Enemies you defeat are revived as your allies',              descJa: '倒した敵が仲間として蘇る',                             cost: 700, symbol: '◎', color: '#7c3aed' },
+  { id: 'NECRO_RING',     name: 'Necro Ring',      nameJa: '死者活性の指輪', desc: 'Enemies you defeat are revived as your allies',              descJa: '倒した敵が仲間として蘇る',                             cost: 1500, symbol: '◎', color: '#7c3aed' },
   { id: 'RED_TEAR_RING', name: 'Red Tear Ring',   nameJa: '赤涙の指輪',   desc: 'HP below 20%: attack power x5',        descJa: 'HP20%未満で攻撃力が5倍になる',       cost: 600, symbol: '◎', color: '#dc2626' },
 ];
 
@@ -642,6 +642,32 @@ const SOUNDS = {
                 setTimeout(() => { try { noise.stop(); } catch (e) { } }, fadeTime * 1000 + 500);
             }
         };
+    },
+    NECRO_ACTIVATE: () => {
+        // 「ぐおん」という低い共鳴音
+        const duration = 1.2;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(60, now);
+        osc.frequency.exponentialRampToValueAtTime(40, now + duration);
+        gain.gain.setValueAtTime(0.0, now);
+        gain.gain.linearRampToValueAtTime(0.5, now + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + duration);
+        // 上に重ねる不気味な倍音
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(120, now);
+        osc2.frequency.exponentialRampToValueAtTime(80, now + duration);
+        gain2.gain.setValueAtTime(0.0, now);
+        gain2.gain.linearRampToValueAtTime(0.2, now + 0.15);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc2.connect(gain2); gain2.connect(audioCtx.destination);
+        osc2.start(now); osc2.stop(now + duration);
     }
 };
 
@@ -1216,6 +1242,14 @@ function updateUI() {
     }
 
     updateMinimap();
+    updateDeathCount();
+}
+
+function updateDeathCount() {
+    const el = document.getElementById('death-count');
+    if (!el) return;
+    const count = parseInt(localStorage.getItem('minimal_rogue_deaths') || '0', 10);
+    el.innerText = count;
 }
 
 function updateMinimap() {
@@ -1318,6 +1352,8 @@ function initMap() {
             tempWalls: Array.from({ length: screenGridSize }, () =>
                 Array.from({ length: screenGridSize }, () => [])),
             wind: Array.from({ length: screenGridSize }, () =>
+                Array.from({ length: screenGridSize }, () => false)),
+            xWallScreens: Array.from({ length: screenGridSize }, () =>
                 Array.from({ length: screenGridSize }, () => false))
         };
         // 訪問済みフラグ初期化（スタート画面[0,0]は訪問済み）
@@ -1412,6 +1448,14 @@ function initMap() {
         // スタート画面(0,0)は通常風なし（60〜69階は高確率なので適用する）
         if (!(floorLevel >= 60 && floorLevel <= 69)) {
             screenGrid.wind[0][0] = false;
+        }
+
+        // 一部の画面をX壁ステージに（スタート画面除く、約10%）
+        for (let sy = 0; sy < screenGridSize; sy++) {
+            for (let sx = 0; sx < screenGridSize; sx++) {
+                if (sx === 0 && sy === 0) continue;
+                screenGrid.xWallScreens[sy][sx] = Math.random() < 0.05;
+            }
         }
 
         // ヘルパー: 1画面分のダンジョンを生成（screenType: 'maze'=迷路型, 'dungeon'=通常ダンジョン型, 'breaker'=壁掘り型）
@@ -3172,6 +3216,7 @@ function initMap() {
         wisps = screenGrid.wisps[0][0];
         tempWalls = [...(screenGrid.tempWalls[0][0] || [])];
         isWindFloor = screenGrid.wind[0][0];
+        isXWallStage = screenGrid.xWallScreens ? screenGrid.xWallScreens[0][0] : false;
 
         // フロアに狂人を0〜1体だけ配置（101F以上・テーマで変動）
         if (floorLevel >= 101 && Math.random() < (deepTheme ? deepTheme.madmanChance : 0.40)) {
@@ -4471,6 +4516,123 @@ function initMap() {
         return;
     }
 
+    if (floorLevel === 29) {
+        addLog("EVENT: The Sealed Chamber.");
+        addLog("Enemies are buried in the walls. A Breaker will free them.");
+
+        // 全体を壁で埋める
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.WALL;
+
+        // プレイヤーの初期位置と周囲3×3を確保
+        player.x = 3; player.y = 3;
+        for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++)
+                map[player.y + dy][player.x + dx] = SYMBOLS.FLOOR;
+
+        // 出口をランダムな壁マスに配置（プレイヤーから離れた場所）
+        let exitX, exitY;
+        for (let t = 0; t < 300; t++) {
+            const tx = 3 + Math.floor(Math.random() * (COLS - 6));
+            const ty = 3 + Math.floor(Math.random() * (ROWS - 6));
+            if (map[ty][tx] !== SYMBOLS.WALL) continue;
+            if (Math.abs(tx - player.x) + Math.abs(ty - player.y) < 12) continue;
+            exitX = tx; exitY = ty;
+            break;
+        }
+        if (exitX == null) { exitX = COLS - 4; exitY = ROWS - 4; }
+        map[exitY][exitX] = SYMBOLS.STAIRS;
+
+        // 壁の中に孤立した1マス空間を見つけるヘルパー
+        const findTrappedCell29 = (minDist) => {
+            for (let t = 0; t < 100; t++) {
+                const cx = Math.floor(Math.random() * (COLS - 6)) + 3;
+                const cy = Math.floor(Math.random() * (ROWS - 6)) + 3;
+                if (map[cy][cx] !== SYMBOLS.WALL) continue;
+                if (map[cy-1][cx] !== SYMBOLS.WALL || map[cy+1][cx] !== SYMBOLS.WALL ||
+                    map[cy][cx-1] !== SYMBOLS.WALL || map[cy][cx+1] !== SYMBOLS.WALL) continue;
+                if (Math.abs(cx - player.x) + Math.abs(cy - player.y) < minDist) continue;
+                return { x: cx, y: cy };
+            }
+            return null;
+        };
+
+        // NORMAL(E)を壁の中に封印（10体）
+        for (let i = 0; i < 10; i++) {
+            const pos = findTrappedCell29(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'NORMAL', x: pos.x, y: pos.y,
+                hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0
+            });
+        }
+
+        // ORC(G)を壁の中に封印（2体）
+        for (let i = 0; i < 2; i++) {
+            const pos = findTrappedCell29(6);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'ORC', x: pos.x, y: pos.y,
+                hp: 40 + floorLevel * 5, maxHp: 40 + floorLevel * 5,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0
+            });
+        }
+
+        // 妖精を壁の中に封印（1体）
+        const fairyPos = findTrappedCell29(4);
+        if (fairyPos) map[fairyPos.y][fairyPos.x] = SYMBOLS.FAIRY;
+
+        // アイテムを壁の中に封印
+        for (const item of [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.HEAL_TOME, SYMBOLS.SPEED]) {
+            const pos = findTrappedCell29(3);
+            if (!pos) continue;
+            map[pos.y][pos.x] = item;
+        }
+
+        // BREAKER: プレイヤーのそばに2匹（確定）
+        for (const offset of [{ dx: 2, dy: 0 }, { dx: 0, dy: 2 }]) {
+            const bx = player.x + offset.dx, by = player.y + offset.dy;
+            map[by][bx] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: bx, y: by,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0
+            });
+        }
+
+        // BREAKER: 出口の隣に1匹（確定）
+        const exitBx = exitX - 1 >= 1 ? exitX - 1 : exitX + 1;
+        map[exitY][exitBx] = SYMBOLS.FLOOR;
+        enemies.push({
+            type: 'BREAKER', x: exitBx, y: exitY,
+            hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0
+        });
+
+        // BREAKER: 残り5匹をランダム配置
+        for (let i = 0; i < 5; i++) {
+            let bx, by, tries = 0;
+            do {
+                bx = Math.floor(Math.random() * (COLS - 4)) + 2;
+                by = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                tries++;
+            } while (tries < 200 && (map[by][bx] !== SYMBOLS.WALL || enemies.some(en => en.x === bx && en.y === by)));
+            if (tries >= 200) continue;
+            map[by][bx] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: bx, y: by,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0
+            });
+        }
+
+        return;
+    }
+
     if (floorLevel === 30) {
         addLog("EVENT: The Grand Forgery.");
         addLog("Eight exits await — SEVEN are MIMICS in disguise.");
@@ -5371,7 +5533,8 @@ function initMap() {
 
         // 重要アイテムの配置
         map[1][1] = SYMBOLS.KEY; // 左上隅に鍵
-        map[1][COLS - 2] = SYMBOLS.FAIRY; // 右上隅に妖精
+        const f50Tomes = [SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.STEALTH, SYMBOLS.ESCAPE, SYMBOLS.EXPLOSION, SYMBOLS.GUARDIAN, SYMBOLS.HEAL_TOME, SYMBOLS.BREAKER_TOME];
+        map[1][COLS - 2] = f50Tomes[Math.floor(Math.random() * f50Tomes.length)]; // 右上隅にランダム魔導書
 
         // 出口を封印された扉に変更
         map[3][20] = SYMBOLS.DOOR;
@@ -6044,6 +6207,125 @@ function initMap() {
         return;
     }
 
+    if (floorLevel === 47) {
+        addLog("EVENT: The Turret Vault.");
+        addLog("Cannons are buried in the walls. A Breaker will wake them all.");
+        addLog("⚠️ The rubble is alive. Every wall hides a bomb.");
+        isXWallStage = true;
+
+        // 全体を壁で埋める
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.WALL;
+
+        // プレイヤーの初期位置と周囲3×3を確保
+        player.x = 3; player.y = 3;
+        for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++)
+                map[player.y + dy][player.x + dx] = SYMBOLS.FLOOR;
+
+        // 出口をランダムな壁マスに配置（プレイヤーから離れた場所）
+        let exitX47, exitY47;
+        for (let t = 0; t < 300; t++) {
+            const tx = 3 + Math.floor(Math.random() * (COLS - 6));
+            const ty = 3 + Math.floor(Math.random() * (ROWS - 6));
+            if (map[ty][tx] !== SYMBOLS.WALL) continue;
+            if (Math.abs(tx - player.x) + Math.abs(ty - player.y) < 12) continue;
+            exitX47 = tx; exitY47 = ty;
+            break;
+        }
+        if (exitX47 == null) { exitX47 = COLS - 4; exitY47 = ROWS - 4; }
+        map[exitY47][exitX47] = SYMBOLS.STAIRS;
+
+        // 壁の中に孤立した1マス空間を見つけるヘルパー
+        const findTrappedCell47 = (minDist) => {
+            for (let t = 0; t < 150; t++) {
+                const cx = Math.floor(Math.random() * (COLS - 6)) + 3;
+                const cy = Math.floor(Math.random() * (ROWS - 6)) + 3;
+                if (map[cy][cx] !== SYMBOLS.WALL) continue;
+                if (map[cy-1][cx] !== SYMBOLS.WALL || map[cy+1][cx] !== SYMBOLS.WALL ||
+                    map[cy][cx-1] !== SYMBOLS.WALL || map[cy][cx+1] !== SYMBOLS.WALL) continue;
+                if (Math.abs(cx - player.x) + Math.abs(cy - player.y) < minDist) continue;
+                return { x: cx, y: cy };
+            }
+            return null;
+        };
+
+        // タレット（T）を壁の中に封印（2体）
+        for (let i = 0; i < 2; i++) {
+            const pos = findTrappedCell47(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'TURRET', x: pos.x, y: pos.y, dir: Math.floor(Math.random() * 4),
+                hp: 100 + floorLevel * 5, maxHp: 100 + floorLevel * 5,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0
+            });
+        }
+
+        // NORMAL(E)を壁の中に封印（8体）
+        for (let i = 0; i < 8; i++) {
+            const pos = findTrappedCell47(5);
+            if (!pos) continue;
+            map[pos.y][pos.x] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'NORMAL', x: pos.x, y: pos.y,
+                hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0
+            });
+        }
+
+        // 妖精を壁の中に封印（1体）
+        const fairyPos47 = findTrappedCell47(4);
+        if (fairyPos47) map[fairyPos47.y][fairyPos47.x] = SYMBOLS.FAIRY;
+
+        // アイテムを壁の中に封印
+        for (const item of [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.HEAL_TOME, SYMBOLS.CHARM]) {
+            const pos = findTrappedCell47(3);
+            if (!pos) continue;
+            map[pos.y][pos.x] = item;
+        }
+
+        // BREAKER: プレイヤーのそばに2匹（確定）
+        for (const offset of [{ dx: 2, dy: 0 }, { dx: 0, dy: 2 }]) {
+            const bx = player.x + offset.dx, by = player.y + offset.dy;
+            map[by][bx] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: bx, y: by,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0
+            });
+        }
+
+        // BREAKER: 出口の隣に1匹（確定）
+        const exitBx47 = exitX47 - 1 >= 1 ? exitX47 - 1 : exitX47 + 1;
+        map[exitY47][exitBx47] = SYMBOLS.FLOOR;
+        enemies.push({
+            type: 'BREAKER', x: exitBx47, y: exitY47,
+            hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0
+        });
+
+        // BREAKER: 残り6匹をランダム配置
+        for (let i = 0; i < 6; i++) {
+            let bx, by, tries = 0;
+            do {
+                bx = Math.floor(Math.random() * (COLS - 4)) + 2;
+                by = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                tries++;
+            } while (tries < 200 && (map[by][bx] !== SYMBOLS.WALL || enemies.some(en => en.x === bx && en.y === by)));
+            if (tries >= 200) continue;
+            map[by][bx] = SYMBOLS.FLOOR;
+            enemies.push({
+                type: 'BREAKER', x: bx, y: by,
+                hp: 50 + floorLevel * 4, maxHp: 50 + floorLevel * 4,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 45, stunTurns: 0
+            });
+        }
+
+        return;
+    }
+
     // --- THE MIMIC'S GALLERY (Floor 48): 25体のミミック ---
     if (floorLevel === 48) {
         addLog("EVENT: The Mimic's Gallery.");
@@ -6457,8 +6739,18 @@ function initMap() {
                     map[cy][cx] = SYMBOLS.FLOOR;
             }
 
-        // 出口を右端中央に配置
-        const stX = COLS - 3, stY = Math.floor(ROWS / 2);
+        // 出口をランダム位置に配置（プレイヤー開始地点から離れた床タイル）
+        let stX, stY;
+        for (let t = 0; t < 500; t++) {
+            const tx = 3 + Math.floor(Math.random() * (COLS - 6));
+            const ty = 2 + Math.floor(Math.random() * (ROWS - 4));
+            if (map[ty][tx] !== SYMBOLS.FLOOR) continue;
+            if (Math.abs(tx - player.x) + Math.abs(ty - player.y) < 10) continue;
+            stX = tx; stY = ty;
+            break;
+        }
+        // フォールバック（床が見つからない場合は右端中央）
+        if (stX == null) { stX = COLS - 3; stY = Math.floor(ROWS / 2); }
         for (let dy = -1; dy <= 1; dy++)
             for (let dx = -1; dx <= 1; dx++) {
                 const cx = stX + dx, cy = stY + dy;
@@ -7209,7 +7501,7 @@ function initMap() {
         addLog("💨 FLOOR 45: Violent gales tear through this labyrinth!");
     }
     const windChance = (floorLevel >= 60 && floorLevel <= 69) ? 0.75 : 0.03;
-    if (floorLevel >= 36 && !isWindFloor && !fixedStages.includes(floorLevel) && Math.random() < windChance) {
+    if (floorLevel >= 10 && !isWindFloor && !fixedStages.includes(floorLevel) && Math.random() < windChance) {
         isWindFloor = true;
         windTimer = 4; // 1ターン目で即発動
         addLog("💨 WARNING: Strong winds blow through this floor!");
@@ -7685,13 +7977,28 @@ function initMap() {
             return null;
         };
 
+        // いかれたG: 20階以降、2%の確率でランダムな部屋に出現（強さ=プレイヤーと同等）
+        if (floorLevel >= 20 && Math.random() < 0.02) {
+            const pos = findFloorInRoom(room);
+            if (pos) {
+                const crazyHp = Math.max(10, player.hp);
+                enemies.push({
+                    type: 'CRAZY_G', x: pos.x, y: pos.y,
+                    hp: crazyHp, maxHp: crazyHp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50 + floorLevel * 2, stunTurns: 0
+                });
+                addLog("!! Something crazy appeared !!");
+            }
+        }
+
         const rand = Math.random();
-        if (rand < 0.04) {
+        if (rand < 0.04 && floorLevel >= 15) {
             const pos = findFloorInRoom(room);
             if (pos) {
                 enemies.push({
                     type: 'GOLD', x: pos.x, y: pos.y, hp: 4, maxHp: 4,
-                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500 + (floorLevel * 100)
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500 + (floorLevel * 100),
+                    stunTurns: 0, flee: true
                 });
                 addLog("!! A Golden Shiny Enemy appeared !!");
             }
@@ -7840,10 +8147,7 @@ function initMap() {
     if (isSpiralFloor) {
         const spiralCX = Math.floor(COLS / 2);
         const spiralCY = Math.floor(ROWS / 2);
-        // 中心に穴（STAIRS）を追加配置
-        if (map[spiralCY][spiralCX] === SYMBOLS.FLOOR || map[spiralCY][spiralCX] === SYMBOLS.ICE || map[spiralCY][spiralCX] === SYMBOLS.POISON) {
-            map[spiralCY][spiralCX] = SYMBOLS.STAIRS;
-        }
+        // 中央への穴追加は廃止（通常出口と重複して穴が2つ生成される問題を修正）
         // フロアレベルに応じて出現可能な敵タイプを選択
         const clusterPool = ['NORMAL', 'BREAKER'];
         if (floorLevel >= 7) clusterPool.push('BOMBER');
@@ -8071,7 +8375,8 @@ function initMap() {
             if (Math.abs(gx - player.x) + Math.abs(gy - player.y) < 5) continue;
             enemies.push({
                 type: 'GOLD', x: gx, y: gy, hp: 4, maxHp: 4,
-                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500 + floorLevel * 100
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 500 + floorLevel * 100,
+                stunTurns: 0, flee: true
             });
             addLog("!! A Golden Shiny Enemy appeared !!");
             break;
@@ -9703,7 +10008,7 @@ function drawRingsScreen() {
         // --- 下部: active SELECT RING ウィンドウ ---
         const RL_X = 12;
         const RL_W = canvas.width - 24; // 776
-        const LIST_W = 250;
+        const LIST_W = 310;
         const DETAIL_X = RL_X + LIST_W;
         const DETAIL_W = RL_W - LIST_W;
 
@@ -9779,7 +10084,7 @@ function drawRingsScreen() {
 
             if (isEquippedHere || isEquippedOther) {
                 const slotNum = isEquippedHere ? (ringSlotSelection + 1) : (2 - ringSlotSelection);
-                ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = '11px Courier New';
+                ctx.textAlign = 'right'; ctx.fillStyle = '#ededed'; ctx.font = '11px Courier New';
                 ctx.fillText('Slot ' + slotNum, RL_X + LIST_W - 14, iy + 18);
                 ctx.textAlign = 'left';
             }
@@ -10929,7 +11234,7 @@ function addLog(msg) {
 function detonateBomb(bomb) {
     const idx = bombs.indexOf(bomb);
     if (idx !== -1) bombs.splice(idx, 1);
-    const damage = 15 + player.level * 2;
+    const damage = bomb.isCorpse ? (35 + player.level * 4) : (15 + player.level * 2);
     const blastTiles = [
         { x: bomb.x, y: bomb.y },
         { x: bomb.x - 1, y: bomb.y },
@@ -12501,6 +12806,7 @@ async function handleAction(dx, dy) {
                 movingMadmen = movingMadmen.filter(m => !(m.screenX === newScreenX && m.screenY === newScreenY));
                 enemies.push(...arrivingMadmen);
                 isWindFloor = screenGrid.wind ? screenGrid.wind[newScreenY][newScreenX] : false;
+                isXWallStage = screenGrid.xWallScreens ? screenGrid.xWallScreens[newScreenY][newScreenX] : false;
                 windTimer = 0;
                 tempWalls = screenGrid.tempWalls ? [...(screenGrid.tempWalls[newScreenY][newScreenX] || [])] : [];
 
@@ -12875,9 +13181,12 @@ async function handleAction(dx, dy) {
                 const unowned = RINGS.map((r, i) => i).filter(i => !player.ownedRings.includes(RINGS[i].id));
                 const pool = unowned.length >= 3 ? unowned : RINGS.map((r, i) => i);
                 const shuffled = pool.slice().sort(() => Math.random() - 0.5);
-                const ringItems = shuffled.slice(0, 3).map(i => ({ type: 'ring', ringIndex: i, cost: RINGS[i].cost }));
-                // 武器・防具の価格: 10Fは100G固定、他の階はランダム
-                const equipCost = (floorLevel === 10) ? 100 : (80 + Math.floor(Math.random() * 121)); // 80-200G
+                // 後半ほど価格が高くなる（50F以降2倍、75F以降3倍）
+                const priceMult = floorLevel >= 75 ? 3 : floorLevel >= 50 ? 2 : 1;
+                const ringItems = shuffled.slice(0, 3).map(i => ({ type: 'ring', ringIndex: i, cost: Math.floor(RINGS[i].cost * priceMult) }));
+                // 武器・防具の価格: 10Fは100G固定、他の階はランダム（後半高額化）
+                const equipBase = (floorLevel === 10) ? 100 : (80 + Math.floor(Math.random() * 121));
+                const equipCost = Math.floor(equipBase * priceMult);
                 // 格安魔導書（序盤でも買える価格帯）
                 const cheapTomePool = [
                     { tomeType: 'healTomes',    symbol: SYMBOLS.HEAL_TOME,    name: 'Heal Tome',    nameJa: '回復の魔導書',   descJa: 'HPを大きく回復する',             cost: 20 },
@@ -13165,7 +13474,7 @@ async function handleAction(dx, dy) {
                         if (ringData && !player.ownedRings.includes(ringData.id)) {
                             player.ownedRings.push(ringData.id);
                             addLog(`💍 Found a ${ringData.name}! (${ringData.desc})`);
-                            spawnFloatingText(nx, ny, `${ringData.nameJa}！`, "#fbbf24", 1800);
+                            spawnFloatingText(nx, ny, `${ringData.name} GET!`, "#fbbf24", 1800);
                         } else if (ringData) {
                             // 重複: ゴールドに変換
                             const bonus = ringData.cost;
@@ -13664,8 +13973,17 @@ function moveFairies() {
 
         // KEY_RUNNER以外: 目標の1マス手前で停止（stopped = true → 取得可能・点滅終了）
         if (goalSym !== 'KEY_RUNNER' && Math.abs(f.x - goalX) + Math.abs(f.y - goalY) <= 1) {
-            f.stopped = true;
-            continue;
+            f.stoppedTurns = (f.stoppedTurns || 0) + 1;
+            if (f.stoppedTurns > 15) {
+                // 長時間停止：プレイヤー方向へ強制移動（再取得可能に）
+                f.stoppedTurns = 0;
+                f.stopped = false;
+            } else {
+                f.stopped = true;
+                continue;
+            }
+        } else {
+            f.stoppedTurns = 0;
         }
         // まだ移動中（stopped = false → 取得不可・点滅中）
         f.stopped = false;
@@ -14073,7 +14391,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
             case 'GOLD': goldDrop = 100; break;
             case 'SNAKE': goldDrop = 15 + Math.floor(Math.random() * 6); break;
             case 'FROST': case 'BLAZE': goldDrop = 8 + Math.floor(Math.random() * 8); break;
-            case 'BOMBER': goldDrop = 8 + Math.floor(Math.random() * 8); break;
+            case 'BOMBER': goldDrop = 1; break;
             default: goldDrop = 3 + Math.floor(Math.random() * 5); break;
         }
         if (goldDrop > 0) {
@@ -14108,13 +14426,23 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
 
     // NECRO_RING: プレイヤーが倒した敵を仲間として蘇らせる
     if (killedByPlayer && hasRing('NECRO_RING') && !enemy.isAlly && !enemy.isFalling) {
-        const necroExclude = ['DRAGON', 'GOLD', 'KING', 'SNAKE', 'MIMIC', 'FAIRY_MIMIC'];
+        const necroExclude = ['DRAGON', 'GOLD', 'KING', 'SNAKE', 'FAIRY_MIMIC'];
         if (!necroExclude.includes(enemy.type)) {
+            // 撃破音を聞かせてから点滅→蘇生
+            await new Promise(r => setTimeout(r, 500));
+            // 点滅アニメーション（3回）
+            for (let _ni = 0; _ni < 3; _ni++) {
+                spawnFloatingText(enemy.x, enemy.y, "ぐおん", "#7c3aed");
+                draw(); await new Promise(r => setTimeout(r, 120));
+                draw(); await new Promise(r => setTimeout(r, 120));
+            }
+            SOUNDS.NECRO_ACTIVATE();
+            await new Promise(r => setTimeout(r, 300));
             const revivedHp = Math.max(1, Math.floor(enemy.maxHp * 0.5));
             const revived = {
                 type: enemy.type, x: enemy.x, y: enemy.y,
                 hp: revivedHp, maxHp: revivedHp,
-                flashUntil: performance.now() + 600,
+                flashUntil: performance.now() + 1500,
                 offsetX: 0, offsetY: 0,
                 expValue: 0, stunTurns: 0,
                 isAlly: true, _necroRevived: true
@@ -14220,8 +14548,8 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
         enemy.stunTurns = Math.max(enemy.stunTurns || 0, stun);
         addLog("Critical Hit to the HEAD! The Snake is stunned!");
         spawnFloatingText(enemy.x, enemy.y, `STUNNED ${stun}T`, "#fff");
-    } else if (enemy.type !== 'SNAKE' && Math.random() < 0.15) {
-        // 通常の敵も15%の確率で1ターンスタン
+    } else if (enemy.type !== 'SNAKE' && enemy.type !== 'GOLD' && Math.random() < 0.15) {
+        // 通常の敵も15%の確率で1ターンスタン（GOLDはスタン無効）
         enemy.stunTurns = Math.max(enemy.stunTurns || 0, 1);
         addLog("The enemy is stunned!");
         spawnFloatingText(enemy.x, enemy.y, "STUNNED!", "#fff");
@@ -14633,7 +14961,8 @@ async function handleDragonTurn(e) {
                         enemies.push({
                             type: 'GOLD', x: spawnPos.x, y: spawnPos.y,
                             hp: 4, maxHp: 4,
-                            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 100, stunTurns: 0
+                            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 100,
+                            stunTurns: 0, flee: true
                         });
                         SOUNDS.GET_ITEM();
                     } else {
@@ -15227,8 +15556,8 @@ async function enemyTurn() {
         // 逃走行動（FLEEING_HORDE）: プレイヤーから遠ざかる。追い詰められたら反撃
         if (e.flee && !e.isAlly) {
             const fDist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
-            // KEY_RUNNERは距離1（隣接）でも逃走。それ以外は距離2以上で逃走
-            if (fDist > 1 || e.type === 'KEY_RUNNER') {
+            // KEY_RUNNER/GOLDは距離1（隣接）でも逃走。それ以外は距離2以上で逃走
+            if (fDist > 1 || e.type === 'KEY_RUNNER' || e.type === 'GOLD') {
                 // 逃走方向をスコアリングで選択：
                 //   score = プレイヤーからのマンハッタン距離
                 //         - 直前逆方向ペナルティ（往復スタック防止）
@@ -15244,6 +15573,12 @@ async function enemyTurn() {
                         let score = Math.abs((ent.x+d.x)-player.x) + Math.abs((ent.y+d.y)-player.y);
                         // 直前と逆方向のペナルティ（行ったり来たり防止）
                         if (ent.fleeLastDx !== undefined && d.x === -ent.fleeLastDx && d.y === -ent.fleeLastDy) score -= 4;
+                        // GOLD: 行き止まり回避 — 移動先から逃げられる方向が多いほど優遇
+                        if (ent.type === 'GOLD') {
+                            const dx = ent.x + d.x, dy = ent.y + d.y;
+                            const openRoutes = dirs.filter(dd => canEnemyMove(dx+dd.x, dy+dd.y, ent)).length;
+                            score += openRoutes * 2;
+                        }
                         score += Math.random() * 2; // ランダムノイズ
                         return { d, score };
                     });
@@ -15259,23 +15594,25 @@ async function enemyTurn() {
                     e.x += chosen.x; e.y += chosen.y;
                     draw(); await _w(60);
                     e.offsetX = 0; e.offsetY = 0;
-                    // KEY_RUNNER: 2歩目
-                    if (e.type === 'KEY_RUNNER') {
+                    if (isRealHole(e.x, e.y)) { scheduleEnemyFall(e, "The enemy fell into the HOLE!"); continue; }
+                    // KEY_RUNNER / GOLD: 2歩目
+                    if (e.type === 'KEY_RUNNER' || e.type === 'GOLD') {
                         const chosen2 = pickFleeDir(e);
                         if (chosen2) {
-                            e.trailX = e.x; e.trailY = e.y;
+                            if (e.type === 'KEY_RUNNER') { e.trailX = e.x; e.trailY = e.y; }
                             e.fleeLastDx = chosen2.x; e.fleeLastDy = chosen2.y;
                             e.offsetX = chosen2.x * 8; e.offsetY = chosen2.y * 8;
                             e.x += chosen2.x; e.y += chosen2.y;
                             draw(); await _w(60);
                             e.offsetX = 0; e.offsetY = 0;
+                            if (isRealHole(e.x, e.y)) { scheduleEnemyFall(e, "The enemy fell into the HOLE!"); continue; }
                         }
                     }
                 }
                 continue; // 攻撃しない
             }
             // dist === 1: コーナリングされた → 以降の通常攻撃処理へ落ちる
-            if (e.type === 'KEY_RUNNER') continue; // KEY_RUNNERは反撃しない
+            if (e.type === 'KEY_RUNNER' || e.type === 'GOLD') continue; // 反撃しない
         }
 
         // フェアリーミミック固有AI
@@ -16171,36 +16508,7 @@ async function enemyTurn() {
         const baseDetect = (e.type === 'ORC' || e.type === 'MADMAN') ? 999 : 8;
         const detectRange = (e.type !== 'ORC' && hasRing('STEALTH_RING')) ? 5 : baseDetect;
 
-        if (e.type === 'GOLD' && minDist <= detectRange) {
-            // GOLDはとにかくプレイヤーから逃げ回る（1ターン2マス移動）
-            const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-            for (let step = 0; step < 2; step++) {
-                const curDist = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
-                let bestMove = { x: e.x, y: e.y, score: curDist };
-                dirs.forEach(d => {
-                    if (canEnemyMove(e.x + d.x, e.y + d.y, e)) {
-                        const nd = Math.abs(player.x - (e.x + d.x)) + Math.abs(player.y - (e.y + d.y));
-                        if (nd > bestMove.score) bestMove = { x: e.x + d.x, y: e.y + d.y, score: nd };
-                    }
-                });
-                if (bestMove.x !== e.x || bestMove.y !== e.y) {
-                    if (step === 0) SOUNDS.GOLD_FLIGHT();
-                    const mdx = bestMove.x - e.x;
-                    const mdy = bestMove.y - e.y;
-                    e.offsetX = -mdx * TILE_SIZE;
-                    e.offsetY = -mdy * TILE_SIZE;
-                    e.x = bestMove.x;
-                    e.y = bestMove.y;
-                    draw();
-                    await _w(70);
-                    e.offsetX = 0;
-                    e.offsetY = 0;
-                    draw();
-                    await _w(30);
-                }
-            }
-            if (!enemies.includes(e)) continue;
-        } else if (e.type === 'BREAKER') {
+        if (e.type === 'BREAKER') {
             // BREAKERの移動AI: 直進優先で遠くまで掘り進む
             const allDirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
 
@@ -16263,6 +16571,9 @@ async function enemyTurn() {
                     const dropRoll = Math.random();
                     if (floorLevel === 4 || floorLevel === 10) {
                         // 4F・10Fではドロップなし
+                    } else if (isXWallStage) {
+                        // isXWallStageフロア: 壁を壊すと必ずXが出現
+                        spawnXFromWall(nx, ny);
                     } else if (dropRoll < 0.02 && wallDropCount < 2) {
                         // アイテム出現（2%、上限2個/フロア）: 壊した壁の元の位置にアイテムを落とす
                         const dropItems = [SYMBOLS.SWORD, SYMBOLS.ARMOR, SYMBOLS.SPEED, SYMBOLS.CHARM, SYMBOLS.HEAL_TOME, SYMBOLS.BREAKER_TOME];
@@ -16561,6 +16872,7 @@ async function enemyTurn() {
                     breakStealth();
                     SOUNDS.DAMAGE();
                     player.hp -= damage; player.flashUntil = performance.now() + 200;
+                    if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 5);
                     if (player.hp > 0) animateBounce(player);
                     spawnDamageText(player.x, player.y, damage, _kingAura ? '#fbbf24' : '#ededed');
                     if (player.hp <= 0) { player.hp = 0; updateUI(); }
@@ -16621,6 +16933,7 @@ async function enemyTurn() {
                         addLog(`The MADMAN screams: ${madCries[Math.floor(Math.random() * madCries.length)]}`);
                         SOUNDS.DAMAGE(); setScreenShake(6, 150);
                         player.hp -= damage; player.flashUntil = performance.now() + 200;
+                        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 5);
                         if (player.hp > 0) animateBounce(player);
                         spawnDamageText(player.x, player.y, damage, '#ef4444');
                         if (player.hp <= 0) { player.hp = 0; updateUI(); }
@@ -16638,6 +16951,7 @@ async function enemyTurn() {
                         if (fatal) { damage *= 3; SOUNDS.FATAL(); setScreenShake(15, 400); addLog("💥 FATAL BLOW! 💥"); }
                         else SOUNDS.DAMAGE();
                         player.hp -= damage; player.flashUntil = performance.now() + 200;
+                        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - 5);
                         if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
                         spawnDamageText(player.x, player.y, damage, fatal ? '#ff0000' : '#ededed');
                         if (player.hp <= 0) { player.hp = 0; updateUI(); }
@@ -17010,7 +17324,7 @@ async function applyLaserDamage() {
             while (lx >= 0 && lx < COLS && ly >= 0 && ly < ROWS) {
                 // プレイヤー判定
                 if (player.x === lx && player.y === ly && !player.isShielded) {
-                    const lDmg = 5 + Math.floor(floorLevel / 5);
+                    const lDmg = 15 + Math.floor(floorLevel / 3);
                     player.hp -= lDmg; player.flashUntil = performance.now() + 200;
                     if (player.hp > 0) animateBounce(player); // ダメージで跳ねる
                     spawnDamageText(player.x, player.y, lDmg, '#f87171');
@@ -17288,6 +17602,10 @@ function gainExp(amount) {
 
 async function triggerGameOver() {
     player.hp = 0; updateUI(); // HPを確実に0にしてUIへ反映
+    // 死亡回数を記録
+    const prevDeaths = parseInt(localStorage.getItem('minimal_rogue_deaths') || '0', 10);
+    localStorage.setItem('minimal_rogue_deaths', prevDeaths + 1);
+    updateDeathCount();
     stopBGM();
     isProcessing = true;
     gameState = 'GAMEOVER_SEQ';
