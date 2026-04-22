@@ -1,3 +1,4 @@
+// ===== SECTION: CONSTANTS & CANVAS SETUP =====
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 const logElement = document.getElementById('log');
@@ -62,6 +63,7 @@ const SYMBOLS = {
     RING: '◎'       // フロアに落ちた指輪
 };
 
+// ===== SECTION: RINGS DATA =====
 const RINGS = [
   { id: 'FIRE_RING',     name: 'Fire Ring',     nameJa: '炎の指輪',     desc: 'Nullify lava & fire damage',           descJa: '溶岩・炎床のダメージを無効化',       cost: 200, symbol: '◎', color: '#ef4444' },
   { id: 'POISON_RING',   name: 'Poison Ring',   nameJa: '毒の指輪',     desc: 'Nullifies all poison swamp effects',   descJa: '毒沼の効果を完全に無効化する',           cost: 120, symbol: '◎', color: '#a855f7' },
@@ -81,6 +83,7 @@ const RINGS = [
 ];
 
 // オープニング演出用データ
+// ===== SECTION: GAME OBJECT VARIABLES =====
 let openingData = {
     active: false,
     map: [],
@@ -102,7 +105,7 @@ let merchantState = null; // { x, y, facing: 'LEFT'|'RIGHT', jumpUntil: 0, nextA
 let tomeEffect = { active: false, x: 0, y: 0, range: 0, color: '', endTime: 0 };
 
 
-// サウンドシステム
+// ===== SECTION: AUDIO SYSTEM =====
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playSound(freq, type, duration, vol = 0.1) {
@@ -136,6 +139,7 @@ function playMelody(notes) {
     });
 }
 
+// ===== SECTION: SOUND EFFECTS (SOUNDS object) =====
 const SOUNDS = {
     BANG: () => {
         // 低音の効いた衝撃音
@@ -672,7 +676,7 @@ const SOUNDS = {
 };
 
 
-// BGMシステム
+// ===== SECTION: BGM SYSTEM =====
 let bgmEnabled = true;
 let bgmActive = false;
 let bgmFadeTimer = null;
@@ -767,7 +771,7 @@ function toggleBGM() {
     else stopBGM();
 }
 
-// プレイヤーカラー
+// ===== SECTION: PLAYER COLORS & FACTION =====
 const PLAYER_COLORS = ['#ededed', '#fbbf24', '#4ade80', '#38bdf8', '#f472b6', '#a855f7'];
 let playerColorIndex = 0;
 
@@ -779,7 +783,7 @@ function getPlayerFaction() {
     return null; // その他の色は中立
 }
 
-// ゲーム状態
+// ===== SECTION: GAME STATE FLAGS & UI STATE =====
 let gameState = 'TITLE';
 let titleSelection = 0;
 let newGameConfirmSelection = 0; // 0=NO, 1=YES (for new game confirmation)
@@ -807,6 +811,7 @@ let deepTestFloor = 101; // ディープテスト用の開始階層（101〜999�
 let testModeVisible = false; // テストメニューの表示フラグ（秘密キーで解除）
 let titleSecretBuffer = []; // 秘密キーシーケンス入力バッファ
 const TITLE_SECRET_SEQ = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown']; // ↑↑↓↓
+// ===== SECTION: CORE GAME DATA (map, player, enemies) =====
 let familyIdCounter = 0; // 敵ファミリーID採番用
 let map = [];
 let player = {
@@ -948,6 +953,7 @@ let currentScreen = { x: 0, y: 0 };
 let screenGridSize = 2;
 let visitedScreens = null;           // 訪問済み画面フラグ [N][N]
 
+// ===== SECTION: SCREEN SHAKE =====
 function setScreenShake(intensity, duration) {
     const end = performance.now() + duration;
     screenShake.until = end; // 現在の揺れの終了時間を記録
@@ -966,6 +972,7 @@ function setScreenShake(intensity, duration) {
     shake();
 }
 
+// ===== SECTION: SAVE / LOAD =====
 function loadGame() {
     const saved = localStorage.getItem('minimal_rogue_save');
     if (saved) {
@@ -1151,6 +1158,7 @@ function saveGame() {
     // オートセーブは無音・無表示で行う
 }
 
+// ===== SECTION: UI UPDATES =====
 function updateUI() {
     // LIFE_RING: HP上限50%増加（getPlayerMaxHp()で反映）
     // 爆弾のターン経過処理
@@ -1281,6 +1289,9 @@ function updateMinimap() {
     el.innerHTML = html;
 }
 
+// ===== SECTION: MAP GENERATION =====
+// Fixed floor blocks are inside initMap() as: if (floorLevel === N) { ... return; }
+// See CLAUDE.md for a full list of fixed floors and how to add new ones.
 function initMap() {
     map = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
     enemies = [];
@@ -8777,6 +8788,7 @@ function initMap() {
 
 }
 
+// ===== SECTION: POST-MAP UTILITIES =====
 function breakStealth() {
     if (player.isStealth) {
         player.isStealth = false;
@@ -9556,6 +9568,7 @@ async function playOpeningSequence() {
     await startGame(1);
 }
 
+// ===== SECTION: OPENING ANIMATION =====
 function drawOpening(now) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#000';
@@ -9591,6 +9604,7 @@ function drawOpening(now) {
     }
 }
 
+// ===== SECTION: GAME LOOP =====
 function gameLoop(now) {
     const hideStates = ['TITLE', 'OPENING', 'GAMEOVER', 'GAMEOVER_SEQ', 'ENDING', 'ENDING_SEQ'];
     statsBar.style.display = hideStates.includes(gameState) ? 'none' : '';
@@ -9638,6 +9652,7 @@ function gameLoop(now) {
     requestAnimationFrame(gameLoop);
 }
 
+// ===== SECTION: TITLE / GAMEOVER RENDERING =====
 function drawTitle() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.textAlign = 'center';
@@ -9752,6 +9767,7 @@ function drawGameOver() {
     ctx.fillText('Press [Enter] to Title', canvas.width / 2, canvas.height - 100);
 }
 
+// ===== SECTION: MENU / SHOP / STATUS RENDERING =====
 function drawStatusScreen() {
     const JA_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
     const CY = 12, CH = canvas.height - 24;
@@ -10707,6 +10723,7 @@ function drawFloatingParticles() {
     // フローティングパーティクル（damageTextsで処理済み）
 }
 
+// ===== SECTION: MAIN DRAW FUNCTION =====
 function draw(now) {
     if (!now) now = performance.now();
     // 期限切れの爆風エフェクトを除去
@@ -11430,6 +11447,7 @@ function draw(now) {
     }
 }
 
+// ===== SECTION: LOGGING & BOMB SYSTEM =====
 function addLog(msg) {
     const div = document.createElement('div'); div.innerText = msg; logElement.appendChild(div);
     while (logElement.childNodes.length > 10) { logElement.removeChild(logElement.firstChild); } // 消息履歴を10行に増加
@@ -11528,6 +11546,7 @@ function detonateBomb(bomb) {
     }
 }
 
+// ===== SECTION: BLOCK PLACEMENT =====
 function tryPlaceBlock(dx, dy) {
     if (!player.hasWand) return false;
     const bx = player.x + dx, by = player.y + dy;
@@ -12865,6 +12884,10 @@ async function triggerEnding2() {
   }
 }
 
+// ===== SECTION: PLAYER ACTION HANDLER =====
+// handleAction is the core turn loop entry point — called on every player input.
+// It moves the player, triggers combat, item pickup, stair descent, etc.
+// Always async; awaits enemyTurn() at the end of each turn.
 async function handleAction(dx, dy) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     isPlayerVisible = true; // 操作時は確実に表示する
@@ -13853,6 +13876,7 @@ async function handleAction(dx, dy) {
     }
 }
 
+// ===== SECTION: WISP MOVEMENT =====
 async function moveWisps() {
     const dirs = [
         { x: 0, y: -1 }, // 北
@@ -13970,6 +13994,7 @@ async function checkWispDamage(w) {
     }
 }
 
+// ===== SECTION: PATHFINDING =====
 // 地上敵BFS: 壁・設置ブロックを避けて最短経路の第一歩を返す（派閥AIなどで使用）
 function enemyGroundBFS(startX, startY, targetX, targetY) {
     if (startX === targetX && startY === targetY) return { dx: 0, dy: 0 };
@@ -14045,7 +14070,7 @@ function fairyBFS(fMap, startX, startY, targetX, targetY) {
     return { dx: 0, dy: 0 }; // 経路なし
 }
 
-// 敵の落下処理を非同期で実行（ターン進行をブロックしない）
+// ===== SECTION: FAIRY SYSTEM =====
 function useFairy() {
     if (player.fairyCount <= 0) { addLog("You have no fairy to release."); return; }
 
@@ -14407,6 +14432,7 @@ function moveFairies() {
     }
 }
 
+// ===== SECTION: MADMEN SYSTEM (multi-screen) =====
 function moveMadmen() {
     if (!multiScreenMode || !screenGrid || movingMadmen.length === 0) return;
 
@@ -14461,6 +14487,9 @@ function moveMadmen() {
     }
 }
 
+// ===== SECTION: ENEMY FALL & DEATH =====
+// scheduleEnemyFall: use for hole-fall (non-blocking, fires handleEnemyDeath after 400ms)
+// handleEnemyDeath: async, handles drops/exp/ring effects. Always await if order matters.
 function scheduleEnemyFall(enemy, msg, killedByPlayer = false) {
     enemy.isFalling = true;
     enemy.hp = 0; // 落下直後から行動・攻撃を無効化
@@ -15486,6 +15515,9 @@ async function knockbackEnemy(e, kx, ky, damage, toWall = false) {
     if (e.hp <= 0) handleEnemyDeath(e);
 }
 
+// ===== SECTION: ENEMY TURN =====
+// enemyTurn() processes every enemy's action for one game turn.
+// Speed is throttled based on enemy count to prevent lag.
 async function enemyTurn() {
     const _eN = enemies.filter(e => !e._dead && e.hp > 0).length;
     const _w = _eN > 40
@@ -17609,6 +17641,7 @@ async function launchBombProjectile(fromX, fromY, dx, dy) {
     await new Promise(r => setTimeout(r, 300));
 }
 
+// ===== SECTION: PROJECTILE SYSTEM =====
 function launchFlameProjectile(fromX, fromY, dx, dy, fromIceStar = false) {
     const startX = fromX + dx;
     const startY = fromY + dy;
@@ -17743,6 +17776,7 @@ async function moveFlameProjectiles() {
     tempWalls.forEach(w => { if (w.type === 'FIRE_BLOCK') w.fired = false; });
 }
 
+// ===== SECTION: MOVEMENT HELPERS =====
 // 指定座標が本物の穴（STAIRS）かどうか（擬態中ミミックの偽穴を除外）
 function isRealHole(x, y) {
     if (map[y][x] !== SYMBOLS.STAIRS) return false;
@@ -17795,6 +17829,7 @@ window.debugWin2 = triggerEnding2; // 第二エンディングデバッグ用
     if (p.get('debug') === '1') setTimeout(() => triggerEnding(), 500);
 })();
 
+// ===== SECTION: EXP & LEVELING =====
 function gainExp(amount) {
     player.exp += amount;
     if (player.exp >= player.nextExp) {
@@ -17841,6 +17876,7 @@ async function triggerGameOver() {
     isProcessing = false;
 }
 
+// ===== SECTION: LASER SYSTEM =====
 function isTileInLaser(x, y, ignoreEnemy = null) {
     for (const e of enemies) {
         if (e === ignoreEnemy) continue; // 指定された敵は無視
@@ -18028,6 +18064,7 @@ async function startDeepRun() {
     await startGame(101);
 }
 
+// ===== SECTION: INPUT HANDLING =====
 window.addEventListener('keydown', async e => {
     // エンディング演出中は全入力をブロック
     if (endingSkipLock) {
@@ -18723,6 +18760,7 @@ async function tryExplode() {
     return true;
 }
 
+// ===== SECTION: SHIELD SYSTEM =====
 function tryActivateShield() {
     player.isShielded = true;
     SOUNDS.SPEED_UP(); // 代用：上昇感のある音
