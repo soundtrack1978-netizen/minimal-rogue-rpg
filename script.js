@@ -5224,6 +5224,69 @@ function initMap() {
         return;
     }
 
+    // --- FLOOR 36: THE GALE GRINDER ---
+    if (floorLevel === 36) {
+        addLog("⚠️ FLOOR 36: THE GALE GRINDER");
+        addLog("Walls scroll left. A fierce wind blows downward every turn.");
+        addLog("Reach the exit at the TOP-RIGHT. Crushed at the left edge = DEATH.");
+
+        isScrollWallFloor = true;
+        scrollWalls = [];
+        scrollWallLines = [];
+        isWindFloor = true;
+        windTimer = 4;
+
+        // 全面を床に
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.FLOOR;
+
+        // 出口のある行（壁生成禁止ライン）：上から3行目
+        scrollWallProtectedY = 3;
+        map[scrollWallProtectedY][COLS - 4] = SYMBOLS.STAIRS;
+
+        // タレット：出口の左隣、左向きレーザー
+        const tHp36 = 30 + floorLevel * 3;
+        enemies.push({
+            type: 'TURRET', x: COLS - 5, y: scrollWallProtectedY, dir: 3,
+            hp: tHp36, maxHp: tHp36,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0
+        });
+
+        // BREAKER(W)：マップ中央付近
+        const wHp36 = 20 + floorLevel * 3;
+        enemies.push({
+            type: 'BREAKER', x: Math.floor(COLS / 2), y: Math.floor(ROWS / 2),
+            hp: wHp36, maxHp: wHp36,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30, stunTurns: 0
+        });
+
+        // NORMAL(E)・ORC(G) を配置
+        const place36 = (type, count) => {
+            const hp = type === 'ORC' ? 15 + floorLevel * 3 : 5 + floorLevel;
+            const exp = type === 'ORC' ? 30 : 5;
+            for (let i = 0; i < count; i++) {
+                for (let t = 0; t < 200; t++) {
+                    const ex = 5 + Math.floor(Math.random() * (COLS - 10));
+                    const ey = 5 + Math.floor(Math.random() * (ROWS - 10));
+                    if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
+                    if (enemies.some(en => en.x === ex && en.y === ey)) continue;
+                    if (Math.abs(ex - 3) + Math.abs(ey - (ROWS - 4)) < 5) continue;
+                    enemies.push({ type, x: ex, y: ey, hp, maxHp: hp, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0 });
+                    break;
+                }
+            }
+        };
+        place36('NORMAL', 6);
+        place36('ORC', 2);
+
+        // プレイヤー：左下
+        player.x = 3;
+        player.y = ROWS - 4;
+
+        return;
+    }
+
     // --- TEMPEST CROSSING (Floor 38): 突風×溶岩×氷 ---
     if (floorLevel === 38) {
         addLog("EVENT: The Tempest Crossing.");
@@ -7748,7 +7811,7 @@ function initMap() {
     }
 
     // 風フロアのランダム発生 (36階以降、3%の確率。固定ステージには発生しない)
-    const fixedStages = [7, 13, 25, 33, 35, 40, 50, 66, 75, 80, 88, 100];
+    const fixedStages = [7, 13, 25, 33, 35, 36, 40, 50, 66, 75, 80, 88, 100];
     if (floorLevel === 7 && !isWindFloor) {
         isWindFloor = true;
         windTimer = 4;
