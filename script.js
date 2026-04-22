@@ -8388,6 +8388,26 @@ function initMap() {
         }
     }
 
+    // 12階：確定でいかれたGを1体配置
+    if (floorLevel === 12) {
+        for (let t = 0; t < 300; t++) {
+            const gx = Math.floor(Math.random() * (COLS - 4)) + 2;
+            const gy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+            if (map[gy][gx] !== SYMBOLS.FLOOR) continue;
+            if (gx === player.x && gy === player.y) continue;
+            if (enemies.some(e => e.x === gx && e.y === gy)) continue;
+            if (Math.abs(gx - player.x) + Math.abs(gy - player.y) < 5) continue;
+            const crazyHp = Math.max(10, player.hp);
+            enemies.push({
+                type: 'CRAZY_G', x: gx, y: gy,
+                hp: crazyHp, maxHp: crazyHp,
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 80, stunTurns: 0
+            });
+            addLog("!! Something deranged is lurking here !!");
+            break;
+        }
+    }
+
     // ステージ83: 密集迷路＋KEY_RUNNERのみ。完全クリーンアップ後に再配置
     if (floorLevel === 83) {
         enemies = [];
