@@ -12250,24 +12250,26 @@ function tickScrollWallLines() {
     }
 
     for (const t of newTiles) {
+        // 元のタイル（FLOOR or POISON）を記憶してから WALL を置く
+        t.underTile = (map[t.y] && map[t.y][t.x] != null) ? map[t.y][t.x] : SYMBOLS.FLOOR;
         scrollWalls.push(t);
-        if (map[t.y] && map[t.y][t.x] === SYMBOLS.FLOOR) map[t.y][t.x] = SYMBOLS.WALL;
+        if (map[t.y]) map[t.y][t.x] = SYMBOLS.WALL;
     }
 }
 
 async function advanceScrollWalls() {
     if (!isScrollWallFloor) return;
 
-    // 現在の壁タイルをマップから消去
+    // 1. 現在位置の WALL を消去し、元タイル（FLOOR or POISON）を復元
     for (const w of scrollWalls) {
         if (w.y >= 0 && w.y < ROWS && w.x >= 0 && w.x < COLS)
-            if (map[w.y][w.x] === SYMBOLS.WALL) map[w.y][w.x] = SYMBOLS.FLOOR;
+            if (map[w.y][w.x] === SYMBOLS.WALL) map[w.y][w.x] = w.underTile || SYMBOLS.FLOOR;
     }
 
-    // 壁を1マス左へ移動（左端を超えたものは削除）
+    // 2. 壁を1マス左へ移動（左端を超えたものは削除）
     scrollWalls = scrollWalls.map(w => ({ x: w.x - 1, y: w.y })).filter(w => w.x >= 1);
 
-    // pushedByWall タレットを壁で押し出す
+    // 3. pushedByWall タレットを壁で押し出す
     for (const e of enemies) {
         if (!e.pushedByWall || e.hp <= 0 || e._dead) continue;
         if (scrollWalls.some(w => w.x === e.x && w.y === e.y)) {
@@ -12275,35 +12277,38 @@ async function advanceScrollWalls() {
         }
     }
 
-    // プレイヤーと同じタイルに壁が来た場合の判定
+    // 4. プレイヤーと同じタイルに壁が来た場合の判定（毒沼上でも押す）
     const wallOnPlayer = scrollWalls.find(w => w.x === player.x && w.y === player.y);
     if (wallOnPlayer) {
         const leftX = player.x - 1;
         const leftIsWall = leftX < 1 || scrollWalls.some(w => w.x === leftX && w.y === player.y);
         if (leftIsWall) {
-            // 即死：壁に挟まれた
             spawnFloatingText(player.x, player.y, "CRUSHED!", "#ff4444", 1500);
             addLog("💀 Crushed between the wall and the edge!");
+            // ゲームオーバー前に壁を描画
             for (const w of scrollWalls) {
-                if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1)
-                    if (map[w.y][w.x] === SYMBOLS.FLOOR) map[w.y][w.x] = SYMBOLS.WALL;
+                if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1) {
+                    w.underTile = map[w.y][w.x];
+                    map[w.y][w.x] = SYMBOLS.WALL;
+                }
             }
             draw();
             await triggerGameOver();
             return;
         }
-        // 左へ押し出す
         player.x = leftX;
         addLog("Pushed left by the wall!");
     }
 
-    // 壁タイルをマップへ反映
+    // 5. 新位置に WALL を置く（元タイルを underTile に保存）
     for (const w of scrollWalls) {
-        if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1)
-            if (map[w.y][w.x] === SYMBOLS.FLOOR) map[w.y][w.x] = SYMBOLS.WALL;
+        if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1) {
+            w.underTile = map[w.y][w.x]; // FLOOR or POISON を記憶
+            map[w.y][w.x] = SYMBOLS.WALL;
+        }
     }
 
-    // 右端に新しい横線を生成・延伸
+    // 6. 右端に新しい横線を生成・延伸
     tickScrollWallLines();
 
     draw();
