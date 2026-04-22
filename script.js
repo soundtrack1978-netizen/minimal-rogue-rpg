@@ -4168,6 +4168,139 @@ function initMap() {
         return;
     }
 
+    // --- FLOOR 20: FACTION CLASH ---
+    if (floorLevel === 20) {
+        addLog("⚔️ EVENT: FACTION CLASH — Two armies tear each other apart.");
+        addLog("GREEN charges from the left. PURPLE from the right.");
+        addLog("Pick a side — or let them destroy each other.");
+
+        // 全面を床に
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.FLOOR;
+
+        const f20MidX = Math.floor(COLS / 2);
+        const f20MidY = Math.floor(ROWS / 2);
+
+        // ランダムレイアウト（3種）
+        const f20Layout = Math.floor(Math.random() * 3);
+        if (f20Layout === 0) {
+            // 縦壁分割型：中央に縦壁+1〜2の穴
+            for (let y = 1; y < ROWS - 1; y++) map[y][f20MidX] = SYMBOLS.WALL;
+            const gap1 = 2 + Math.floor(Math.random() * (ROWS - 5));
+            map[gap1][f20MidX] = SYMBOLS.FLOOR;
+            if (Math.random() < 0.6) {
+                let gap2 = 2 + Math.floor(Math.random() * (ROWS - 5));
+                if (Math.abs(gap2 - gap1) < 2) gap2 = Math.min(ROWS - 3, gap1 + 3);
+                map[gap2][f20MidX] = SYMBOLS.FLOOR;
+            }
+            // 両サイドに横長の遮蔽壁を数本
+            for (let i = 0; i < 6; i++) {
+                const wy = 2 + Math.floor(Math.random() * (ROWS - 4));
+                const side = Math.random() < 0.5 ? 'L' : 'R';
+                const wx = side === 'L' ? 2 + Math.floor(Math.random() * (f20MidX - 4)) : f20MidX + 2 + Math.floor(Math.random() * (f20MidX - 4));
+                const wlen = 2 + Math.floor(Math.random() * 4);
+                for (let d = 0; d < wlen; d++) {
+                    const cx = wx + d;
+                    if (cx >= 1 && cx < COLS - 1) map[wy][cx] = SYMBOLS.WALL;
+                }
+            }
+        } else if (f20Layout === 1) {
+            // 多部屋型：左右に別れた部屋群
+            for (let y = 1; y < ROWS - 1; y++) for (let x = 1; x < COLS - 1; x++) map[y][x] = SYMBOLS.WALL;
+            const makeRooms = (xMin, xMax) => {
+                const rooms = [];
+                for (let i = 0; i < 4; i++) {
+                    const rw = 4 + Math.floor(Math.random() * 5), rh = 3 + Math.floor(Math.random() * 4);
+                    const rx = xMin + Math.floor(Math.random() * Math.max(1, xMax - xMin - rw));
+                    const ry = 1 + Math.floor(Math.random() * (ROWS - rh - 2));
+                    for (let y = ry; y < Math.min(ry + rh, ROWS - 1); y++)
+                        for (let x = rx; x < Math.min(rx + rw, xMax); x++) map[y][x] = SYMBOLS.FLOOR;
+                    rooms.push({ cx: rx + Math.floor(rw / 2), cy: ry + Math.floor(rh / 2) });
+                }
+                // 部屋を廊下で接続
+                for (let i = 1; i < rooms.length; i++) {
+                    const a = rooms[i - 1], b = rooms[i];
+                    let cx = a.cx, cy = a.cy;
+                    while (cx !== b.cx) { cx += b.cx > cx ? 1 : -1; if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) map[cy][cx] = SYMBOLS.FLOOR; }
+                    while (cy !== b.cy) { cy += b.cy > cy ? 1 : -1; if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) map[cy][cx] = SYMBOLS.FLOOR; }
+                }
+                return rooms;
+            };
+            makeRooms(2, f20MidX - 1);
+            makeRooms(f20MidX + 1, COLS - 2);
+            // 中央接続通路（1本）
+            for (let x = f20MidX - 1; x <= f20MidX + 1; x++) map[f20MidY][x] = SYMBOLS.FLOOR;
+        } else {
+            // 開放型：ランダム遮蔽のみ
+            for (let i = 0; i < 12; i++) {
+                const ox = 2 + Math.floor(Math.random() * (COLS - 4));
+                const oy = 2 + Math.floor(Math.random() * (ROWS - 4));
+                const ol = 1 + Math.floor(Math.random() * 4);
+                for (let d = 0; d < ol; d++) if (ox + d < COLS - 1) map[oy][ox + d] = SYMBOLS.WALL;
+            }
+        }
+
+        // プレイヤーを左端中央に、周囲2x2を安全地帯に
+        player.x = 2; player.y = f20MidY;
+        for (let dy = -2; dy <= 2; dy++)
+            for (let dx = -2; dx <= 2; dx++) {
+                const cx = player.x + dx, cy = player.y + dy;
+                if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) map[cy][cx] = SYMBOLS.FLOOR;
+            }
+
+        // 出口（プレイヤーから十分離れた床に）
+        let stX20, stY20;
+        for (let t = 0; t < 500; t++) {
+            const tx = 3 + Math.floor(Math.random() * (COLS - 6));
+            const ty = 2 + Math.floor(Math.random() * (ROWS - 4));
+            if (map[ty][tx] !== SYMBOLS.FLOOR) continue;
+            if (Math.abs(tx - player.x) + Math.abs(ty - player.y) < 12) continue;
+            stX20 = tx; stY20 = ty; break;
+        }
+        if (stX20 == null) { stX20 = COLS - 3; stY20 = f20MidY; }
+        for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+                const cx = stX20 + dx, cy = stY20 + dy;
+                if (cx >= 1 && cx < COLS - 1 && cy >= 1 && cy < ROWS - 1) map[cy][cx] = SYMBOLS.FLOOR;
+            }
+        map[stY20][stX20] = SYMBOLS.STAIRS;
+
+        // 敵配置ヘルパー
+        const place20 = (xMin, xMax, type, faction, count) => {
+            const expV = type === 'ORC' ? 30 : type === 'LAYER' ? 15 : 5;
+            const hpBase = type === 'ORC'   ? 20 + floorLevel * 3
+                         : type === 'LAYER' ? 15 + floorLevel * 2
+                         :                    5  + floorLevel;
+            for (let i = 0; i < count; i++) {
+                for (let t = 0; t < 200; t++) {
+                    const ex = Math.floor(Math.random() * (xMax - xMin)) + xMin;
+                    const ey = 2 + Math.floor(Math.random() * (ROWS - 4));
+                    if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
+                    if (enemies.some(en => en.x === ex && en.y === ey)) continue;
+                    if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 4) continue;
+                    enemies.push({ type, x: ex, y: ey,
+                        hp: hpBase, maxHp: hpBase,
+                        flashUntil: 0, offsetX: 0, offsetY: 0,
+                        expValue: expV, stunTurns: 0, faction });
+                    break;
+                }
+            }
+        };
+
+        // CRIMSON（緑）：左側
+        place20(2, f20MidX - 1, 'NORMAL', 'CRIMSON', 8);
+        place20(2, f20MidX - 2, 'ORC',    'CRIMSON', 1);
+        place20(4, f20MidX - 2, 'LAYER',  'CRIMSON', 1);
+
+        // COBALT（紫）：右側
+        place20(f20MidX + 1, COLS - 3, 'NORMAL', 'COBALT', 8);
+        place20(f20MidX + 2, COLS - 3, 'ORC',    'COBALT', 1);
+        place20(f20MidX + 2, COLS - 4, 'LAYER',  'COBALT', 1);
+
+        return;
+    }
+
     if (floorLevel === 23) {
         addLog("EVENT: The Frozen Vault.");
         addLog("WARNING: Ice covers the floor — and ancient Golems stand guard!");
