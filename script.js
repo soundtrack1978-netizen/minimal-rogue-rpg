@@ -4279,10 +4279,11 @@ function initMap() {
 
         // 敵配置ヘルパー
         const place20 = (xMin, xMax, type, faction, count) => {
-            const expV = type === 'ORC' ? 30 : type === 'LAYER' ? 15 : 5;
-            const hpBase = type === 'ORC'   ? 20 + floorLevel * 3
-                         : type === 'LAYER' ? 15 + floorLevel * 2
-                         :                    5  + floorLevel;
+            const expV = type === 'ORC' ? 30 : type === 'LAYER' ? 15 : type === 'BREAKER' ? 25 : 5;
+            const hpBase = type === 'ORC'     ? 20 + floorLevel * 3
+                         : type === 'LAYER'   ? 15 + floorLevel * 2
+                         : type === 'BREAKER' ? 18 + floorLevel * 2
+                         :                      5  + floorLevel;
             for (let i = 0; i < count; i++) {
                 for (let t = 0; t < 200; t++) {
                     const ex = Math.floor(Math.random() * (xMax - xMin)) + xMin;
@@ -4300,14 +4301,16 @@ function initMap() {
         };
 
         // CRIMSON（緑）：左側
-        place20(2, f20MidX - 1, 'NORMAL', 'CRIMSON', 8);
-        place20(2, f20MidX - 2, 'ORC',    'CRIMSON', 1);
-        place20(4, f20MidX - 2, 'LAYER',  'CRIMSON', 1);
+        place20(2, f20MidX - 1, 'NORMAL',  'CRIMSON', 8);
+        place20(2, f20MidX - 2, 'ORC',     'CRIMSON', 1);
+        place20(4, f20MidX - 2, 'LAYER',   'CRIMSON', 1);
+        place20(2, f20MidX - 2, 'BREAKER', 'CRIMSON', 2);
 
         // COBALT（紫）：右側
-        place20(f20MidX + 1, COLS - 3, 'NORMAL', 'COBALT', 8);
-        place20(f20MidX + 2, COLS - 3, 'ORC',    'COBALT', 1);
-        place20(f20MidX + 2, COLS - 4, 'LAYER',  'COBALT', 1);
+        place20(f20MidX + 1, COLS - 3, 'NORMAL',  'COBALT', 8);
+        place20(f20MidX + 2, COLS - 3, 'ORC',     'COBALT', 1);
+        place20(f20MidX + 2, COLS - 4, 'LAYER',   'COBALT', 1);
+        place20(f20MidX + 2, COLS - 4, 'BREAKER', 'COBALT', 2);
 
         return;
     }
