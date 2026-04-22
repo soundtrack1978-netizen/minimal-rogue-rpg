@@ -8552,6 +8552,38 @@ function initMap() {
         }
     }
 
+    // 33階：派閥敵を追加（突風ステージ＋派閥エリア）
+    if (floorLevel === 33) {
+        const midX33 = Math.floor(COLS / 2);
+        const place33 = (xMin, xMax, type, faction, count) => {
+            const expV = type === 'ORC' ? 35 : type === 'LAYER' ? 18 : 5;
+            const hpBase = type === 'ORC'   ? 25 + floorLevel * 3
+                         : type === 'LAYER' ? 18 + floorLevel * 2
+                         :                    6  + floorLevel;
+            for (let i = 0; i < count; i++) {
+                for (let t = 0; t < 300; t++) {
+                    const ex = xMin + Math.floor(Math.random() * (xMax - xMin + 1));
+                    const ey = 2 + Math.floor(Math.random() * (ROWS - 4));
+                    if (map[ey][ex] !== SYMBOLS.FLOOR) continue;
+                    if (enemies.some(en => en.x === ex && en.y === ey)) continue;
+                    if (Math.abs(ex - player.x) + Math.abs(ey - player.y) < 4) continue;
+                    enemies.push({ type, x: ex, y: ey,
+                        hp: hpBase, maxHp: hpBase,
+                        flashUntil: 0, offsetX: 0, offsetY: 0,
+                        expValue: expV, stunTurns: 0, faction });
+                    break;
+                }
+            }
+        };
+        place33(1, midX33 - 1, 'NORMAL', 'CRIMSON', 6);
+        place33(1, midX33 - 2, 'ORC',    'CRIMSON', 1);
+        place33(1, midX33 - 2, 'LAYER',  'CRIMSON', 1);
+        place33(midX33 + 1, COLS - 2, 'NORMAL', 'COBALT', 6);
+        place33(midX33 + 2, COLS - 2, 'ORC',    'COBALT', 1);
+        place33(midX33 + 2, COLS - 2, 'LAYER',  'COBALT', 1);
+        addLog("⚔️ Two factions clash in the storm!");
+    }
+
     // ステージ83: 密集迷路＋KEY_RUNNERのみ。完全クリーンアップ後に再配置
     if (floorLevel === 83) {
         enemies = [];
