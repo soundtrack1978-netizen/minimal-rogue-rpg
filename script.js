@@ -3912,6 +3912,14 @@ function initMap() {
             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50, stunTurns: 0
         });
 
+        // BREAKER(W)：マップ中央付近
+        const wHp13 = 20 + floorLevel * 3;
+        enemies.push({
+            type: 'BREAKER', x: Math.floor(COLS / 2), y: Math.floor(ROWS / 2),
+            hp: wHp13, maxHp: wHp13,
+            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30, stunTurns: 0
+        });
+
         // プレイヤー：左上
         player.x = 3;
         player.y = 3;
@@ -12173,7 +12181,7 @@ function tickScrollWallLines() {
     scrollWallLines = scrollWallLines.filter(l => l.life > 0);
 
     // 新しい横線を 1〜2 本生成
-    const newCount = 1 + Math.floor(Math.random() * 2);
+    const newCount = Math.random() < 0.6 ? 1 : 2; // 6割は1本、4割は2本（途切れを多く）
     const usedYs = new Set(scrollWallLines.map(l => l.y));
     for (let i = 0; i < newCount; i++) {
         let lineY = -1;
@@ -12185,7 +12193,7 @@ function tickScrollWallLines() {
         }
         if (lineY !== -1) {
             usedYs.add(lineY);
-            scrollWallLines.push({ y: lineY, life: 4 + Math.floor(Math.random() * 6) }); // 長さ 4〜9
+            scrollWallLines.push({ y: lineY, life: 3 + Math.floor(Math.random() * 4) }); // 長さ 3〜6（短め＝途切れ多）
         }
     }
 
