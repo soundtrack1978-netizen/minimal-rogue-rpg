@@ -3920,6 +3920,49 @@ function initMap() {
             flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 30, stunTurns: 0
         });
 
+        // 毒沼：中央付近にランダムなブロブ生成
+        const poisonCenter = { x: Math.floor(COLS / 2) + Math.floor((Math.random() - 0.5) * 8), y: Math.floor(ROWS / 2) + Math.floor((Math.random() - 0.5) * 6) };
+        const poisonTiles = new Set([`${poisonCenter.x},${poisonCenter.y}`]);
+        const poisonQueue = [{ x: poisonCenter.x, y: poisonCenter.y }];
+        const dirs4 = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+        while (poisonQueue.length > 0 && poisonTiles.size < 30) {
+            const cur = poisonQueue.shift();
+            for (const d of dirs4) {
+                const nx = cur.x + d.x, ny = cur.y + d.y;
+                const key = `${nx},${ny}`;
+                if (nx < 3 && ny < 3) continue; // プレイヤー開始エリアを避ける
+                if (nx >= COLS - 2 || ny >= ROWS - 2 || nx < 2 || ny < 2) continue;
+                if (poisonTiles.has(key)) continue;
+                if (Math.random() < 0.55) {
+                    poisonTiles.add(key);
+                    poisonQueue.push({ x: nx, y: ny });
+                }
+            }
+        }
+        for (const key of poisonTiles) {
+            const [px, py] = key.split(',').map(Number);
+            map[py][px] = SYMBOLS.POISON;
+        }
+
+        // NORMAL(E) と ORC(G) を配置
+        const placeEnemy13 = (type, count) => {
+            const hp = type === 'ORC' ? 15 + floorLevel * 3 : 5 + floorLevel;
+            const exp = type === 'ORC' ? 30 : 5;
+            for (let i = 0; i < count; i++) {
+                for (let t = 0; t < 200; t++) {
+                    const ex = 5 + Math.floor(Math.random() * (COLS - 10));
+                    const ey = 5 + Math.floor(Math.random() * (ROWS - 10));
+                    if (map[ey][ex] !== SYMBOLS.FLOOR && map[ey][ex] !== SYMBOLS.POISON) continue;
+                    if (enemies.some(en => en.x === ex && en.y === ey)) continue;
+                    if (Math.abs(ex - 3) + Math.abs(ey - 3) < 5) continue;
+                    enemies.push({ type, x: ex, y: ey, hp, maxHp: hp, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0 });
+                    break;
+                }
+            }
+        };
+        placeEnemy13('NORMAL', 3);
+        placeEnemy13('ORC', 2);
+
         // プレイヤー：左上
         player.x = 3;
         player.y = 3;
