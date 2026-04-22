@@ -8258,7 +8258,7 @@ function initMap() {
                 enemies.push({
                     type: 'CRAZY_G', x: pos.x, y: pos.y,
                     hp: crazyHp, maxHp: crazyHp,
-                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 50 + floorLevel * 2, stunTurns: 0
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 100 + floorLevel * 5, stunTurns: 0
                 });
                 addLog("!! Something crazy appeared !!");
             }
@@ -8669,7 +8669,7 @@ function initMap() {
             enemies.push({
                 type: 'CRAZY_G', x: gx, y: gy,
                 hp: crazyHp, maxHp: crazyHp,
-                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 80, stunTurns: 0
+                flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 100 + floorLevel * 5, stunTurns: 0
             });
             addLog("!! Something deranged is lurking here !!");
             break;
@@ -14682,6 +14682,7 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
             case 'SUMMONER': goldDrop = 30; break;
             case 'DRAGON': goldDrop = 50; break;
             case 'GOLD': goldDrop = 100; break;
+            case 'CRAZY_G': goldDrop = 200 + floorLevel * 10; break;
             case 'SNAKE': goldDrop = 15 + Math.floor(Math.random() * 6); break;
             case 'FROST': case 'BLAZE': goldDrop = 8 + Math.floor(Math.random() * 8); break;
             case 'BOMBER': goldDrop = 1; break;
