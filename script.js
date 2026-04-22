@@ -1344,7 +1344,7 @@ function initMap() {
     const isMerchantFloor = floorLevel >= 10 && floorLevel < 100 && merchantCooldownOk && (isExactMerchantFloor || (isNearMerchantFloor && Math.random() < 0.3));
 
     // --- MULTI-SCREEN FLOOR (Floor 50+: 固定ステージ以外 / 101F+: DEEP TEST 10x10) ---
-    const fixedStageFloors = [50, 53, 57, 63, 66, 70, 75, 77, 78, 80, 83, 85, 86, 88, 93, 99, 100];
+    const fixedStageFloors = [50, 53, 55, 57, 63, 65, 66, 70, 75, 77, 78, 80, 83, 85, 86, 88, 93, 99, 100];
     if ((floorLevel >= 50 && floorLevel < 100 && !fixedStageFloors.includes(floorLevel)) || floorLevel >= 101) {
         multiScreenMode = true;
         if (floorLevel >= 101) {
@@ -1370,7 +1370,9 @@ function initMap() {
             wind: Array.from({ length: screenGridSize }, () =>
                 Array.from({ length: screenGridSize }, () => false)),
             xWallScreens: Array.from({ length: screenGridSize }, () =>
-                Array.from({ length: screenGridSize }, () => false))
+                Array.from({ length: screenGridSize }, () => false)),
+            scrollWallState: Array.from({ length: screenGridSize }, () =>
+                Array.from({ length: screenGridSize }, () => null))
         };
         // 訪問済みフラグ初期化（スタート画面[0,0]は訪問済み）
         visitedScreens = Array.from({ length: screenGridSize }, () => Array(screenGridSize).fill(false));
@@ -6006,6 +6008,143 @@ function initMap() {
         return;
     }
 
+    // ===== 55階: 多室グラインダー（2×2マルチスクリーン + 全画面スクロール壁） =====
+    if (floorLevel === 55) {
+        addLog("EVENT: The Multi-Grinder.");
+        addLog("Walls surge in every chamber. Find the exit before you're crushed.");
+        addLog("Explore 2x2 screens to find the KEY and EXIT.");
+
+        multiScreenMode = true;
+        screenGridSize = 2;
+
+        screenGrid = {
+            maps:          Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => null)),
+            enemies:       Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => [])),
+            wisps:         Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => [])),
+            tempWalls:     Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => [])),
+            wind:          [[false, false], [false, false]],
+            xWallScreens:  [[false, false], [false, false]],
+            scrollWallState: Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => null)),
+        };
+        visitedScreens = [[true, false], [false, false]];
+
+        const _eHp55 = (base) => base + floorLevel;
+
+        // 各画面を生成するヘルパー
+        const build55Screen = (sx, sy) => {
+            const sMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
+            const sEn  = [];
+            const sTempWalls = [];
+            const hasExit = (sx === 1 && sy === 1);
+            const hasKey  = (sx === 1 && sy === 0);
+            // [1,0]（右上部屋）と[0,1]（左下部屋）は設置ブロック(tempWall)で障害物
+            const useBlocks = (sx === 1 && sy === 0) || (sx === 0 && sy === 1);
+
+            // 内部を全面床にする（外周は壁のまま）
+            for (let y = 1; y < ROWS - 1; y++)
+                for (let x = 1; x < COLS - 1; x++)
+                    sMap[y][x] = SYMBOLS.FLOOR;
+
+            // 画面遷移用の通路（外壁を開放）
+            if (sx < 1) for (let py = 11; py <= 13; py++) { sMap[py][COLS-1] = SYMBOLS.FLOOR; sMap[py][COLS-2] = SYMBOLS.FLOOR; }
+            if (sx > 0) for (let py = 11; py <= 13; py++) { sMap[py][0]      = SYMBOLS.FLOOR; sMap[py][1]      = SYMBOLS.FLOOR; }
+            if (sy < 1) for (let px = 18; px <= 21; px++) { sMap[ROWS-1][px] = SYMBOLS.FLOOR; sMap[ROWS-2][px] = SYMBOLS.FLOOR; }
+            if (sy > 0) for (let px = 18; px <= 21; px++) { sMap[0][px]      = SYMBOLS.FLOOR; sMap[1][px]      = SYMBOLS.FLOOR; }
+
+            // ランダム障害物: 右上エリア（x=22..36, y=2..9）と左下エリア（x=3..16, y=15..22）
+            // useBlocks画面は設置ブロック(tempWall)、それ以外は静的WALL
+            for (let oy = 2; oy <= 9; oy++)
+                for (let ox = 22; ox <= 36; ox++)
+                    if (Math.random() < 0.28) {
+                        if (useBlocks) sTempWalls.push({ x: ox, y: oy, hp: 2, type: 'BLOCK' });
+                        else sMap[oy][ox] = SYMBOLS.WALL;
+                    }
+            for (let oy = 15; oy <= 22; oy++)
+                for (let ox = 3; ox <= 16; ox++)
+                    if (Math.random() < 0.28) {
+                        if (useBlocks) sTempWalls.push({ x: ox, y: oy, hp: 2, type: 'BLOCK' });
+                        else sMap[oy][ox] = SYMBOLS.WALL;
+                    }
+
+            // 出口画面: 右下エリアに STAIRS + タレット
+            if (hasExit) {
+                sMap[20][COLS-4] = SYMBOLS.STAIRS;
+                sEn.push({ type: 'TURRET', x: COLS-5, y: 20, dir: 3,
+                    hp: _eHp55(100), maxHp: _eHp55(100),
+                    flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 40, stunTurns: 0,
+                    immuneToWind: true });
+            }
+
+            // 鍵画面: 右側に KEY
+            if (hasKey) {
+                sMap[5][COLS-5] = SYMBOLS.KEY;
+            }
+
+            // 敵配置ヘルパー（床タイルをランダムに選ぶ）
+            const place55 = (type, count, extraFields = {}) => {
+                for (let i = 0; i < count; i++) {
+                    for (let t = 0; t < 100; t++) {
+                        const ex = 2 + Math.floor(Math.random() * (COLS - 4));
+                        const ey = 2 + Math.floor(Math.random() * (ROWS - 4));
+                        if (sMap[ey][ex] !== SYMBOLS.FLOOR) continue;
+                        if (sEn.some(e => e.x === ex && e.y === ey)) continue;
+                        if (sTempWalls.some(tw => tw.x === ex && tw.y === ey)) continue;
+                        const base = { x: ex, y: ey, hp: _eHp55(8), maxHp: _eHp55(8),
+                            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 8, stunTurns: 0 };
+                        sEn.push(Object.assign({ type }, base, extraFields));
+                        break;
+                    }
+                }
+            };
+
+            // 各画面に多種の敵を配置
+            place55('NORMAL',  3, { hp: _eHp55(5),  maxHp: _eHp55(5),  expValue: 5  });
+            place55('ORC',     2, { hp: _eHp55(20), maxHp: _eHp55(20), expValue: 15 });
+            place55('BREAKER', 1, { hp: _eHp55(10), maxHp: _eHp55(10), expValue: 10 });
+            place55('FROST',   2, { hp: _eHp55(12), maxHp: _eHp55(12), expValue: 12 });
+            place55('BLAZE',   2, { hp: _eHp55(12), maxHp: _eHp55(12), expValue: 12 });
+            place55('BOMBER',  2, { hp: 3, maxHp: 3, expValue: 5 });
+            // LAYER: [0,0]は1体、他は2体
+            place55('LAYER', sx + sy === 0 ? 1 : 2, { hp: _eHp55(10), maxHp: _eHp55(10), expValue: 10 });
+            if (sx + sy >= 2) place55('CRAZY_G',1, { hp: player.hp,  maxHp: player.hp,  expValue: 50,
+                gold: 200 + floorLevel * 10 });
+
+            return { sMap, sEn, sTempWalls };
+        };
+
+        for (let sy = 0; sy < 2; sy++) {
+            for (let sx = 0; sx < 2; sx++) {
+                const { sMap, sEn, sTempWalls } = build55Screen(sx, sy);
+                screenGrid.maps[sy][sx]      = sMap;
+                screenGrid.enemies[sy][sx]   = sEn;
+                screenGrid.tempWalls[sy][sx] = sTempWalls;
+                screenGrid.scrollWallState[sy][sx] = {
+                    scrollWalls: [],
+                    scrollWallLines: [],
+                    scrollWallProtectedY: -1,
+                };
+            }
+        }
+
+        // 最初の画面(0,0)をアクティブに
+        currentScreen = { x: 0, y: 0 };
+        map = screenGrid.maps[0][0];
+        enemies = screenGrid.enemies[0][0];
+        wisps = [];
+        tempWalls = [];
+
+        // スクロール壁グローバル状態を初期化（画面[0,0]に対応）
+        isScrollWallFloor = true;
+        scrollWalls = [];
+        scrollWallLines = [];
+        scrollWallProtectedY = -1;
+
+        // プレイヤーは左上スタート
+        player.x = 3; player.y = 3;
+
+        return;
+    }
+
     if (floorLevel === 57) {
         addLog("EVENT: The Glacial Battery.");
         addLog("WARNING: Sliding turrets patrol the hall — ice patches send them flying!");
@@ -6112,6 +6251,137 @@ function initMap() {
                 }
             }
         }
+
+        return;
+    }
+
+    // --- THE REVERSE GRINDER (Floor 65): 左下スタート・右上出口のマルチスクリーン壁生まれ ---
+    if (floorLevel === 65) {
+        addLog("EVENT: The Reverse Grinder.");
+        addLog("Walls surge in every chamber. The exit is at the top-right.");
+        addLog("Explore 2x2 screens — find the KEY, then reach the exit!");
+
+        multiScreenMode = true;
+        screenGridSize = 2;
+
+        screenGrid = {
+            maps:          Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => null)),
+            enemies:       Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => [])),
+            wisps:         Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => [])),
+            tempWalls:     Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => [])),
+            wind:          [[true, true], [true, true]],
+            xWallScreens:  [[false, false], [false, false]],
+            scrollWallState: Array.from({ length: 2 }, () => Array.from({ length: 2 }, () => null)),
+        };
+        // プレイヤーは左下スクリーン(sx=0,sy=1)からスタート
+        visitedScreens = [[false, false], [true, false]];
+
+        const _eHp65 = (base) => base + floorLevel;
+
+        const build65Screen = (sx, sy) => {
+            const sMap = Array.from({ length: ROWS }, () => Array(COLS).fill(SYMBOLS.WALL));
+            const sEn  = [];
+            const sTempWalls = [];
+            const hasExit = (sx === 0 && sy === 0); // 左上スクリーンに出口
+            const hasKey  = (sx === 1 && sy === 1); // 右下スクリーンに鍵
+            const useBlocks = (sx === 1 && sy === 0) || (sx === 0 && sy === 1);
+
+            // 内部を全面床に
+            for (let y = 1; y < ROWS - 1; y++)
+                for (let x = 1; x < COLS - 1; x++)
+                    sMap[y][x] = SYMBOLS.FLOOR;
+
+            // 画面遷移通路
+            if (sx < 1) for (let py = 11; py <= 13; py++) { sMap[py][COLS-1] = SYMBOLS.FLOOR; sMap[py][COLS-2] = SYMBOLS.FLOOR; }
+            if (sx > 0) for (let py = 11; py <= 13; py++) { sMap[py][0]      = SYMBOLS.FLOOR; sMap[py][1]      = SYMBOLS.FLOOR; }
+            if (sy < 1) for (let px = 18; px <= 21; px++) { sMap[ROWS-1][px] = SYMBOLS.FLOOR; sMap[ROWS-2][px] = SYMBOLS.FLOOR; }
+            if (sy > 0) for (let px = 18; px <= 21; px++) { sMap[0][px]      = SYMBOLS.FLOOR; sMap[1][px]      = SYMBOLS.FLOOR; }
+
+            // ランダム障害物（右上・左下エリア）
+            for (let oy = 2; oy <= 9; oy++)
+                for (let ox = 22; ox <= 36; ox++)
+                    if (Math.random() < 0.28) {
+                        if (useBlocks) sTempWalls.push({ x: ox, y: oy, hp: 2, type: 'BLOCK' });
+                        else sMap[oy][ox] = SYMBOLS.WALL;
+                    }
+            for (let oy = 15; oy <= 22; oy++)
+                for (let ox = 3; ox <= 16; ox++)
+                    if (Math.random() < 0.28) {
+                        if (useBlocks) sTempWalls.push({ x: ox, y: oy, hp: 2, type: 'BLOCK' });
+                        else sMap[oy][ox] = SYMBOLS.WALL;
+                    }
+
+            // 出口: 左上スクリーンの右上に STAIRS
+            if (hasExit) {
+                sMap[3][COLS-4] = SYMBOLS.STAIRS;
+            }
+
+            // 鍵: 右下スクリーンの右下エリアに配置
+            if (hasKey) {
+                sMap[ROWS-5][COLS-5] = SYMBOLS.KEY;
+            }
+
+            // 敵配置ヘルパー
+            const place65 = (type, count, extraFields = {}) => {
+                for (let i = 0; i < count; i++) {
+                    for (let t = 0; t < 100; t++) {
+                        const ex = 2 + Math.floor(Math.random() * (COLS - 4));
+                        const ey = 2 + Math.floor(Math.random() * (ROWS - 4));
+                        if (sMap[ey][ex] !== SYMBOLS.FLOOR) continue;
+                        if (sEn.some(e => e.x === ex && e.y === ey)) continue;
+                        if (sTempWalls.some(tw => tw.x === ex && tw.y === ey)) continue;
+                        const base = { x: ex, y: ey, hp: _eHp65(8), maxHp: _eHp65(8),
+                            flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 8, stunTurns: 0 };
+                        sEn.push(Object.assign({ type }, base, extraFields));
+                        break;
+                    }
+                }
+            };
+
+            place65('NORMAL',  3, { hp: _eHp65(5),  maxHp: _eHp65(5),  expValue: 5  });
+            place65('ORC',     2, { hp: _eHp65(20), maxHp: _eHp65(20), expValue: 15 });
+            place65('BREAKER', 1, { hp: _eHp65(10), maxHp: _eHp65(10), expValue: 10 });
+            place65('FROST',   2, { hp: _eHp65(12), maxHp: _eHp65(12), expValue: 12 });
+            place65('BLAZE',   2, { hp: _eHp65(12), maxHp: _eHp65(12), expValue: 12 });
+            place65('BOMBER',  2, { hp: 3, maxHp: 3, expValue: 5 });
+            place65('LAYER', sx + sy === 0 ? 1 : 2, { hp: _eHp65(10), maxHp: _eHp65(10), expValue: 10 });
+            if (sx + sy >= 2) place65('CRAZY_G', 1, { hp: player.hp, maxHp: player.hp, expValue: 50,
+                gold: 200 + floorLevel * 10 });
+
+            return { sMap, sEn, sTempWalls };
+        };
+
+        for (let sy = 0; sy < 2; sy++) {
+            for (let sx = 0; sx < 2; sx++) {
+                const { sMap, sEn, sTempWalls } = build65Screen(sx, sy);
+                screenGrid.maps[sy][sx]      = sMap;
+                screenGrid.enemies[sy][sx]   = sEn;
+                screenGrid.tempWalls[sy][sx] = sTempWalls;
+                screenGrid.scrollWallState[sy][sx] = {
+                    scrollWalls: [],
+                    scrollWallLines: [],
+                    scrollWallProtectedY: -1,
+                };
+            }
+        }
+
+        // 左下スクリーン(sx=0,sy=1)からスタート
+        currentScreen = { x: 0, y: 1 };
+        map     = screenGrid.maps[1][0];
+        enemies = screenGrid.enemies[1][0];
+        wisps   = [];
+        tempWalls = [...(screenGrid.tempWalls[1][0] || [])];
+
+        isScrollWallFloor = true;
+        scrollWalls = [];
+        scrollWallLines = [];
+        scrollWallProtectedY = -1;
+
+        isWindFloor = true;
+        windTimer = 4;
+
+        // プレイヤーは左下スタート
+        player.x = 3; player.y = ROWS - 4;
 
         return;
     }
@@ -7171,8 +7441,10 @@ function initMap() {
     let isMazeFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && layoutRoll < 0.37;
     let isBoldMazeFloor = isMazeFloor && Math.random() < 0.10; // 迷路フロアの10%で大胆構造に
     if (isBoldMazeFloor) isMazeFloor = false;
-    let isCastleFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && layoutRoll < 0.57;
-    let isGreatHallFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && !isCastleFloor && layoutRoll < 0.67;
+    let isCombMazeFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && layoutRoll < 0.45;
+    let isPerfectMazeFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && !isCombMazeFloor && layoutRoll < 0.53;
+    let isCastleFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && !isCombMazeFloor && !isPerfectMazeFloor && layoutRoll < 0.68;
+    let isGreatHallFloor = !isDenseMazeFloor && !isSpiralFloor && !isCrossFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && !isCombMazeFloor && !isPerfectMazeFloor && !isCastleFloor && layoutRoll < 0.76;
     // 大広間フロアのモディファイア（ICE / WIND / WISP）は無効化
     let greatHallModifier = null;
 
@@ -7349,6 +7621,7 @@ function initMap() {
         isDenseMazeFloor = true;
         isSpiralFloor = false; isCrossFloor = false; isIslandsFloor = false;
         isMazeFloor = false; isBoldMazeFloor = false;
+        isCombMazeFloor = false; isPerfectMazeFloor = false;
         isCastleFloor = false; isGreatHallFloor = false;
         // return しない → 既存の迷路生成コードへ落ちる
     }
@@ -7366,6 +7639,7 @@ function initMap() {
         isCrossFloor = false;
         isIslandsFloor = false;
         isMazeFloor = false;
+        isCombMazeFloor = false; isPerfectMazeFloor = false;
         isGreatHallFloor = false;
     }
     const rooms = [];
@@ -7376,11 +7650,13 @@ function initMap() {
     else if (isIslandsFloor) addLog("Isolated chambers float in the void, connected by narrow bridges...");
     else if (isMazeFloor) addLog("Warning: This floor is a complex NARROW MAZE!");
     else if (isBoldMazeFloor) addLog("⚠️ GRAND LABYRINTH: Vast corridors echo with danger...");
+    else if (isCombMazeFloor) addLog("⚠️ COMB LABYRINTH: A forest of walls bars your path — find the gaps!");
+    else if (isPerfectMazeFloor) addLog("⚠️ PERFECT MAZE: Every turn is a dead end... except one.");
     else if (isCastleFloor) addLog("The floor is a fortified castle — rooms connected by narrow passages.");
     else if (isGreatHallFloor) addLog("This floor is a vast GREAT HALL.");
 
     // フロアタイプに応じて部屋数を決定
-    const roomCount = isDenseMazeFloor ? 8 : (isSpiralFloor ? 6 : (isCrossFloor ? 6 : (isIslandsFloor ? 12 : (isMazeFloor ? 25 : (isBoldMazeFloor ? 14 : (isCastleFloor ? 0 : (isGreatHallFloor ? 2 : (Math.floor(Math.random() * 4) + 8))))))));
+    const roomCount = isDenseMazeFloor ? 8 : (isSpiralFloor ? 6 : (isCrossFloor ? 6 : (isIslandsFloor ? 12 : (isMazeFloor ? 25 : (isBoldMazeFloor ? 14 : (isCombMazeFloor ? 0 : (isPerfectMazeFloor ? 0 : (isCastleFloor ? 0 : (isGreatHallFloor ? 2 : (Math.floor(Math.random() * 4) + 8))))))))));
 
     // --- Spiral Floor: 渦巻き通路を生成 ---
     if (isSpiralFloor) {
@@ -7516,6 +7792,82 @@ function initMap() {
         }
     }
 
+    // --- Comb Maze Floor: 交互に伸びる縦壁（くし型迷路） ---
+    else if (isCombMazeFloor) {
+        // 内部を全面床にする
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.FLOOR;
+
+        // 縦壁「歯」を3マス間隔で配置
+        // 偶数インデックス: 上端から y=ROWS-4 まで（下に2マス隙間）
+        // 奇数インデックス: y=3 から下端まで（上に2マス隙間）
+        let _combIdx = 0;
+        for (let _tx = 3; _tx <= COLS - 4; _tx += 3) {
+            if (_combIdx % 2 === 0) {
+                for (let y = 1; y <= ROWS - 4; y++) map[y][_tx] = SYMBOLS.WALL;
+            } else {
+                for (let y = 3; y <= ROWS - 2; y++) map[y][_tx] = SYMBOLS.WALL;
+            }
+            _combIdx++;
+        }
+
+        // 最後の歯が奇数（下歯, 上端に隙間）→ 出口を上右に置く
+        const _combExitY = (_combIdx - 1) % 2 === 1 ? 1 : ROWS - 2;
+
+        // rooms[0] = スタート（左下・底の隙間付近）
+        rooms.push({ x: 1, y: ROWS - 3, w: 2, h: 2, cx: 2, cy: ROWS - 2 });
+        // 中間ダミー部屋（敵・アイテム配置用）
+        for (let _xi = 5; _xi < COLS - 4; _xi += 9) {
+            rooms.push({ x: _xi, y: 1, w: 2, h: 2, cx: _xi + 1, cy: 1 });
+            rooms.push({ x: _xi, y: ROWS - 4, w: 2, h: 2, cx: _xi + 1, cy: ROWS - 3 });
+        }
+        // rooms[last] = 出口（右・隙間側）
+        rooms.push({ x: COLS - 3, y: _combExitY, w: 2, h: 2, cx: COLS - 2, cy: _combExitY });
+    }
+
+    // --- Perfect Maze Floor: 反復DFS完全迷路 ---
+    else if (isPerfectMazeFloor) {
+        // 全面を壁にしてからセル位置（奇数座標）を床にする
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.WALL;
+        for (let y = 1; y < ROWS - 1; y += 2)
+            for (let x = 1; x < COLS - 1; x += 2)
+                map[y][x] = SYMBOLS.FLOOR;
+
+        // 反復DFS（スタック）で迷路を彫る
+        const _pmVis = new Set();
+        const _pmStack = [[1, 1]];
+        _pmVis.add('1,1');
+        while (_pmStack.length > 0) {
+            const [_cx, _cy] = _pmStack[_pmStack.length - 1];
+            const _dirs = [[0, -2], [0, 2], [-2, 0], [2, 0]].sort(() => Math.random() - 0.5);
+            let _moved = false;
+            for (const [_dx, _dy] of _dirs) {
+                const _nx = _cx + _dx, _ny = _cy + _dy;
+                if (_nx >= 1 && _nx < COLS - 1 && _ny >= 1 && _ny < ROWS - 1 && !_pmVis.has(`${_nx},${_ny}`)) {
+                    map[_cy + _dy / 2][_cx + _dx / 2] = SYMBOLS.FLOOR; // 壁を開通
+                    _pmVis.add(`${_nx},${_ny}`);
+                    _pmStack.push([_nx, _ny]);
+                    _moved = true;
+                    break;
+                }
+            }
+            if (!_moved) _pmStack.pop();
+        }
+
+        // rooms[0] = 左上スタート, rooms[last] = 右下ゴール（どちらも奇数座標セル）
+        const _pmExitX = (COLS - 2) % 2 === 0 ? COLS - 3 : COLS - 2; // 奇数にする
+        const _pmExitY = (ROWS - 2) % 2 === 0 ? ROWS - 3 : ROWS - 2;
+        rooms.push({ x: 1, y: 1, w: 1, h: 1, cx: 1, cy: 1 });
+        // 中間ダミー部屋（敵・アイテム配置用）
+        for (let _py = 3; _py < ROWS - 2; _py += 6)
+            for (let _px = 3; _px < COLS - 2; _px += 8)
+                rooms.push({ x: _px, y: _py, w: 1, h: 1, cx: _px, cy: _py });
+        rooms.push({ x: _pmExitX, y: _pmExitY, w: 1, h: 1, cx: _pmExitX, cy: _pmExitY });
+    }
+
     // --- Castle Floor: 矩形部屋 + 1マス幅L字廊下（城郭型） ---
     else if (isCastleFloor) {
         const MIN_SEP = 2;
@@ -7635,7 +7987,7 @@ function initMap() {
 
     // --- Gがひしめく宝部屋（城郭・通常ダンジョン共通、15%の確率）---
     // 迷路・スパイラル・孤島系は小部屋構成でないため除外
-    if (!isDenseMazeFloor && !isSpiralFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor
+    if (!isDenseMazeFloor && !isSpiralFloor && !isIslandsFloor && !isMazeFloor && !isBoldMazeFloor && !isCombMazeFloor && !isPerfectMazeFloor
         && rooms.length >= 3 && Math.random() < 0.03) {
         // スタート部屋（rooms[0]）と出口部屋（最後）を除いた中間候補
         const mrCandidates = rooms.slice(1, -1).filter(r => r.w >= 3 && r.h >= 3);
@@ -7718,8 +8070,8 @@ function initMap() {
         const tx = next.cx;
         const ty = next.cy;
 
-        // Spiral floor: 螺旋が全体をカバーするため通常接続は不要
-        if (isSpiralFloor) continue;
+        // 自前生成フロアは独自接続済みのため通常接続は不要
+        if (isSpiralFloor || isCombMazeFloor || isPerfectMazeFloor) continue;
 
         while (cx !== tx || cy !== ty) {
             // 迷路フロアの場合、30%の確率でターゲットとは無関係な方向に寄り道する
@@ -7760,7 +8112,7 @@ function initMap() {
     }
 
     // Add random extra connections (Maze floors have MANY more)
-    const extraConnCount = isDenseMazeFloor ? 25 : (isSpiralFloor ? 5 : (isIslandsFloor ? 2 : (isMazeFloor ? 20 : (isBoldMazeFloor ? 6 : 3))));
+    const extraConnCount = isDenseMazeFloor ? 25 : (isSpiralFloor ? 5 : (isIslandsFloor ? 2 : (isMazeFloor ? 20 : (isBoldMazeFloor ? 6 : (isCombMazeFloor ? 0 : (isPerfectMazeFloor ? 0 : 3))))));
     for (let k = 0; k < extraConnCount; k++) {
         const r1 = rooms[Math.floor(Math.random() * rooms.length)];
         const r2 = rooms[Math.floor(Math.random() * rooms.length)];
@@ -7849,7 +8201,7 @@ function initMap() {
     }
 
     // 風フロアのランダム発生 (36階以降、3%の確率。固定ステージには発生しない)
-    const fixedStages = [7, 13, 25, 33, 35, 36, 40, 50, 66, 75, 80, 88, 100];
+    const fixedStages = [7, 13, 25, 33, 35, 36, 40, 50, 55, 65, 66, 75, 80, 88, 100];
     if (floorLevel === 7 && !isWindFloor) {
         isWindFloor = true;
         windTimer = 4;
@@ -12333,7 +12685,8 @@ function tickScrollWallLines() {
     for (const line of scrollWallLines) {
         if (line.life > 0) {
             line.life--;
-            if (line.y >= 1 && line.y <= ROWS - 2 && line.y !== scrollWallProtectedY)
+            if (line.y >= 1 && line.y <= ROWS - 2 && line.y !== scrollWallProtectedY
+                && !(multiScreenMode && line.y >= 11 && line.y <= 13))
                 newTiles.push({ x, y: line.y });
         }
     }
@@ -12353,12 +12706,21 @@ function tickScrollWallLines() {
             }
         }
         if (lineY !== -1) {
+            // マルチスクリーンの画面遷移帯（y=11..13）は壁を生やさない
+            if (multiScreenMode && lineY >= 11 && lineY <= 13) continue;
             usedYs.push(lineY);
             scrollWallLines.push({ y: lineY, life: 2 + Math.floor(Math.random() * 3) }); // 長さ 2〜4
         }
     }
 
     for (const t of newTiles) {
+        // 設置ブロックが右端に存在する場合は壁の生成で破壊する
+        const twIdx = tempWalls.findIndex(tw => tw.x === t.x && tw.y === t.y);
+        if (twIdx !== -1) {
+            tempWalls.splice(twIdx, 1);
+            spawnFloatingText(t.x, t.y, "CRUSH!", "#aaa", 600);
+            SOUNDS.WALL_BREAK();
+        }
         // 元のタイル（FLOOR or POISON）を記憶してから WALL を置く
         t.underTile = (map[t.y] && map[t.y][t.x] != null) ? map[t.y][t.x] : SYMBOLS.FLOOR;
         scrollWalls.push(t);
@@ -12414,11 +12776,13 @@ async function advanceScrollWalls() {
     const wallOnPlayer = scrollWalls.find(w => w.x === player.x && w.y === player.y);
     if (wallOnPlayer) {
         const leftX = player.x - 1;
-        const leftIsWall = leftX < 1 || scrollWalls.some(w => w.x === leftX && w.y === player.y);
-        if (leftIsWall) {
+        const leftIsScrollWall = scrollWalls.some(w => w.x === leftX && w.y === player.y);
+        const leftIsEdge = leftX < 1;
+        const leftTempWallIdx = tempWalls.findIndex(tw => tw.x === leftX && tw.y === player.y);
+        const leftIsStaticWall = !leftIsEdge && !leftIsScrollWall && leftTempWallIdx === -1 && isWallAt(leftX, player.y);
+        if (leftIsEdge || leftIsScrollWall) {
             spawnFloatingText(player.x, player.y, "CRUSHED!", "#ff4444", 1500);
             addLog("💀 Crushed between the wall and the edge!");
-            // ゲームオーバー前に壁を描画
             for (const w of scrollWalls) {
                 if (w.x >= 1 && w.x < COLS - 1 && w.y >= 1 && w.y < ROWS - 1) {
                     w.underTile = map[w.y][w.x];
@@ -12428,9 +12792,25 @@ async function advanceScrollWalls() {
             draw();
             await triggerGameOver();
             return;
+        } else if (leftTempWallIdx !== -1) {
+            // 設置ブロックが壁との間に挟まれた → ブロック破壊してプレイヤーが移動
+            tempWalls.splice(leftTempWallIdx, 1);
+            map[player.y][leftX] = SYMBOLS.FLOOR;
+            player.x = leftX;
+            SOUNDS.WALL_BREAK();
+            spawnFloatingText(leftX, player.y, "BLOCK SMASHED!", "#aaa", 800);
+            addLog("The block was crushed by the wall!");
+        } else if (leftIsStaticWall) {
+            const _wallDmg = Math.max(3, Math.floor(player.maxHp / 20));
+            player.hp -= _wallDmg;
+            SOUNDS.BANG();
+            spawnFloatingText(player.x, player.y, `-${_wallDmg}`, "#ff4444", 800);
+            addLog(`Slammed into the wall! -${_wallDmg} HP`);
+            if (player.hp <= 0) { draw(); await triggerGameOver(); return; }
+        } else {
+            player.x = leftX;
+            addLog("Pushed left by the wall!");
         }
-        player.x = leftX;
-        addLog("Pushed left by the wall!");
     }
 
     // 5. 新位置に WALL を置く（元タイルを underTile に保存）
@@ -12443,13 +12823,71 @@ async function advanceScrollWalls() {
                 spawnFloatingText(w.x, w.y, "CRUSH!", "#aaa", 600);
                 SOUNDS.WALL_BREAK();
             }
-            w.underTile = map[w.y][w.x]; // FLOOR or POISON を記憶
+            // FAIRY タイルを underTile に保存すると、壁が去った後にゴースト妖精が復元される
+            // → 妖精エンティティの underTile（実床）を代わりに保存する
+            let _wUnder = map[w.y][w.x];
+            if (_wUnder === SYMBOLS.FAIRY) {
+                const _fInWall = movingFairies.find(mf =>
+                    mf.x === w.x && mf.y === w.y &&
+                    (mf.screenX === -1 || (mf.screenX === currentScreen.x && mf.screenY === currentScreen.y))
+                );
+                _wUnder = _fInWall ? (_fInWall.underTile ?? SYMBOLS.FLOOR) : SYMBOLS.FLOOR;
+            }
+            w.underTile = _wUnder;
             map[w.y][w.x] = SYMBOLS.WALL;
         }
     }
 
     // 6. 右端に新しい横線を生成・延伸
     tickScrollWallLines();
+    if (gameState !== 'PLAYING') return; // ステップ4でゲームオーバーになっていた場合は中断
+
+    // 6.5 生成された壁がプレイヤー位置に重なった場合の補正
+    if (scrollWalls.some(w => w.x === player.x && w.y === player.y)) {
+        const _spawnLeftX = player.x - 1;
+        const _spawnScrollWall = scrollWalls.some(w => w.x === _spawnLeftX && w.y === player.y);
+        const _spawnEdge = _spawnLeftX < 1;
+        const _spawnTempIdx = tempWalls.findIndex(tw => tw.x === _spawnLeftX && tw.y === player.y);
+        const _spawnStaticWall = !_spawnEdge && !_spawnScrollWall && _spawnTempIdx === -1 && isWallAt(_spawnLeftX, player.y);
+        if (_spawnEdge || _spawnScrollWall) {
+            spawnFloatingText(player.x, player.y, "CRUSHED!", "#ff4444", 1500);
+            addLog("💀 Crushed by a spawning wall!");
+            draw();
+            await triggerGameOver();
+            return;
+        } else if (_spawnTempIdx !== -1) {
+            // 設置ブロックが壁との間に挟まれた → ブロック破壊してプレイヤーが移動
+            tempWalls.splice(_spawnTempIdx, 1);
+            map[player.y][_spawnLeftX] = SYMBOLS.FLOOR;
+            player.x = _spawnLeftX;
+            SOUNDS.WALL_BREAK();
+            spawnFloatingText(_spawnLeftX, player.y, "BLOCK SMASHED!", "#aaa", 800);
+            addLog("The block was crushed by the wall!");
+        } else if (_spawnStaticWall) {
+            const _spawnDmg = Math.max(3, Math.floor(player.maxHp / 20));
+            player.hp -= _spawnDmg;
+            SOUNDS.BANG();
+            spawnFloatingText(player.x, player.y, `-${_spawnDmg}`, "#ff4444", 800);
+            addLog(`Slammed into the wall! -${_spawnDmg} HP`);
+            if (player.hp <= 0) { draw(); await triggerGameOver(); return; }
+        } else {
+            player.x = _spawnLeftX;
+            addLog("Pushed left by a spawning wall!");
+        }
+    }
+
+    // 壁に押されて穴(STAIRS)の上に乗った場合はフロアクリア
+    if (map[player.y] && map[player.y][player.x] === SYMBOLS.STAIRS) {
+        const mimicHere = enemies.find(e => e.type === 'MIMIC' && e.disguised && e.x === player.x && e.y === player.y);
+        if (!mimicHere) {
+            addLog("Pushed into the hole — descending!");
+            isPlayerVisible = false;
+            floorLevel++;
+            if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
+            await startFloorTransition();
+            return;
+        }
+    }
 
     draw();
     await new Promise(r => setTimeout(r, 60));
@@ -12473,6 +12911,7 @@ async function windGustSlide() {
         if (isWallAt(player.x, y)) break;
         playerTargetY = y;
         if (map[y][player.x] === SYMBOLS.STAIRS) { playerFallsIntoHole = true; break; }
+        if (map[y][player.x] === SYMBOLS.KEY) break; // キーの上で停止
     }
     // 敵の最終Y（下の敵から計算して重なり防止。穴に落ちた敵は死亡）
     const sortedEnemies = enemies.filter(e => e.hp > 0 && !e.immuneToWind).sort((a, b) => b.y - a.y);
@@ -12531,6 +12970,17 @@ async function windGustSlide() {
         floorLevel++;
         if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
         await startFloorTransition();
+        return;
+    }
+
+    // 風に押されてキーに重なった場合は自動取得
+    if (map[player.y][player.x] === SYMBOLS.KEY) {
+        map[player.y][player.x] = SYMBOLS.FLOOR;
+        player.hasKey = true;
+        SOUNDS.GET_ITEM();
+        addLog("Blown into the KEY! 🗝 You grabbed it!");
+        spawnFloatingText(player.x, player.y, "KEY GET!", "#fbbf24");
+        updateUI();
     }
 }
 
@@ -13240,7 +13690,8 @@ async function handleAction(dx, dy) {
     else if (dx < 0) player.facing = 'LEFT';
 
     // 毒沼スロー: 2ターンに1回のみ行動可能（POISON_RING で無効化）
-    if (map[player.y][player.x] === SYMBOLS.POISON && !hasRing('POISON_RING')) {
+    // スクロール壁フロアでは毒効果なし（壁に押されて毒沼に乗っても発動しない）
+    if (map[player.y][player.x] === SYMBOLS.POISON && !hasRing('POISON_RING') && !isScrollWallFloor) {
         if (player.poisonStagger) {
             player.poisonStagger = false;
             isProcessing = true;
@@ -13365,8 +13816,15 @@ async function handleAction(dx, dy) {
                     await new Promise(r => setTimeout(r, 40));
                 }
 
-                // 現在画面のtempWallsを保存してから新画面をロード
+                // 現在画面のtempWalls・スクロール壁状態を保存してから新画面をロード
                 if (screenGrid.tempWalls) screenGrid.tempWalls[currentScreen.y][currentScreen.x] = [...tempWalls];
+                if (screenGrid.scrollWallState && isScrollWallFloor) {
+                    screenGrid.scrollWallState[currentScreen.y][currentScreen.x] = {
+                        scrollWalls: [...scrollWalls],
+                        scrollWallLines: [...scrollWallLines],
+                        scrollWallProtectedY
+                    };
+                }
                 currentScreen.x = newScreenX;
                 currentScreen.y = newScreenY;
                 map = screenGrid.maps[newScreenY][newScreenX];
@@ -13380,6 +13838,12 @@ async function handleAction(dx, dy) {
                 isXWallStage = screenGrid.xWallScreens ? screenGrid.xWallScreens[newScreenY][newScreenX] : false;
                 windTimer = 0;
                 tempWalls = screenGrid.tempWalls ? [...(screenGrid.tempWalls[newScreenY][newScreenX] || [])] : [];
+                // スクロール壁状態を復元
+                const _swLoad = screenGrid.scrollWallState ? screenGrid.scrollWallState[newScreenY][newScreenX] : null;
+                isScrollWallFloor = !!_swLoad;
+                scrollWalls = _swLoad ? [..._swLoad.scrollWalls] : [];
+                scrollWallLines = _swLoad ? [..._swLoad.scrollWallLines] : [];
+                scrollWallProtectedY = _swLoad ? _swLoad.scrollWallProtectedY : -1;
 
                 player.x = newPlayerX;
                 player.y = newPlayerY;
@@ -13813,6 +14277,8 @@ async function handleAction(dx, dy) {
 
         if (isBlockedByWall && !player.isBreaker && hasRing('BREAKER_RING') && player.stamina >= 100 && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
             // 壁壊しの指輪: スタミナ満タン時に壁を壊して進む（スタミナ全消費）
+            // スクロール壁を破壊した場合、そのエントリを除去（除去しないと次ターンに押し出し連鎖死が起きる）
+            { const _si = scrollWalls.findIndex(w => w.x === nx && w.y === ny); if (_si !== -1) scrollWalls.splice(_si, 1); }
             map[ny][nx] = SYMBOLS.FLOOR;
             player.x = nx; player.y = ny;
             SOUNDS.WALL_BREAK();
@@ -13828,6 +14294,8 @@ async function handleAction(dx, dy) {
             return;
         } else if (isBlockedByWall && player.isBreaker && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
             // 壁破壊の魔導書効果: 壁を壊して進む
+            // スクロール壁を破壊した場合、そのエントリを除去（除去しないと次ターンに押し出し連鎖死が起きる）
+            { const _si = scrollWalls.findIndex(w => w.x === nx && w.y === ny); if (_si !== -1) scrollWalls.splice(_si, 1); }
             map[ny][nx] = SYMBOLS.FLOOR;
             player.x = nx; player.y = ny;
             SOUNDS.WALL_BREAK();
@@ -15862,6 +16330,7 @@ async function knockbackEnemy(e, kx, ky, damage, toWall = false) {
 // enemyTurn() processes every enemy's action for one game turn.
 // Speed is throttled based on enemy count to prevent lag.
 async function enemyTurn() {
+    if (gameState !== 'PLAYING') return; // ゲームオーバー後は処理しない
     const _eN = enemies.filter(e => !e._dead && e.hp > 0).length;
     const _w = _eN > 40
         ? (ms) => ms >= 100 ? new Promise(r => setTimeout(r, 15)) : Promise.resolve()
@@ -17651,7 +18120,20 @@ async function enemyTurn() {
                     const nd = Math.abs(nearFairy.x - nx) + Math.abs(nearFairy.y - ny);
                     if (nd > bestDist) { bestDist = nd; bestDir = d; }
                 }
-                if (bestDir) { e.x += bestDir.x; e.y += bestDir.y; }
+                if (bestDir) {
+                    e.x += bestDir.x; e.y += bestDir.y;
+                    if (e.type === 'FROST') {
+                        if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.LAVA) {
+                            map[e.y][e.x] = SYMBOLS.ICE;
+                            SOUNDS.FREEZE();
+                        }
+                    } else if (e.type === 'BLAZE') {
+                        if (map[e.y][e.x] === SYMBOLS.FLOOR || map[e.y][e.x] === SYMBOLS.POISON || map[e.y][e.x] === SYMBOLS.ICE) {
+                            map[e.y][e.x] = SYMBOLS.LAVA;
+                            SOUNDS.IGNITE();
+                        }
+                    }
+                }
             }
         } else if (minDist <= detectRange) {
             // 接近
