@@ -12363,6 +12363,23 @@ async function advanceScrollWalls() {
     // 2. 壁を1マス左へ移動（左端を超えたものは削除）
     scrollWalls = scrollWalls.map(w => ({ x: w.x - 1, y: w.y })).filter(w => w.x >= 1);
 
+    // 2.5 壁が4マス以内に迫っているNORMAL(E)を逃がす（未起動でも反応）
+    //     左側の敵から処理して連鎖逃げを防ぐ
+    const fleeRange = 4;
+    const fleeEnemies = enemies
+        .filter(e => !e._dead && e.hp > 0 && e.type === 'NORMAL')
+        .sort((a, b) => a.x - b.x);
+    for (const e of fleeEnemies) {
+        const wallNear = scrollWalls.some(w => w.y === e.y && w.x > e.x && w.x - e.x <= fleeRange);
+        if (!wallNear) continue;
+        const tx = e.x - 1;
+        if (tx < 1) continue;
+        const blocked = isWallAt(tx, e.y)
+            || scrollWalls.some(w => w.x === tx && w.y === e.y)
+            || enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === tx && o.y === e.y);
+        if (!blocked) e.x = tx;
+    }
+
     // 3. 敵を壁で押し出す（固定系以外はすべて押される。左端に行けない場合はその場に留まる）
     //    左にいる敵から順に処理することで、横並びの複数敵も連鎖して押される
     const WALL_FIXED = new Set(['TURRET', 'HOPPER_TURRET']);
