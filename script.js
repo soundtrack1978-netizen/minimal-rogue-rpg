@@ -3950,6 +3950,14 @@ function initMap() {
                 if (nx>=2&&nx<COLS-2&&ny>=2&&ny<ROWS-2&&map[ny][nx]===SYMBOLS.FLOOR) map[ny][nx]=SYMBOLS.POISON;
             }
         }
+        // 下から1〜4マスの範囲をほぼ全面毒で埋める（STAIRS は除外）
+        for (let y = ROWS - 5; y <= ROWS - 2; y++) {
+            for (let x = 2; x < COLS - 2; x++) {
+                if (map[y][x] === SYMBOLS.STAIRS) continue;
+                if (Math.random() < 0.06) continue; // 約6%の確率でランダムに空ける
+                map[y][x] = SYMBOLS.POISON;
+            }
+        }
 
         // NORMAL(E) と ORC(G) を配置
         const placeEnemy13 = (type, count) => {
