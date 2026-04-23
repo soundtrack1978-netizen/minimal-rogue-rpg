@@ -1257,14 +1257,6 @@ function updateUI() {
     }
 
     updateMinimap();
-    updateDeathCount();
-}
-
-function updateDeathCount() {
-    const el = document.getElementById('death-count');
-    if (!el) return;
-    const count = parseInt(localStorage.getItem('minimal_rogue_deaths') || '0', 10);
-    el.innerText = count;
 }
 
 function updateMinimap() {
@@ -12883,7 +12875,7 @@ async function advanceScrollWalls() {
     if (gameState !== 'PLAYING') return;
 
     // 2.5 壁が4マス以内に迫っているNORMAL(E)を逃がす（未起動でも反応）
-    //     左側の敵から処理して連鎖逃げを防ぐ
+    //     上下方向のうち、連続壁行が少ない（すぐ抜けられる）方へ逃げる
     const fleeRange = 4;
     const fleeEnemies = enemies
         .filter(e => !e._dead && e.hp > 0 && e.type === 'NORMAL')
@@ -12891,12 +12883,33 @@ async function advanceScrollWalls() {
     for (const e of fleeEnemies) {
         const wallNear = scrollWalls.some(w => w.y === e.y && w.x > e.x && w.x - e.x <= fleeRange);
         if (!wallNear) continue;
-        const tx = e.x - 1;
-        if (tx < 1) continue;
-        const blocked = isWallAt(tx, e.y)
-            || scrollWalls.some(w => w.x === tx && w.y === e.y)
-            || enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === tx && o.y === e.y);
-        if (!blocked) e.x = tx;
+        // 上下の連続壁行数を数え、短い方向（早く脱出できる側）へ逃げる
+        let upRows = 0;
+        for (let dy = 1; dy < ROWS; dy++) {
+            const ny = e.y - dy;
+            if (ny < 1) break;
+            if (scrollWalls.some(w => w.y === ny && w.x > e.x && w.x - e.x <= fleeRange)) upRows++;
+            else break;
+        }
+        let downRows = 0;
+        for (let dy = 1; dy < ROWS; dy++) {
+            const ny = e.y + dy;
+            if (ny >= ROWS - 1) break;
+            if (scrollWalls.some(w => w.y === ny && w.x > e.x && w.x - e.x <= fleeRange)) downRows++;
+            else break;
+        }
+        const escDirs25 = upRows <= downRows
+            ? [{ x: 0, y: -1 }, { x: 0, y: 1 }]
+            : [{ x: 0, y: 1 }, { x: 0, y: -1 }];
+        for (const d of escDirs25) {
+            const ny = e.y + d.y;
+            if (ny < 1 || ny >= ROWS - 1) continue;
+            if (isWallAt(e.x, ny)) continue;
+            if (scrollWalls.some(w => w.x === e.x && w.y === ny)) continue;
+            if (enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === e.x && o.y === ny)) continue;
+            e.y = ny;
+            break;
+        }
     }
 
     // 3. 敵を壁で押し出す（固定系以外はすべて押される。左端に行けない場合はその場に留まる）
@@ -12908,10 +12921,43 @@ async function advanceScrollWalls() {
     for (const e of pushable) {
         if (!scrollWalls.some(w => w.x === e.x && w.y === e.y)) continue;
         const tx = e.x - 1;
-        if (tx < 1) continue; // 左端 → 留まる
-        // 押し先に別の敵がいなければ移動
-        if (!enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === tx && o.y === e.y))
-            e.x = tx;
+        // 上下優先（壁の短い側）→ 塞がれていれば左に緊急回避
+        let upRowsPush = 0;
+        for (let dy = 1; dy < ROWS; dy++) {
+            const ny = e.y - dy;
+            if (ny < 1) break;
+            if (scrollWalls.some(w => w.y === ny && w.x === e.x)) upRowsPush++;
+            else break;
+        }
+        let downRowsPush = 0;
+        for (let dy = 1; dy < ROWS; dy++) {
+            const ny = e.y + dy;
+            if (ny >= ROWS - 1) break;
+            if (scrollWalls.some(w => w.y === ny && w.x === e.x)) downRowsPush++;
+            else break;
+        }
+        const udDirsPush = upRowsPush <= downRowsPush
+            ? [{ x: 0, y: -1 }, { x: 0, y: 1 }]
+            : [{ x: 0, y: 1 }, { x: 0, y: -1 }];
+        let escaped = false;
+        for (const d of udDirsPush) {
+            const ny = e.y + d.y;
+            if (ny < 1 || ny >= ROWS - 1) continue;
+            if (isWallAt(e.x, ny)) continue;
+            if (scrollWalls.some(w => w.x === e.x && w.y === ny)) continue;
+            if (enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === e.x && o.y === ny)) continue;
+            e.y = ny; escaped = true; break;
+        }
+        // 上下が塞がれていれば左に緊急退避（壁タイルに埋まって消えるのを防ぐ）
+        if (!escaped) {
+            const tx2 = e.x - 1;
+            if (tx2 >= 1
+                && !isWallAt(tx2, e.y)
+                && !scrollWalls.some(w => w.x === tx2 && w.y === e.y)
+                && !enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === tx2 && o.y === e.y)) {
+                e.x = tx2;
+            }
+        }
     }
 
     // 4. プレイヤーと同じタイルに壁が来た場合の判定（毒沼上でも押す）
@@ -13040,6 +13086,15 @@ async function advanceScrollWalls() {
             await startFloorTransition();
             return;
         }
+    }
+
+    // 安全チェック: いずれかの処理でHPが0になっていれば確実に死亡処理を実行
+    if (gameState === 'PLAYING' && player.hp <= 0) {
+        player.hp = 0;
+        updateUI();
+        draw();
+        await triggerGameOver();
+        return;
     }
 
     draw();
@@ -13838,6 +13893,7 @@ async function handleAction(dx, dy) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     isPlayerVisible = true; // 操作時は確実に表示する
     if (isProcessing) return;
+    if (gameState !== 'PLAYING') return;
 
     if (dx > 0) player.facing = 'RIGHT';
     else if (dx < 0) player.facing = 'LEFT';
@@ -18288,6 +18344,35 @@ async function enemyTurn() {
                     }
                 }
             }
+        } else if (isScrollWallFloor && minDist > detectRange) {
+            // スクロール壁ステージ：プレイヤーが遠い場合は壁から逃げる（上下のみ、短い側へ）
+            // 左逃げは壁と同じ速度で無意味。上下方向のうち連続壁行が少ない（早く抜けられる）方へ
+            const wallFleeRange = 6;
+            const wallInRow = scrollWalls.find(w => w.y === e.y && w.x > e.x && w.x - e.x <= wallFleeRange);
+            if (wallInRow) {
+                let upRowsET = 0;
+                for (let dy = 1; dy < ROWS; dy++) {
+                    const ny = e.y - dy;
+                    if (ny < 1) break;
+                    if (scrollWalls.some(w => w.y === ny && w.x > e.x && w.x - e.x <= wallFleeRange)) upRowsET++;
+                    else break;
+                }
+                let downRowsET = 0;
+                for (let dy = 1; dy < ROWS; dy++) {
+                    const ny = e.y + dy;
+                    if (ny >= ROWS - 1) break;
+                    if (scrollWalls.some(w => w.y === ny && w.x > e.x && w.x - e.x <= wallFleeRange)) downRowsET++;
+                    else break;
+                }
+                const primaryDirET = upRowsET <= downRowsET ? { x: 0, y: -1 } : { x: 0, y: 1 };
+                const secondaryDirET = upRowsET <= downRowsET ? { x: 0, y: 1 } : { x: 0, y: -1 };
+                for (const d of [primaryDirET, secondaryDirET]) {
+                    const nx = e.x + d.x, ny = e.y + d.y;
+                    if (!canEnemyMove(nx, ny, e)) continue;
+                    if (enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === nx && o.y === ny)) continue;
+                    e.x = nx; e.y = ny; break;
+                }
+            }
         } else if (minDist <= detectRange) {
             // 接近
             const oldPos = { x: e.x, y: e.y };
@@ -18821,10 +18906,10 @@ function gainExp(amount) {
 
 async function triggerGameOver() {
     player.hp = 0; updateUI(); // HPを確実に0にしてUIへ反映
+    bufferedInput = null; // ゲームオーバー後のバッファ入力を捨てる
     // 死亡回数を記録
     const prevDeaths = parseInt(localStorage.getItem('minimal_rogue_deaths') || '0', 10);
     localStorage.setItem('minimal_rogue_deaths', prevDeaths + 1);
-    updateDeathCount();
     stopBGM();
     isProcessing = true;
     gameState = 'GAMEOVER_SEQ';

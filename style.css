@@ -185,15 +185,3 @@ body {
     box-sizing: border-box;
 }
 
-.death-count-panel {
-    font-size: 11px;
-    color: #444;
-    text-align: right;
-    padding-top: 8px;
-    margin-top: 4px;
-    border-top: 1px solid #1a1a1a;
-}
-
-.death-count-panel span {
-    color: #555;
-}
