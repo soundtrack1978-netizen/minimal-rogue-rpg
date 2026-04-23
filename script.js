@@ -808,6 +808,9 @@ let isScrollWallFloor = false; // 13F: スクロール壁ステージ
 let scrollWalls = []; // {x, y} スクロール壁タイル
 let scrollWallProtectedY = -1; // 出口のある行（壁生成禁止）
 let scrollWallLines = []; // {y, life} 横線ジェネレーター
+let _f73WallPhase = 0;    // 73F岩塊フェーズ: 0-3=壁生成, 4-5=ギャップ (6周期)
+let _f73WallPattern = []; // 73F岩塊: フェーズ0で生成したYパターン(1-3で再利用)
+let _f73PassageY = 12;    // 73F保証通路: ゆっくりドリフトするY位置
 let windTimer = 0;
 let windGustEndTime = 0; // 突風エフェクト終了時刻
 let testFloor = 1;    // テストプレイ用の開始階層
@@ -1285,7 +1288,7 @@ function updateMinimap() {
             } else if (isVisited) {
                 html += '<span style="color:#666">■</span>';
             } else {
-                html += '<span style="color:#2a2a2a">□</span>';
+                html += '<span style="color:#484848">□</span>';
             }
         }
         html += '</div>';
@@ -1311,7 +1314,7 @@ function initMap() {
     blastEffects = []; // 爆風エフェクトをリセット
     isWindFloor = false; windTimer = 0;
     isSanctuaryFloor = false;
-    isScrollWallFloor = false; scrollWalls = []; scrollWallProtectedY = -1; scrollWallLines = [];
+    isScrollWallFloor = false; scrollWalls = []; scrollWallProtectedY = -1; scrollWallLines = []; _f73WallPhase = 0; _f73WallPattern = []; _f73PassageY = 12;
     wisps = []; // ウィルをリセット
     movingFairies = []; // 妖精をリセット
     movingMadmen = []; // 狂人をリセット
@@ -1344,7 +1347,7 @@ function initMap() {
     const isMerchantFloor = floorLevel >= 10 && floorLevel < 100 && merchantCooldownOk && (isExactMerchantFloor || (isNearMerchantFloor && Math.random() < 0.3));
 
     // --- MULTI-SCREEN FLOOR (Floor 50+: 固定ステージ以外 / 101F+: DEEP TEST 10x10) ---
-    const fixedStageFloors = [50, 53, 55, 57, 63, 65, 66, 70, 75, 77, 78, 80, 83, 85, 86, 88, 93, 99, 100];
+    const fixedStageFloors = [50, 53, 55, 57, 63, 65, 66, 70, 73, 75, 77, 78, 80, 83, 85, 86, 88, 93, 99, 100];
     if ((floorLevel >= 50 && floorLevel < 100 && !fixedStageFloors.includes(floorLevel)) || floorLevel >= 101) {
         multiScreenMode = true;
         if (floorLevel >= 101) {
@@ -7093,6 +7096,81 @@ function initMap() {
         return;
     }
 
+    if (floorLevel === 73) {
+        addLog("⚠️ FLOOR 73: THE ROCKFALL");
+        addLog("Massive boulders grind in from the right.");
+        addLog("Squeeze through the gaps — reach the exit at the RIGHT.");
+
+        isScrollWallFloor = true;
+        scrollWalls = [];
+        scrollWallLines = [];
+        _f73WallPhase = 0;
+        _f73WallPattern = [];
+        _f73PassageY = 12;
+
+        // 全面を床に
+        for (let y = 1; y < ROWS - 1; y++)
+            for (let x = 1; x < COLS - 1; x++)
+                map[y][x] = SYMBOLS.FLOOR;
+
+        // 出口（保護なし：壁が通り過ぎる仕様）
+        scrollWallProtectedY = -1;
+
+        // 溶岩パッチ（岩場の雰囲気づけ）
+        const lavaSeeds73 = 6 + Math.floor(Math.random() * 5);
+        for (let i = 0; i < lavaSeeds73; i++) {
+            const lx = 5 + Math.floor(Math.random() * (COLS - 12));
+            const ly = 4 + Math.floor(Math.random() * (ROWS - 10));
+            const lr = 1 + Math.floor(Math.random() * 2);
+            for (let dy = -lr; dy <= lr; dy++) {
+                for (let dx = -lr; dx <= lr; dx++) {
+                    if (dx*dx + dy*dy > lr*lr + 1) continue;
+                    const px = lx+dx, py = ly+dy;
+                    if (px < 2 || px >= COLS-3 || py < 2 || py >= ROWS-2) continue;
+                    if (Math.abs(px-3)+Math.abs(py-3) < 5) continue; // 開始地点を避ける
+                    if (Math.random() < 0.2) continue;
+                    map[py][px] = SYMBOLS.LAVA;
+                }
+            }
+        }
+        // 散在する小石（ICEで代用せず、単発LAVA）
+        for (let i = 0; i < 8; i++) {
+            const sx = 5 + Math.floor(Math.random() * (COLS - 10));
+            const sy = 3 + Math.floor(Math.random() * (ROWS - 8));
+            if (map[sy][sx] === SYMBOLS.FLOOR && Math.abs(sx-3)+Math.abs(sy-3) >= 5)
+                map[sy][sx] = SYMBOLS.LAVA;
+        }
+
+        // 出口：溶岩配置後に上書きして確実にSTAIRSにする
+        map[Math.floor(ROWS / 2)][COLS - 4] = SYMBOLS.STAIRS;
+
+        // 敵配置
+        const placeEnemy73 = (type, count, hp, exp) => {
+            for (let i = 0; i < count; i++) {
+                for (let t = 0; t < 200; t++) {
+                    const ex = 6 + Math.floor(Math.random() * (COLS - 12));
+                    const ey = 4 + Math.floor(Math.random() * (ROWS - 10));
+                    if (map[ey][ex] === SYMBOLS.WALL) continue;
+                    if (enemies.some(en => en.x === ex && en.y === ey)) continue;
+                    if (Math.abs(ex-3)+Math.abs(ey-3) < 6) continue;
+                    enemies.push({ type, x: ex, y: ey, hp, maxHp: hp, flashUntil: 0, offsetX: 0, offsetY: 0, expValue: exp, stunTurns: 0 });
+                    break;
+                }
+            }
+        };
+        placeEnemy73('BLAZE',  3, 30 + floorLevel*3, 40);
+        placeEnemy73('FROST',  3, 30 + floorLevel*3, 40);
+        placeEnemy73('LAYER',  3, 20 + floorLevel*2, 25);
+        placeEnemy73('ORC',    2, 25 + floorLevel*3, 35);
+        placeEnemy73('NORMAL', 4,  8 + floorLevel,   10);
+
+        // プレイヤー：左上
+        player.x = 3;
+        player.y = 3;
+
+        return;
+    }
+
     if (floorLevel === 75) {
         addLog("EVENT: The Void Arena.");
         // 全面を床にしつつ、壁沿いに溶岩の枠を作る
@@ -8201,7 +8279,7 @@ function initMap() {
     }
 
     // 風フロアのランダム発生 (36階以降、3%の確率。固定ステージには発生しない)
-    const fixedStages = [7, 13, 25, 33, 35, 36, 40, 50, 55, 65, 66, 75, 80, 88, 100];
+    const fixedStages = [7, 13, 25, 33, 35, 36, 40, 50, 55, 65, 66, 73, 75, 80, 88, 100];
     if (floorLevel === 7 && !isWindFloor) {
         isWindFloor = true;
         windTimer = 4;
@@ -9738,14 +9816,14 @@ async function triggerStage1StaminaTutorial() {
             "reducing your damage output.",
             "",
             "連続して攻撃すると",
-            "腕が疲労して攻撃力が下がる。"
+            "腕が疲労して攻撃力が下がる"
         ],
         [
             "It is wise to mix in movement or",
             "defense between your strikes.",
             "",
             "移動や防御をはさみながら",
-            "攻撃したほうが良さそうだ。"
+            "攻撃したほうが良さそうだ"
         ],
         [
             "Defend yourself with [Space].",
@@ -9799,12 +9877,6 @@ async function triggerWandEvent() {
                 "You picked up the Magic Wand.",
                 "",
                 "魔法の杖を拾った"
-            ],
-            [
-                "Likely a relic of an adventurer",
-                "who never returned.",
-                "",
-                "もどってこなかった冒険者の遺品だろう"
             ],
             [
                 "It seems to have the power",
@@ -9888,7 +9960,8 @@ async function triggerKeyLogStory() {
             "With this, you should be able to",
             "pass through the sealed areas.",
             "",
-            "これがあれば、閉ざされた場所を通れるはず"
+            "これがあれば",
+            "閉ざされた場所を通れるはず"
         ]
     ]);
     isProcessing = false;
@@ -9908,7 +9981,7 @@ async function triggerGoldLogStory() {
         [
             "Power is surging through you.",
             "",
-            "力が、みなぎってくる"
+            "力が\u3000みなぎってくる"
         ]
     ]);
     isProcessing = false;
@@ -9923,13 +9996,13 @@ async function triggerSaveEvent() {
         [
             "Somewhere, a voice spoke.",
             "",
-            "どこかから、声が聞こえた"
+            "どこかから\u3000声が聞こえた"
         ],
         [
             "\"If your strength should fade...\"",
             "\"You shall return here.\"",
             "",
-            "「力つきた時、おまえはここへ戻るだろう」と…"
+            "「力つきた時\u3000おまえはここへ戻るだろう」と…"
         ]
     ]);
     isProcessing = false;
@@ -9942,20 +10015,16 @@ async function triggerFairyEvent() {
 
     await showStoryPages([
         [
-            "The fairy is trembling.",
+            "The fairy will protect you",
+            "and guide you, time and time again.",
             "",
-            "妖精が怯えている"
+            "妖精が\u3000あなたを守り",
+            "誘ってくれる\u3000何度でも"
         ],
         [
-            "As you reach out your hand...",
+            "[X] → ITEM → Fairy",
             "",
-            "あなたが手を差し出すと"
-        ],
-        [
-            "It timidly brushes",
-            "against your palm.",
-            "",
-            "おそるおそる、その手に触れた"
+            "ITEM\u3000→\u3000妖精"
         ],
     ]);
     isProcessing = false;
@@ -9976,13 +10045,7 @@ async function triggerTomeEvent() {
             "Likely a relic of an adventurer",
             "who never returned.",
             "",
-            "もどってこなかった冒険者の遺品だろうか"
-        ],
-        [
-            "It grants various effects",
-            "when used.",
-            "",
-            "使用することで様々な効果を発揮する"
+            "もどってこなかった冒険者の遺品だろう"
         ],
         [
             "Press [X] key to open Inventory,",
@@ -10001,25 +10064,17 @@ async function triggerEquipEvent() {
 
     await showStoryPages([
         [
-            "What you have found...",
-            "",
-            "あなたが入手したのは"
-        ],
-        [
             "Equipment of the adventurers",
             "who never returned.",
             "",
-            "もどってこなかった冒険者たちの装備だ"
+            "もどってこなかった",
+            "冒険者たちの装備だ"
         ],
         [
             "By gathering these fragments,",
+            "you can make their strength your own.",
             "",
-            "それらを拾い集めることで"
-        ],
-        [
-            "You can make their strength",
-            "your own.",
-            "",
+            "拾い集めることで",
             "自らの力にすることができる"
         ]
     ]);
@@ -12677,6 +12732,84 @@ async function dragonWaveAttack(wave = 1) {
 
 // ===== SECTION: SCROLL WALL SYSTEM (Floor 13) =====
 
+// ===== FLOOR 73: 岩塊スクロール壁生成 =====
+// フェーズ周期: 0-3=壁生成(4ターン連続), 4-5=ギャップ(2ターン)
+function tickRockSlabs73() {
+    const x = COLS - 2;
+
+    // ギャップフェーズ（phase 4〜5）: 何も生成しない
+    if (_f73WallPhase >= 4) {
+        _f73WallPhase = (_f73WallPhase + 1) % 6;
+        return;
+    }
+
+    // フェーズ0のみ新パターンを生成・保存、フェーズ1-3は同じパターンを再利用
+    let wallSet;
+    if (_f73WallPhase === 0) {
+        wallSet = new Set();
+        let y = 1;
+        while (y < ROWS - 1) {
+            const wallH = 1 + Math.floor(Math.random() * 11); // 壁の高さ 1〜11
+            for (let i = 0; i < wallH; i++) {
+                const ty = y + i;
+                if (ty >= ROWS - 1) break;
+                const edgeDist = Math.min(i, wallH - 1 - i);
+                if (edgeDist === 0 && Math.random() < 0.4) continue;
+                if (edgeDist === 1 && Math.random() < 0.15) continue;
+                wallSet.add(ty);
+            }
+            y += wallH;
+            if (y >= ROWS - 1) break;
+            y += 1 + Math.floor(Math.random() * 3); // 隙間 1〜3
+        }
+
+        // 保証通路: _f73PassageY と +1 を必ず空ける
+        wallSet.delete(_f73PassageY);
+        if (_f73PassageY + 1 < ROWS - 1) wallSet.delete(_f73PassageY + 1);
+
+        // 通路位置をゆっくりドリフト
+        _f73PassageY += Math.floor(Math.random() * 3) - 1;
+        _f73PassageY = Math.max(2, Math.min(ROWS - 4, _f73PassageY));
+
+        // L字トリム: 各連続壁ランの上端または下端を1マス削除して袋小路を防ぐ
+        const wallArr = [...wallSet].sort((a, b) => a - b);
+        let ri = 0;
+        while (ri < wallArr.length) {
+            let rj = ri;
+            while (rj + 1 < wallArr.length && wallArr[rj + 1] === wallArr[rj] + 1) rj++;
+            if (rj - ri >= 2) {
+                if (Math.random() < 0.5) wallSet.delete(wallArr[ri]);
+                else wallSet.delete(wallArr[rj]);
+            }
+            ri = rj + 1;
+        }
+
+        // パターンを保存
+        _f73WallPattern = [...wallSet];
+    } else {
+        // フェーズ1-3: 保存済みパターンをそのまま使用
+        wallSet = new Set(_f73WallPattern);
+    }
+
+    // 壁セットをマップに適用
+    for (const ty of wallSet) {
+        const t = { x, y: ty };
+        const twIdx = tempWalls.findIndex(tw => tw.x === t.x && tw.y === t.y);
+        if (twIdx !== -1) {
+            tempWalls.splice(twIdx, 1);
+            spawnFloatingText(t.x, t.y, "CRUSH!", "#aaa", 600);
+            SOUNDS.WALL_BREAK();
+        }
+        t.underTile = (map[ty] && map[ty][x] != null) ? map[ty][x] : SYMBOLS.FLOOR;
+        scrollWalls.push(t);
+        if (map[ty]) map[ty][x] = SYMBOLS.WALL;
+    }
+
+    // フェーズ進行: 0→1→2→3→4(ギャップ)→5(ギャップ)→0
+    _f73WallPhase = (_f73WallPhase + 1) % 6;
+}
+
+
 function tickScrollWallLines() {
     const x = COLS - 2;
     const newTiles = [];
@@ -12739,6 +12872,15 @@ async function advanceScrollWalls() {
 
     // 2. 壁を1マス左へ移動（左端を超えたものは削除）
     scrollWalls = scrollWalls.map(w => ({ x: w.x - 1, y: w.y })).filter(w => w.x >= 1);
+
+    // 2.1 壁が去ってSTAIRSが露出した位置にいる敵（ally除外）を落下させる
+    for (const _he of enemies.filter(e => !e._dead && e.hp > 0 && !e.isAlly)) {
+        if (isRealHole(_he.x, _he.y)) {
+            spawnFloatingText(_he.x, _he.y, "FELL!", "#f87171", 800);
+            await handleEnemyDeath(_he, false);
+        }
+    }
+    if (gameState !== 'PLAYING') return;
 
     // 2.5 壁が4マス以内に迫っているNORMAL(E)を逃がす（未起動でも反応）
     //     左側の敵から処理して連鎖逃げを防ぐ
@@ -12838,8 +12980,19 @@ async function advanceScrollWalls() {
         }
     }
 
+    // 5.5 壁タイルに飲み込まれた敵を死亡判定（押し出しが間に合わなかった場合）
+    // ally（妖精など）はスクロール壁に潰されない
+    for (const _we of enemies.filter(e => !e._dead && e.hp > 0 && !e.isAlly)) {
+        if (map[_we.y] && map[_we.y][_we.x] === SYMBOLS.WALL) {
+            spawnFloatingText(_we.x, _we.y, "CRUSHED", "#aaa", 800);
+            await handleEnemyDeath(_we, false);
+        }
+    }
+    if (gameState !== 'PLAYING') return;
+
     // 6. 右端に新しい横線を生成・延伸
-    tickScrollWallLines();
+    if (floorLevel === 73) tickRockSlabs73();
+    else tickScrollWallLines();
     if (gameState !== 'PLAYING') return; // ステップ4でゲームオーバーになっていた場合は中断
 
     // 6.5 生成された壁がプレイヤー位置に重なった場合の補正
@@ -18931,6 +19084,30 @@ window.addEventListener('keydown', async e => {
         return;
     }
 
+    // 数値直接入力 (テストメニュー表示中) — IME・テンキー両対応、Arrowより先に処理
+    // e.keyがIMEで'Process'になる場合はe.code(Digit0-9 / Numpad0-9)で判定
+    {
+        const _dk = /^\d$/.test(e.key) ? e.key : (/^(?:Digit|Numpad)(\d)$/.exec(e.code)?.[1] ?? null);
+        if (gameState === 'TITLE' && testModeVisible && _dk !== null) {
+            e.preventDefault();
+            const _num = parseInt(_dk);
+            const _duD = localStorage.getItem('deep_unlocked') === '1';
+            const _dtiD = _duD ? 4 : 3;
+            if (titleSelection === _dtiD) {
+                let nf = (deepTestFloor * 10) % 1000 + _num;
+                if (nf < 100) nf += 100; // 1xx台にフォールバック (例: 15→115)
+                if (nf > 999) nf = 999;
+                if (nf < 101) nf = 101;
+                deepTestFloor = nf;
+            } else {
+                let nf = (testFloor * 10 + _num) % 100;
+                if (nf === 0) nf = 100; // 100階はゼロになるので補正
+                testFloor = nf;
+            }
+            SOUNDS.SELECT(); return;
+        }
+    }
+
     if (e.key === 'ArrowUp' || e.key === 'w') {
         e.preventDefault();
         if (gameState === 'TITLE') {
@@ -18944,8 +19121,7 @@ window.addEventListener('keydown', async e => {
                 SOUNDS.SELECT();
                 return;
             }
-            const count = testModeVisible ? 4 : 2;
-            titleSelection = (titleSelection + count - 1) % count;
+            { const _duU = localStorage.getItem('deep_unlocked') === '1'; const _baseU = _duU ? 3 : 2; const count = testModeVisible ? _baseU + 2 : _baseU; titleSelection = (titleSelection + count - 1) % count; }
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 2) % 3; SOUNDS.SELECT(); return; }
@@ -18983,8 +19159,7 @@ window.addEventListener('keydown', async e => {
                 SOUNDS.SELECT();
                 return;
             }
-            const count = testModeVisible ? 4 : 2;
-            titleSelection = (titleSelection + 1) % count;
+            { const _duD2 = localStorage.getItem('deep_unlocked') === '1'; const _baseD2 = _duD2 ? 3 : 2; const count = testModeVisible ? _baseD2 + 2 : _baseD2; titleSelection = (titleSelection + 1) % count; }
             SOUNDS.SELECT(); return;
         }
         if (gameState === 'MENU') { menuSelection = (menuSelection + 1) % 3; SOUNDS.SELECT(); return; }
@@ -19024,19 +19199,6 @@ window.addEventListener('keydown', async e => {
             if (titleSelection === _dti2) { deepTestFloor = deepTestFloor < 999 ? deepTestFloor + 1 : 101; SOUNDS.SELECT(); return; }
         }
         if (gameState === 'STATUS') { statusPage = (statusPage + 1) % 3; SOUNDS.SELECT(); return; }
-    }
-
-    // 数値直接入力 (STAGE SELECT時)
-    // 数字を入力するたびに左にシフト（例: 1→12→23→34）、2桁を維持
-    if (gameState === 'TITLE' && titleSelection === (localStorage.getItem('deep_unlocked') === '1' ? 3 : 2) && /^\d$/.test(e.key)) {
-        e.preventDefault();
-        const num = parseInt(e.key);
-        let newFloor = (testFloor % 10) * 10 + num; // 1の位を10の位にシフトし、新しい数字を1の位に
-        if (newFloor > 100) newFloor = 100;
-        if (newFloor < 1) newFloor = 1;
-        testFloor = newFloor;
-        SOUNDS.SELECT();
-        return;
     }
 
     if (gameState === 'CONFIRM_NEWGAME') {
