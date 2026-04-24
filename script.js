@@ -17123,6 +17123,23 @@ async function knockbackEnemy(e, kx, ky, damage, toWall = false) {
 // ===== SECTION: ENEMY TURN =====
 // enemyTurn() processes every enemy's action for one game turn.
 // Speed is throttled based on enemy count to prevent lag.
+//
+// --- AI branching order per enemy (earlier branches pre-empt later ones) ---
+// 1. Terrain damage (POISON / LAVA) — may apply poisonStagger (2-turn slow)
+// 2. stunTurns > 0 → skip
+// 3. e.sleeping → skip
+// 4. HEALER `_slowSkip` → HEALER acts every 2nd turn only
+// 5. 3% universal random action — 1-step random move, skips normal AI
+//    (excludes: TURRET, HOPPER_TURRET, SPAWNER, DRAGON, KING, CORE, MIMIC, FAIRY_MIMIC, SNAKE)
+// 6. Faction victory cluster — surviving faction roams in a pack (never freezes)
+// 7. Faction combat AI — pursue & attack opposing faction
+//    (BREAKER/HEALER are excluded UNLESS opposing faction has 1 survivor left — "last stand" rule)
+//    Includes stalemate-break: if pursuit distance doesn't decrease for 2 turns, force perpendicular move
+// 8. HEALER special AI — heal adjacent same-faction allies, flee threats, never step adjacent to a threat
+// 9. flee AI (e.flee) — fleeing prey behavior
+// 10. Normal AI — chase player, TURRET fire, type-specific handling
+//
+// When adding a new AI branch, respect this ordering and end the branch with `continue;` to skip later stages.
 async function enemyTurn() {
     if (gameState !== 'PLAYING') return; // ゲームオーバー後は処理しない
     const _eN = enemies.filter(e => !e._dead && e.hp > 0).length;

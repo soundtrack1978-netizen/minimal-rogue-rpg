@@ -1,0 +1,59 @@
+# === Secrets / environment ===
+.env
+.env.local
+.env.*.local
+
+# === Backup files ===
+*.bak
+*.bak2
+script.js.bak_*
+*.orig
+
+# === AI editor / agent configs (keep out of repo) ===
+.adal/
+.agent/
+.agents/
+.augment/
+.claude/
+.cline/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+
+# === Generated skill manifests ===
+skills-lock.json
+skills/
+
+# === Temp / scratch files ===
+test.js
+tutorial_messages.xlsx
+
+# === OS / editor clutter ===
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

@@ -8,11 +8,13 @@ Turn-based roguelike in a single HTML/CSS/JS stack. Canvas rendering + Web Audio
 
 ## File Structure
 ```
-index.html   — canvas, HUD elements, loads script.js
+index.html   — canvas, HUD elements, loads script.js (update `?v=N` on release)
 style.css    — layout only (dark theme, no game logic)
-script.js    — everything: data, logic, rendering (~19000 lines)
+script.js    — everything: data, logic, rendering (~20000 lines)
 bgm_*.mp3    — background music tracks (HTML Audio)
 ```
+
+**Workflow tip:** this is a single-page HTML file — just open `index.html` in a browser to test. No build step. Bump `?v=NN` in the script tag when you want to bust the browser cache after editing.
 
 ## Key Constants (script.js top)
 ```js
@@ -54,20 +56,26 @@ SYMBOLS.MERCHANT  'M'   SYMBOLS.FIRE_BLOCK 'F'
 |------|--------|-------|
 | NORMAL | e | basic melee |
 | ORC | G | higher HP/ATK, tutorial on floor 12 |
-| LAYER | L | avoids holes (STAIRS) |
-| BREAKER | W | destroys walls |
+| LAYER | L | avoids holes (STAIRS); places blocks while fleeing |
+| BREAKER | W | destroys walls; skips faction combat unless opp is last survivor |
 | GOLD | $ | rare, high gold drop (floor 15+) |
 | BOMBER | X | explodes on death; drops 1G |
 | CRAZY_G | G (purple) | fast, high HP=player.hp, 200+floor×10G drop |
 | MIMIC | > | disguises as stairs |
-| TURRET | T | fires lasers in fixed direction |
-| BLAZE | B | fire-elemental |
-| FROST | F | ice-elemental |
-| DRAGON | D | boss at 100F |
-| SNAKE | S | poison |
-| KING | K | floor 50 boss |
 | FAIRY_MIMIC | * | disguises as fairy |
+| TURRET | T | fires lasers in fixed direction; stationary |
+| HOPPER_TURRET | T (orange) | turret that hops perpendicular to its laser |
+| SPAWNER | [E] | purple block that periodically spawns minions |
+| BLAZE | B | fire-elemental, leaves LAVA on move |
+| FROST | F | ice-elemental, leaves ICE on move |
+| DRAGON | D | boss at 100F |
+| SNAKE | S | poison, multi-segment (head+body) |
+| KING | K | floor 50 boss; buffs nearby enemies |
+| MADMAN | @ | red flickering @-mimic enemy; excluded from carrying key |
+| KEY_RUNNER | K (red) | carries key and flees; special AI |
+| WISP_ENEMY | w | wisp-controlled enemy |
 | SUMMONER | Σ | summons minions, floor 88 boss |
+| HEALER | H | heals same-faction allies; avoids enemies; 2-turn cooldown |
 
 ### Faction system
 - `faction: 'CRIMSON'` → rendered green (`#4ade80`)
@@ -76,14 +84,40 @@ SYMBOLS.MERCHANT  'M'   SYMBOLS.FIRE_BLOCK 'F'
 - Enemies **without** a faction render in their default red/white color
 - On faction floors, always assign a faction to ALL enemies (see Floor 33 pattern)
 
+### Enemy AI loop order (inside `enemyTurn()`)
+Order of branching per enemy — earlier branches pre-empt later ones (search comments in file to locate each block):
+1. `e.sleeping` → skip turn entirely
+2. **HEALER slow check** (`_slowSkip`) → HEALER acts every 2nd turn only
+3. **3% universal random action** → 1-step random 4-dir move, skips normal AI (excludes TURRET/HOPPER_TURRET/SPAWNER/DRAGON/KING/CORE/MIMIC/FAIRY_MIMIC/SNAKE)
+4. **Faction victory cluster** (`oppAlive === false`) → surviving faction roams in a pack (never freezes)
+5. **Faction combat AI** (`e.faction && !e.isAlly && !BREAKER && !HEALER`) — but BREAKER & HEALER join when opposing faction has exactly 1 survivor (last-stand rule)
+6. **HEALER special AI** → heal adjacent same-faction allies, flee threats, never step adjacent to a threat
+7. **Normal AI** (chase player, TURRET fire, etc.)
+
+### Common enemy fields (add to any enemy object)
+| field | purpose |
+|-------|---------|
+| `flashUntil` | white flash on hit (ms timestamp) |
+| `healGlowUntil` | soft green glow for 2.5s when healed |
+| `stunTurns` | skip turn while > 0 |
+| `_slowSkip` | HEALER-specific alternating turn skip |
+| `_chaseLastDist`, `_chaseStuck` | pursuit stalemate detection in faction combat |
+| `_fleeLastDx/Dy` | prevent flee oscillation |
+| `faction` | `'CRIMSON' \| 'COBALT' \| undefined` |
+| `isAlly` | charmed, treats player as ally |
+| `holdsKey` | drops key on death |
+| `family*` (familyId, homeX, homeY, breedTimer) | deep-floor family groups |
+
 ---
 
 ## Floor System
 
-### Fixed stages (no random wind)
-```js
-const fixedStages = [7, 25, 33, 35, 40, 50, 66, 75, 80, 88, 100];
-```
+### Fixed stages list (all stages with a specific layout / mechanic)
+Defined in `script.js` as the `FIXED_STAGES` array (~line 839): each entry is `{ floor, title, suppressWind? }`.
+- `FIXED_STAGE_FLOORS` = array of floor numbers (derived)
+- `FIXED_WIND_SUPPRESS_FLOORS` = subset where the random-wind roll (3% on floor≥10) is suppressed
+
+**When adding a new fixed stage:** add a `{ floor: N, title: '...', suppressWind: true? }` entry to `FIXED_STAGES` — that auto-registers it in the TITLE → FIXED STAGE select menu AND controls wind suppression.
 
 ### Wind floors
 Set inside `initMap()` after dungeon generation:
@@ -117,7 +151,7 @@ and returns early, skipping random generation.
 | 100 | Boss | DRAGON + DungeonCore |
 
 ### Adding a new fixed floor — checklist
-1. Add the floor number to `fixedStages` array (prevents random wind on it)
+1. Add an entry to `FIXED_STAGES` array (`{ floor: N, title: '...', suppressWind: true }` if no random wind should roll)
 2. Inside `initMap()`, add `if (floorLevel === N) { ... return; }` block
 3. Build map with `map[y][x] = SYMBOLS.FLOOR` etc., place enemies in `enemies` array
 4. If faction floor: assign `.faction` to every enemy
@@ -159,22 +193,24 @@ Check with `hasRing('RING_ID')`.
 
 ## Key Functions Reference
 
+Line numbers drift as the file grows — always re-confirm with `grep -n "^function NAME"` before relying on them.
+
 | Function | Location | Purpose |
 |----------|----------|---------|
-| `initMap()` | ~1284 | Generates entire floor (call at floor transition) |
-| `handleAction(dx, dy)` | ~12868 | Processes one player turn (async) |
-| `enemyTurn()` | ~15489 | Processes all enemy actions (async) |
-| `handleEnemyDeath(enemy, byPlayer)` | ~14472 | Death, drops, exp, rings (async) |
-| `scheduleEnemyFall(enemy, msg)` | ~14464 | Triggers enemy hole-fall (async-safe) |
-| `draw(now)` | ~10710 | Renders one frame |
-| `addLog(msg)` | ~11433 | Appends line to the message log |
-| `spawnFloatingText(x, y, text, color, duration)` | ~10653 | Shows floating UI text |
-| `gainExp(amount)` | ~17798 | Adds EXP and handles level-up |
-| `canEnemyMove(x, y, mover)` | ~17752 | Checks if tile is walkable for enemy |
-| `isRealHole(x, y)` | ~17747 | True if tile is a real STAIRS (not MIMIC) |
-| `isWallAt(x, y)` | ~8787 | True if tile blocks movement |
-| `enemyGroundBFS(sx, sy, tx, ty)` | ~13974 | Returns first step toward target |
-| `saveGame()` / `loadGame()` | ~1106 / ~969 | localStorage persistence |
+| `initMap()` | ~1362 | Generates entire floor (call at floor transition) |
+| `handleAction(dx, dy)` | ~14470 | Processes one player turn (async) |
+| `enemyTurn()` | ~17126 | Processes all enemy actions (async) — see AI loop order above |
+| `handleEnemyDeath(enemy, byPlayer)` | ~16106 | Death, drops, exp, rings (async) |
+| `scheduleEnemyFall(enemy, msg)` | ~16098 | Triggers enemy hole-fall (async-safe) |
+| `draw(now)` | ~11857 | Renders one frame |
+| `addLog(msg)` | ~12626 | Appends line to the message log (left-bottom panel) |
+| `spawnFloatingText(x, y, text, color, duration)` | ~11799 | Shows floating UI text. Supports `rise`/`font` when pushed directly to `damageTexts` |
+| `gainExp(amount)` | ~19729 | Adds EXP and handles level-up |
+| `canEnemyMove(x, y, mover)` | ~19682 | Checks if tile is walkable for enemy |
+| `isRealHole(x, y)` | ~19677 | True if tile is a real STAIRS (not MIMIC) |
+| `isWallAt(x, y)` | ~9835 | True if tile blocks movement |
+| `enemyGroundBFS(sx, sy, tx, ty)` | ~15604 | Returns first step toward target |
+| `saveGame()` / `loadGame()` | ~1188 / ~1051 | localStorage persistence |
 
 ---
 
@@ -185,9 +221,11 @@ Check with `hasRing('RING_ID')`.
 SOUNDS.BANG()        // impact
 SOUNDS.DEFEAT()      // enemy dies
 SOUNDS.LEVEL_UP()    // level up fanfare
+SOUNDS.HEAL()        // bright ascending — reserved for Heal Tome
+SOUNDS.HEAL_SOFT()   // gentle short sine — HEALER enemy heals
 // ... see SOUNDS object (~line 139)
 ```
-Add new sounds by adding a method to the `SOUNDS` object using `audioCtx` oscillators.
+Add new sounds by adding a method to the `SOUNDS` object using `audioCtx` oscillators. Helpers: `playSound(freq,type,duration,vol)`, `playMelody([{f,d},...])`.
 
 ### BGM
 MP3 files listed in `BGM_TRACKS` array. Plays randomly with fade-out.
@@ -223,8 +261,24 @@ localStorage.setItem('deep_unlocked', '1')  // unlock Deep mode
 - **`handleEnemyDeath` is async** — always `await` it if ordering matters
 - **`canEnemyMove` does NOT block STAIRS** — enemies can walk onto holes; use `isRealHole` separately if needed
 - **Faction floors must color ALL enemies** — any enemy without `.faction` renders red (default)
-- **`fixedStages` array** — always add new fixed floors here to suppress random wind
+- **`FIXED_STAGES` array** — always add new fixed floors here to suppress random wind AND expose them in the title-menu FIXED STAGE select
 - **`isWindFloor` must be set before `return`** in fixed floor blocks, or after random gen in post-processing
 - **`spawnFloatingText` duration** — default 400ms; use 1200–1800 for important messages
 - **`CRAZY_G` is always purple** — the pulsing purple effect is hardcoded; don't set `.faction` on it
-- **After editing script.js** — validate with: `node --check script.js`
+- **HEALER edge cases** — if you add a new enemy-vs-enemy AI branch, add `&& e.type !== 'HEALER'` to preserve HEALER's pacifist AI (except for the "last opposing survivor" override). Same for BREAKER (keeps it wandering). See `enemyTurn()` comment markers.
+- **3% random-action roll** — every non-static enemy takes a random 1-step move on 3% of its turns. If you write an AI that depends on turn-by-turn continuity (chained state), remember it may be preempted.
+- **After editing script.js** — validate with: `node --check script.js` (catches syntax errors before reload)
+
+---
+
+## How to add a new enemy type (quick recipe)
+
+1. **Pick a single-letter symbol** (avoid clashing with SYMBOLS or existing enemy letters)
+2. **Spawn logic** — decide where it appears:
+   - Fixed floor only → add `enemies.push({ type: 'FOO', ... })` inside the `if (floorLevel === N) { ... }` block
+   - Random floors → add an `else if` branch in the enemy-roll cascade inside `initMap()` (single-screen at ~line 9280, multi-screen at ~line 2080)
+3. **Rendering** — add an `else if (e.type === 'FOO')` branch in the enemy draw code (around line 12240+), set `eColor` and `eChar`
+4. **AI** — add logic inside `enemyTurn()`. Respect the AI loop order: place the branch where it fits (before or after faction/HEALER blocks as appropriate), always end with `continue;` to skip normal AI
+5. **Drops / death** — extend `handleEnemyDeath()` if needed
+6. **Exclusions (if static)** — add to the `_staticTypes` array in the 3%-random-action block so it doesn't wander
+7. Update this file's enemy table
