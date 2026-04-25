@@ -669,6 +669,37 @@ const SOUNDS = {
         playSound(80, 'sawtooth', 0.1, 0.2);
         setTimeout(() => playSound(120, 'sawtooth', 0.05, 0.1), 20);
     },
+    MIASMA_BURST: () => {
+        // 瘴気の発散音: シューシューという気体放出 + 低い不気味な唸り
+        const t = audioCtx.currentTime;
+        // 1) ノイズベースのシューッ音（フィルタで気体感）
+        const bufferSize = audioCtx.sampleRate * 0.7;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const bp = audioCtx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(2200, t);
+        bp.frequency.exponentialRampToValueAtTime(400, t + 0.7);
+        bp.Q.value = 6;
+        const ng = audioCtx.createGain();
+        ng.gain.setValueAtTime(0.4, t);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+        noise.connect(bp); bp.connect(ng); ng.connect(audioCtx.destination);
+        noise.start(t);
+        // 2) 低音の唸り（不気味さ）
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(60, t);
+        osc.frequency.exponentialRampToValueAtTime(28, t + 0.6);
+        const og = audioCtx.createGain();
+        og.gain.setValueAtTime(0.25, t);
+        og.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+        osc.connect(og); og.connect(audioCtx.destination);
+        osc.start(t); osc.stop(t + 0.65);
+    },
     START_INTENSE_RUMBLE: () => {
         const bufferSize = audioCtx.sampleRate * 2;
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -880,6 +911,7 @@ const FIXED_STAGES = [
     { floor: 15,  title: 'FROZEN HALL' },
     { floor: 16,  title: "SPIDER'S NEST",                      suppressWind: true },
     { floor: 18,  title: 'LABYRINTH ISLAND (FAIRY)' },
+    { floor: 19,  title: 'PEACEFUL VILLAGE',                   suppressWind: true },
     { floor: 20,  title: 'FACTION WAR (FIXED)' },
     { floor: 23,  title: 'FROZEN VAULT (GOLEMS)' },
     { floor: 25,  title: 'VIOLENT WINDS',                  suppressWind: true },
@@ -963,6 +995,7 @@ let attackLines = [];
 let tempWalls = []; // {x, y, hp}
 let bombs = []; // {x, y, timer, hp}
 let blastEffects = []; // {tiles: [{x,y}], endTime: number} - 爆風エフェクト
+let miasmaCorpses = []; // {x, y, turnsLeft, _spawnedAt} - 瘴気死亡後の3ターン点滅、0でバースト
 let isProcessing = false;
 let bufferedInput = null; // { dx, dy } 次のターンの入力バッファ
 let turnCount = 0;
@@ -1404,6 +1437,7 @@ function initMap() {
     keyDropUnderTile = null; // キードロップ元タイルをリセット
     bombs = []; // 爆弾をリセット
     blastEffects = []; // 爆風エフェクトをリセット
+    miasmaCorpses = []; // 瘴気死体もリセット
     isWindFloor = false; windTimer = 0;
     isSanctuaryFloor = false;
     isScrollWallFloor = false; scrollWalls = []; scrollWallProtectedY = -1; scrollWallLines = []; _f73WallPhase = 0; _f73WallPattern = []; _f73PassageY = 12;
@@ -6274,6 +6308,27 @@ function initMap() {
             }
         }
 
+        // ===== MIASMA(瘴気) 確定配置: 毒沼の階なので2体出現 =====
+        for (let m = 0; m < 2; m++) {
+            for (let t = 0; t < 200; t++) {
+                const mx = Math.floor(Math.random() * (COLS - 6)) + 3;
+                const my = Math.floor(Math.random() * (ROWS - 6)) + 3;
+                if (map[my][mx] !== SYMBOLS.POISON) continue;
+                if (Math.abs(mx - player.x) + Math.abs(my - player.y) < 6) continue;
+                if (Math.abs(mx - stairsX43) + Math.abs(my - stairsY43) < 4) continue;
+                if (enemies.some(en => en.x === mx && en.y === my)) continue;
+                const mHp = 50 + floorLevel * 4;
+                enemies.push({
+                    type: 'MIASMA', x: mx, y: my,
+                    hp: mHp, maxHp: mHp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0,
+                    expValue: 60, stunTurns: 0
+                });
+                break;
+            }
+        }
+        addLog("☣ The marsh exudes living miasma — beware the φ shapes...");
+
         return;
     }
 
@@ -9435,6 +9490,41 @@ function initMap() {
         }
     }
 
+    // --- MIASMA(瘴気) 出現: floor 18+、2.5%確率（既存の毒沼の周辺にのみ出現）---
+    if (floorLevel >= 18 && Math.random() < 0.025) {
+        // 既存の POISON タイルをすべて収集
+        const poisonTiles = [];
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                if (map[y][x] === SYMBOLS.POISON) poisonTiles.push({ x, y });
+            }
+        }
+        // 毒沼が存在する場合のみ出現
+        if (poisonTiles.length > 0) {
+            for (let attempt = 0; attempt < 60; attempt++) {
+                // 毒沼マスをランダム選択し、その近く（半径3以内）の床を狙う
+                const pt = poisonTiles[Math.floor(Math.random() * poisonTiles.length)];
+                const ox = Math.floor(Math.random() * 7) - 3;
+                const oy = Math.floor(Math.random() * 7) - 3;
+                const mx = pt.x + ox, my = pt.y + oy;
+                if (mx < 1 || mx >= COLS - 1 || my < 1 || my >= ROWS - 1) continue;
+                if (map[my][mx] !== SYMBOLS.FLOOR) continue;
+                if (mx === player.x && my === player.y) continue;
+                if (Math.abs(mx - player.x) + Math.abs(my - player.y) <= 5) continue;
+                if (enemies.some(en => en.x === mx && en.y === my)) continue;
+                const mHp = 50 + floorLevel * 4;
+                enemies.push({
+                    type: 'MIASMA', x: mx, y: my,
+                    hp: mHp, maxHp: mHp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0,
+                    expValue: 60, stunTurns: 0
+                });
+                addLog("☣ A foul stench drifts from the poison swamp...");
+                break;
+            }
+        }
+    }
+
     // --- SPIDER 出現: Floor 16 は確定（SPIDER'S NEST）、25+ は3%確率 ---
     const _spiderGuaranteed = (floorLevel === 16);
     const _spiderRandom = (floorLevel >= 25 && Math.random() < 0.03);
@@ -9801,6 +9891,20 @@ function initMap() {
     }
 
     // 33階：派閥敵を追加（突風ステージ＋派閥エリア）
+    // === Floor 19: PEACEFUL VILLAGE — 全敵が友好的、攻撃すると周囲が敵対化 ===
+    if (floorLevel === 19) {
+        enemies.forEach(e => {
+            // ボス級・特殊敵は除外（普通の住人だけ友好化）
+            const exclude = ['DRAGON', 'KING', 'SUMMONER', 'GOLD', 'CRAZY_G', 'MIMIC', 'FAIRY_MIMIC', 'TURRET', 'HOPPER_TURRET', 'SPAWNER', 'BOMBER', 'MIASMA', 'SPIDER'];
+            if (!exclude.includes(e.type)) {
+                e._friendly = true;
+            }
+        });
+        addLog("EVENT: PEACEFUL VILLAGE.");
+        addLog("✿ The creatures here are calm. They will not attack first.");
+        addLog("⚠ But strike one, and the others nearby will turn hostile.");
+    }
+
     if (floorLevel === 33) {
         const midX33 = Math.floor(COLS / 2);
         // 通常生成された敵を位置に応じてCRIMSON/COBALTに振り分け（赤い敵をなくす）
@@ -10040,6 +10144,7 @@ function isWallAt(x, y) {
     if (tile === SYMBOLS.FIRE_BLOCK) return true;
     if (tempWalls.some(w => w.x === x && w.y === y)) return true;
     if (bombs.some(b => b.x === x && b.y === y)) return true;
+    if (miasmaCorpses.some(c => c.x === x && c.y === y)) return true; // 瘴気死体は通行不可
     return false;
 }
 
@@ -12229,14 +12334,18 @@ function draw(now) {
                     }
                 }
 
-                // 爆風エフェクト（赤く点滅）
+                // 爆風エフェクト（既定は赤、色オプション指定時はその色）
                 for (const blast of blastEffects) {
                     if (now < blast.endTime && blast.tiles.some(t => t.x === x && t.y === y)) {
-                        const remaining = (blast.endTime - now) / 500;
+                        const totalDur = blast.duration || 500;
+                        const remaining = (blast.endTime - now) / totalDur;
                         const flash = Math.floor(now / 80) % 2 === 0;
                         if (flash) {
-                            ctx.save(); ctx.fillStyle = '#ef4444'; ctx.globalAlpha = 0.5 * remaining;
-                            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); ctx.restore();
+                            ctx.save();
+                            ctx.fillStyle = blast.color || '#ef4444';
+                            ctx.globalAlpha = (blast.alpha || 0.5) * remaining;
+                            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                            ctx.restore();
                         }
                     }
                 }
@@ -12611,6 +12720,17 @@ function draw(now) {
                     ctx.shadowColor = eColor;
                     ctx.shadowBlur = 16;
                 }
+                else if (e.type === 'MIASMA') {
+                    // 濃い緑(#15803d) と 紫(#a855f7) の間で脈動
+                    const phase = (Math.sin(now / 380) + 1) / 2;
+                    const cr = Math.round(0x15 * (1 - phase) + 0xa8 * phase);
+                    const cg = Math.round(0x80 * (1 - phase) + 0x55 * phase);
+                    const cb = Math.round(0x3d * (1 - phase) + 0xf7 * phase);
+                    eColor = `rgb(${cr},${cg},${cb})`;
+                    eChar = 'φ';
+                    ctx.shadowColor = eColor;
+                    ctx.shadowBlur = 14;
+                }
                 else if (e.type === 'MIMIC') {
                     eColor = '#ef4444'; eChar = 'M';
                     // 正体暴露の変身演出中は点滅
@@ -12671,6 +12791,8 @@ function draw(now) {
                     ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 20;
                 }
                 if (e.isAlly) eColor = '#60a5fa';
+                // 友好状態の敵: teal (緑青) で表示。攻撃前の穏やかな住人色
+                if (e._friendly && !e.isAlly) eColor = '#5eead4';
                 // 派閥カラーオーバーライド（文字色＋グロー）
                 if (e.faction === 'CRIMSON' && !e.isAlly) { eColor = '#4ade80'; ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 14; }
                 else if (e.faction === 'COBALT' && !e.isAlly) { eColor = '#a855f7'; ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 14; }
@@ -12760,6 +12882,27 @@ function draw(now) {
                 ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
                 ctx.restore();
             }
+        });
+
+        // 3.5 MIASMA死体: 白点滅で残存 + カウントダウン数字表示
+        miasmaCorpses.forEach(c => {
+            const blink = Math.floor(now / 120) % 2 === 0;
+            const cxw = c.x * TILE_SIZE + TILE_SIZE / 2;
+            const cyw = c.y * TILE_SIZE + TILE_SIZE / 2;
+            if (blink) {
+                ctx.save();
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = '#a855f7';
+                ctx.shadowBlur = 12;
+                ctx.fillText('φ', cxw, cyw);
+                ctx.restore();
+            }
+            // 残りターン数を小さく表示（デバッグ&視覚化）
+            ctx.save();
+            ctx.fillStyle = '#fbbf24';
+            ctx.font = "bold 9px 'Courier New', Courier, monospace";
+            ctx.fillText(String(c.turnsLeft), cxw + TILE_SIZE * 0.35, cyw - TILE_SIZE * 0.3);
+            ctx.restore();
         });
 
         // 4. ウィスプ
@@ -15469,6 +15612,7 @@ async function handleAction(dx, dy) {
         const isBlockedByWall = map[ny][nx] === SYMBOLS.WALL;
         const isBlockedByTempWall = tempWalls.some(w => w.x === nx && w.y === ny);
         const isBlockedByBomb = bombs.some(b => b.x === nx && b.y === ny);
+        const isBlockedByMiasma = miasmaCorpses.some(c => c.x === nx && c.y === ny);
 
         if (isBlockedByWall && !player.isBreaker && hasRing('BREAKER_RING') && player.stamina >= 100 && ny >= 1 && ny < ROWS - 1 && nx >= 1 && nx < COLS - 1) {
             // 壁壊しの指輪: スタミナ満タン時に壁を壊して進む（スタミナ全消費）
@@ -15560,7 +15704,7 @@ async function handleAction(dx, dy) {
             }
             if (!transition.active) { turnCount++; updateUI(); try { await windGustSlide(); await enemyTurn(); } catch(err) { console.error('[turn ERROR]', err); } finally { try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); } moveFairies(); moveMadmen(); isProcessing = false; } if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); } }
             return;
-        } else if (isBlockedByWall || isBlockedByTempWall || isBlockedByBomb) {
+        } else if (isBlockedByWall || isBlockedByTempWall || isBlockedByBomb || isBlockedByMiasma) {
             player.offsetX = dx * 5; player.offsetY = dy * 5;
             await new Promise(r => setTimeout(r, 50));
             player.offsetX = 0; player.offsetY = 0;
@@ -16592,6 +16736,12 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
         }
     }
 
+    // MIASMA(瘴気)が死んだ場合: 死体を3ターン白点滅させてから毒沼バースト
+    if (enemy.type === 'MIASMA' && !enemy.isFalling) {
+        miasmaCorpses.push({ x: enemy.x, y: enemy.y, turnsLeft: 3 });
+        addLog("☣ The miasma writhes — it will burst in 3 turns!");
+    }
+
     // ドラゴン撃破時にBGMを停止
     if (enemy.type === 'DRAGON') {
         await dragonDeathAnimation(enemy);
@@ -16905,6 +17055,25 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
 
     enemy.hp -= damage; enemy.flashUntil = performance.now() + 200;
     spawnDamageText(player.x + dx, player.y + dy, damage, isCritical ? '#fbbf24' : '#f87171');
+
+    // 友好敵（PEACEFUL VILLAGE等）を攻撃 → 自分自身 + 周囲4マス以内の友好敵を敵対化
+    if (enemy._friendly) {
+        enemy._friendly = false;
+        let aggressed = 1;
+        for (const other of enemies) {
+            if (other === enemy || other._dead || other.hp <= 0) continue;
+            if (!other._friendly) continue;
+            const dist = Math.max(Math.abs(other.x - enemy.x), Math.abs(other.y - enemy.y));
+            if (dist <= 4) {
+                other._friendly = false;
+                other.flashUntil = performance.now() + 400; // 怒りの白フラッシュ
+                aggressed++;
+            }
+        }
+        spawnFloatingText(enemy.x, enemy.y, "ANGER!", '#ef4444', 1000);
+        addLog(`💢 ${aggressed} villager(s) turned hostile!`);
+    }
+
     const _staminaBeforeAttack = player.stamina; // GOLEM_RING判定用に攻撃前スタミナを保存
     if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRingDoubled('STAMINA_RING') ? 6 : hasRing('STAMINA_RING') ? 12 : 20));
 
@@ -17692,7 +17861,7 @@ async function enemyTurn() {
                     if (e.hp <= 0) { handleEnemyDeath(e); continue; }
                 }
             } else if (tile === SYMBOLS.POISON) {
-                if (e.type !== 'KEY_RUNNER') { // KEY_RUNNERは毒ダメージ・スロー無効
+                if (e.type !== 'KEY_RUNNER' && e.type !== 'MIASMA') { // KEY_RUNNER/MIASMAは毒免疫
                     const damage = 1;
                     e.hp -= damage; e.flashUntil = performance.now() + 100;
                     spawnDamageText(e.x, e.y, damage, '#a855f7');
@@ -17898,6 +18067,89 @@ async function enemyTurn() {
                 }
             }
             continue; // 蜘蛛のターン終了
+        }
+
+        // === MIASMA(瘴気) AI: ゆっくり移動 / 静止時のみ周期的に毒ガス放出 / 自分は毒免疫 ===
+        if (e.type === 'MIASMA') {
+            const adj8 = [
+                {x:-1,y:-1},{x:0,y:-1},{x:1,y:-1},
+                {x:-1,y:0},            {x:1,y:0},
+                {x:-1,y:1}, {x:0,y:1}, {x:1,y:1}
+            ];
+            if (e._miasmaCD === undefined) e._miasmaCD = 1 + Math.floor(Math.random() * 3);
+            if (e._miasmaSlowSkip === undefined) e._miasmaSlowSkip = 0;
+            e._miasmaSlowSkip++;
+
+            const dPlayerM = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
+            // 隣接プレイヤーへ毒触れ攻撃（先に処理）
+            if (dPlayerM === 1 && !player.isStealth && !e.isAlly) {
+                const dmg = Math.max(1, 3 + Math.floor(floorLevel / 6) - getPlayerDefense());
+                player.hp -= dmg;
+                player.flashUntil = performance.now() + 200;
+                spawnDamageText(player.x, player.y, dmg, '#86efac');
+                spawnFloatingText(e.x, e.y, "TOUCH OF DECAY", '#86efac', 800);
+                SOUNDS.ENEMY_ATTACK();
+                if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+            }
+
+            // 移動するターンか判定（3ターンに1回、プレイヤーが2マス以上離れていれば移動）
+            const willMove = (e._miasmaSlowSkip >= 3 && dPlayerM > 1);
+            if (willMove) {
+                // 移動: 床を毒にせず、ただ1マスプレイヤー方向へ
+                e._miasmaSlowSkip = 0;
+                const dxP = player.x - e.x, dyP = player.y - e.y;
+                const sx = dxP === 0 ? 0 : (dxP > 0 ? 1 : -1);
+                const sy = dyP === 0 ? 0 : (dyP > 0 ? 1 : -1);
+                const tryDirs = Math.abs(dxP) >= Math.abs(dyP)
+                    ? [{x:sx,y:0}, {x:0,y:sy}]
+                    : [{x:0,y:sy}, {x:sx,y:0}];
+                for (const md of tryDirs) {
+                    if (md.x === 0 && md.y === 0) continue;
+                    const nx = e.x + md.x, ny = e.y + md.y;
+                    if (nx < 1 || nx >= COLS - 1 || ny < 1 || ny >= ROWS - 1) continue;
+                    if (isRealHole(nx, ny)) continue;
+                    if (!canEnemyMove(nx, ny, e)) continue;
+                    if (player.x === nx && player.y === ny) continue;
+                    e.x = nx; e.y = ny;
+                    break;
+                }
+            } else {
+                // 静止ターン: 毒ガス放出CD減算、0で発動
+                e._miasmaCD--;
+                if (e._miasmaCD <= 0) {
+                    e._miasmaCD = 4;
+                    spawnFloatingText(e.x, e.y, "☣ GAS!", '#86efac', 1000);
+                    SOUNDS.LAVA_BURN();
+                    let converted = 0;
+                    for (const d of adj8) {
+                        const tx = e.x + d.x, ty = e.y + d.y;
+                        if (tx < 1 || tx >= COLS - 1 || ty < 1 || ty >= ROWS - 1) continue;
+                        if (map[ty][tx] === SYMBOLS.FLOOR) {
+                            map[ty][tx] = SYMBOLS.POISON;
+                            converted++;
+                        }
+                    }
+                    if (converted > 0) addLog(`☣ Miasma releases gas — ${converted} tiles corrupted!`);
+                }
+            }
+            continue;
+        }
+
+        // 友好状態の敵（PEACEFUL VILLAGE等）: プレイヤーを襲わない、稀にランダム徘徊
+        if (e._friendly) {
+            if (Math.random() < 0.25) {
+                const fdirs = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}].sort(() => Math.random() - 0.5);
+                for (const d of fdirs) {
+                    const nx = e.x + d.x, ny = e.y + d.y;
+                    if (nx < 1 || nx >= COLS - 1 || ny < 1 || ny >= ROWS - 1) continue;
+                    if (isRealHole(nx, ny)) continue;
+                    if (!canEnemyMove(nx, ny, e)) continue;
+                    if (player.x === nx && player.y === ny) continue;
+                    e.x = nx; e.y = ny;
+                    break;
+                }
+            }
+            continue; // 友好敵はターン終了
         }
 
         // 全敵共通: 3%の確率でランダム方向へ1歩動いてターン終了（挙動のパターン崩し）
@@ -20164,8 +20416,8 @@ async function enemyTurn() {
         }
     }
 
-    // ターンの最後にもチェック（近づいてきた敵を仲間にする）
-    processFairyCharm();
+    // 注: processFairyCharm() は元々あった関数だが定義が失われていたため削除
+    // 妖精の魅了処理は別の場所で行われている可能性あり、見直しが必要なら修正してください
 
     // 遭難冒険者のアニメーション：数ターンに一度ジャンプして向きを変える
     if (merchantState && map[merchantState.y] && map[merchantState.y][merchantState.x] === SYMBOLS.MERCHANT) {
@@ -20237,6 +20489,42 @@ async function enemyTurn() {
 
     floorTurnCount++;
 
+    // === MIASMA死体カウントダウン: 3ターン白点滅後にバースト ===
+    for (let i = miasmaCorpses.length - 1; i >= 0; i--) {
+        const c = miasmaCorpses[i];
+        c.turnsLeft--;
+        if (c.turnsLeft <= 0) {
+            // バースト: 5×5の床→毒沼、紫フラッシュ + 専用音
+            const warnTiles = [];
+            for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                    const tx = c.x + dx, ty = c.y + dy;
+                    if (tx < 1 || tx >= COLS - 1 || ty < 1 || ty >= ROWS - 1) continue;
+                    warnTiles.push({ x: tx, y: ty });
+                }
+            }
+            blastEffects.push({
+                tiles: warnTiles,
+                endTime: performance.now() + 350,
+                duration: 350,
+                color: '#a855f7',
+                alpha: 0.65
+            });
+            SOUNDS.MIASMA_BURST();
+            spawnFloatingText(c.x, c.y, "☣ MIASMA BURST!", '#a855f7', 1500);
+            draw(performance.now());
+            await new Promise(r => setTimeout(r, 320));
+            let burstCount = 0;
+            for (const t of warnTiles) {
+                if (map[t.y] && map[t.y][t.x] === SYMBOLS.FLOOR) {
+                    map[t.y][t.x] = SYMBOLS.POISON;
+                    burstCount++;
+                }
+            }
+            addLog(`☣ The miasma erupts — ${burstCount} tiles corrupted!`);
+            miasmaCorpses.splice(i, 1);
+        }
+    }
 }
 
 async function applyLaserDamage() {
@@ -20579,6 +20867,7 @@ function canEnemyMove(x, y, mover = null) {
     }
     if (tempWalls.some(w => w.x === x && w.y === y)) return false;
     if (bombs.some(b => b.x === x && b.y === y)) return false;
+    if (miasmaCorpses.some(c => c.x === x && c.y === y)) return false; // 瘴気の死体は通行不可
     if (player.x === x && player.y === y) return false;
 
     // レーザーの経路は避ける (移動する本人のレーザーは無視。CRAZY_Gは狂ってるので気にしない)
