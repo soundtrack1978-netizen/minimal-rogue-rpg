@@ -15,7 +15,9 @@ logRow.style.display = 'none';
 const TILE_SIZE = 20;
 const ROWS = 25;
 const COLS = 40;
-const DEEP_ENDING_FLOOR = 1801439850948191; // Theoretical max floor (ORC HP formula overflow)
+// floorLevel++ が精度を失って無反応になる限界 = Number.MAX_SAFE_INTEGER (= 2^53 - 1 = 9,007,199,254,740,991)
+// この階に到達すると「次の階」という概念が消滅 → 第二エンディングを発動
+const DEEP_ENDING_FLOOR = Number.MAX_SAFE_INTEGER;
 canvas.width = COLS * TILE_SIZE;
 canvas.height = ROWS * TILE_SIZE + 2; // +2: 描画オフセット分を確保
 
@@ -60,27 +62,56 @@ const SYMBOLS = {
     BREAKER_TOME: '⛏',
     MERCHANT: '＠',  // 遭難した冒険者（主人公と同じ記号、色違いで描画）
     FIRE_BLOCK: '▩', // 炎ブロック（攻撃すると攻撃方向に炎を発射）
-    RING: '◎'       // フロアに落ちた指輪
+    RING: '◎',      // フロアに落ちた指輪
+    WEB: '×'        // 蜘蛛の巣: 通れるが移動が2ターンに1回になる
 };
 
 // ===== SECTION: RINGS DATA =====
 const RINGS = [
-  { id: 'FIRE_RING',     name: 'Fire Ring',     nameJa: '炎の指輪',     desc: 'Nullify lava & fire damage',           descJa: '溶岩・炎床のダメージを無効化',       cost: 200, symbol: '◎', color: '#ef4444' },
-  { id: 'POISON_RING',   name: 'Poison Ring',   nameJa: '毒の指輪',     desc: 'Nullifies all poison swamp effects',   descJa: '毒沼の効果を完全に無効化する',           cost: 120, symbol: '◎', color: '#a855f7' },
+  { id: 'FIRE_RING',     name: 'Fire Ring',     nameJa: '炎の指輪',     desc: 'Nullify lava & fire damage',           descJa: '溶岩・炎床のダメージを無効化',       cost: 400, symbol: '◎', color: '#ef4444' },
+  { id: 'POISON_RING',   name: 'Poison Ring',   nameJa: '毒の指輪',     desc: 'Nullifies all poison swamp effects',   descJa: '毒沼の効果を完全に無効化する',           cost: 400, symbol: '◎', color: '#a855f7' },
   { id: 'CRITICAL_RING', name: 'Critical Ring', nameJa: '会心の指輪',   desc: 'Critical hit chance 10% -> 20%',       descJa: '会心の一撃の確率が2倍に',             cost: 250, symbol: '◎', color: '#fbbf24' },
   { id: 'STAMINA_RING',  name: 'Stamina Ring',  nameJa: '活力の指輪',   desc: 'Attack stamina cost 20 -> 12',         descJa: '攻撃時のスタミナ消費を軽減',         cost: 150, symbol: '◎', color: '#f97316' },
-  { id: 'KNOCKBACK_RING',name: 'Knockback Ring', nameJa: '突風の指輪',  desc: 'Attacks push enemies back 1 tile',     descJa: '攻撃で敵を1マス押し戻す',             cost: 500, symbol: '◎', color: '#38bdf8' },
-  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Max HP +50%',                           descJa: '最大HPが50%上昇する',                     cost: 200, symbol: '◎', color: '#4ade80' },
-  { id: 'TOUGH_RING',    name: 'Tough Ring',    nameJa: '堅守の指輪',   desc: 'Reduces all damage taken by 25%',       descJa: '被ダメージを25%軽減する',          cost: 180, symbol: '◎', color: '#94a3b8' },
-  { id: 'BREAKER_RING',  name: 'Breaker Ring',  nameJa: '壁壊しの指輪', desc: 'Break 1 wall when stamina is full (costs all stamina)', descJa: 'スタミナ満タン時に壁を1マス破壊（スタミナ全消費）', cost: 300, symbol: '◎', color: '#d97706' },
-  { id: 'BOMB_RING',     name: 'Bomb Ring',     nameJa: '爆弾の指輪',   desc: 'Place bombs instead of blocks (explode in 5 turns)', descJa: 'ブロックの代わりに爆弾を設置（5ターンで爆発）', cost: 350, symbol: '◎', color: '#fb923c' },
-  { id: 'STEALTH_RING',    name: 'Stealth Ring',    nameJa: '隠密の指輪',   desc: 'Reduces enemy detection range (8 -> 5)',                    descJa: '敵の探知範囲を狭める（8→5）',                      cost: 220, symbol: '◎', color: '#8b5cf6' },
-  { id: 'ICE_BLOCK_RING',  name: 'Ice Block Ring',  nameJa: '氷塊の指輪',   desc: 'Place ice blocks that slide when attacked',                 descJa: '攻撃で滑る氷ブロックを設置',                         cost: 260, symbol: '◎', color: '#7dd3fc' },
-  { id: 'STAR_RING',       name: 'Star Ring',       nameJa: '星の指輪',     desc: 'Place star blocks that shoot flames when attacked',         descJa: '攻撃で炎を発射する星ブロックを設置',                  cost: 400, symbol: '◎', color: '#fde047' },
-  { id: 'GOLEM_RING',     name: 'Golem Ring',      nameJa: 'ゴーレムの指輪', desc: 'At full stamina, attacks knock back enemies (Golem Smash!)', descJa: 'スタミナ満タン時の攻撃で敵を強制的に押し飛ばす',       cost: 450, symbol: '◎', color: '#a8a29e' },
+  { id: 'KNOCKBACK_RING',name: 'Knockback Ring', nameJa: '突風の指輪',  desc: 'Attacks push enemies back 1 tile',     descJa: '攻撃で敵を1マス押し戻す',             cost: 1000, symbol: '◎', color: '#38bdf8' },
+  { id: 'LIFE_RING',     name: 'Life Ring',     nameJa: '生命の指輪',   desc: 'Max HP +50%',                           descJa: '最大HPが50%上昇する',                     cost: 250, symbol: '◎', color: '#4ade80' },
+  { id: 'TOUGH_RING',    name: 'Tough Ring',    nameJa: '堅守の指輪',   desc: 'Reduces all damage taken by 25%',       descJa: '被ダメージを25%軽減する',          cost: 350, symbol: '◎', color: '#94a3b8' },
+  { id: 'BREAKER_RING',  name: 'Breaker Ring',  nameJa: '壁壊しの指輪', desc: 'Break 1 wall when stamina is full (costs all stamina)', descJa: 'スタミナ満タン時に壁を1マス破壊(スタミナ全消費)', cost: 200, symbol: '◎', color: '#d97706' },
+  { id: 'BOMB_RING',     name: 'Bomb Ring',     nameJa: '爆弾の指輪',   desc: 'Place bombs instead of blocks (explode in 5 turns)', descJa: 'ブロックの代わりに爆弾を設置(5ターンで爆発)', cost: 200, symbol: '◎', color: '#fb923c' },
+  { id: 'STEALTH_RING',    name: 'Stealth Ring',    nameJa: '隠密の指輪',   desc: 'Reduces enemy detection range (8 -> 5)',                    descJa: '敵の探知範囲を狭める(8→5)',                      cost: 350, symbol: '◎', color: '#8b5cf6' },
+  { id: 'ICE_BLOCK_RING',  name: 'Ice Block Ring',  nameJa: '氷塊の指輪',   desc: 'Place ice blocks that slide when attacked',                 descJa: '攻撃で滑る氷ブロックを設置',                         cost: 200, symbol: '◎', color: '#7dd3fc' },
+  { id: 'STAR_RING',       name: 'Star Ring',       nameJa: '星の指輪',     desc: 'Place star blocks that shoot flames when attacked',         descJa: '攻撃で星を発射する星ブロックを設置',                  cost: 200, symbol: '◎', color: '#fde047' },
+  { id: 'GOLEM_RING',     name: 'Golem Ring',      nameJa: 'ゴーレムの指輪', desc: 'At full stamina, attacks knock back enemies (Golem Smash!)', descJa: 'スタミナ満タン時の攻撃で敵を強制的に押し飛ばす',       cost: 1500, symbol: '◎', color: '#a8a29e' },
   { id: 'NECRO_RING',     name: 'Necro Ring',      nameJa: '死者活性の指輪', desc: 'Enemies you defeat are revived as your allies',              descJa: '倒した敵が仲間として蘇る',                             cost: 1500, symbol: '◎', color: '#7c3aed' },
-  { id: 'RED_TEAR_RING', name: 'Red Tear Ring',   nameJa: '赤涙の指輪',   desc: 'HP below 20%: attack power x5',        descJa: 'HP20%未満で攻撃力が5倍になる',       cost: 600, symbol: '◎', color: '#dc2626' },
+  { id: 'RED_TEAR_RING', name: 'Red Tear Ring',   nameJa: '赤涙の指輪',   desc: 'HP below 20%: attack power x5',        descJa: 'HP20%未満で攻撃力が5倍になる',       cost: 200, symbol: '◎', color: '#dc2626' },
 ];
+
+// 二重装備時の追加効果説明（指輪セレクト画面で2個目装備時に表示）
+const RING_DOUBLED_DESC = {
+    FIRE_RING:      { ja: '攻撃に炎ダメージを追加（+floor/4+2）',           en: 'Attacks deal bonus fire damage' },
+    POISON_RING:    { ja: '攻撃に毒ダメ追加 + 敵を5ターン鈍化',               en: 'Poison damage + slow enemy for 5 turns' },
+    CRITICAL_RING:  { ja: '会心率 20% → 40%',                                en: 'Critical rate 20% → 40%' },
+    STAMINA_RING:   { ja: '攻撃時のスタミナ消費 12 → 6',                      en: 'Attack stamina cost 12 → 6' },
+    KNOCKBACK_RING: { ja: '敵を 1マス → 2マス 押し戻す',                      en: 'Push enemies 2 tiles instead of 1' },
+    LIFE_RING:      { ja: '最大HP +50% → +100%',                             en: 'Max HP bonus 50% → 100%' },
+    TOUGH_RING:     { ja: '被ダメージ -25% → -50%',                          en: 'Damage reduction 25% → 50%' },
+    BREAKER_RING:   { ja: '周囲2マスを確定破壊 + 半径4内に連続通路を3方向開く', en: 'Break radius 2 + 3 random path breaks within radius 4' },
+    BOMB_RING:      { ja: '爆発範囲が十字5マスずつ延長（ボンバーマン風）',        en: 'Blast extends 5 tiles in each cardinal direction' },
+    STEALTH_RING:   { ja: '敵の探知範囲 5 → 3',                              en: 'Enemy detection range 5 → 3' },
+    ICE_BLOCK_RING: { ja: '滑る氷が敵に命中で大ダメージ',                       en: 'Sliding ice blocks deal massive damage on impact' },
+    STAR_RING:      { ja: '炎の代わりに貫通レーザー発射（大ダメージ）',           en: 'Fires piercing laser instead of flames' },
+    GOLEM_RING:     { ja: 'スタミナに関係なく敵を押し飛ばす',                    en: 'Knockback works regardless of stamina' },
+    NECRO_RING:     { ja: '蘇生時HP全快 + 攻撃力+3',                          en: 'Revived allies at full HP + attack +3' },
+    RED_TEAR_RING:  { ja: '発動閾値 HP20% → HP40% 未満に拡大',                en: 'Activation threshold HP20% → HP40%' },
+};
+
+// フロア番号表示用: 1e9(10億)以上は指数表記に切り替え
+function formatFloor(n) {
+    if (!isFinite(n)) return String(n); // Infinity/NaN はそのまま
+    if (typeof n !== 'number') n = Number(n);
+    if (Math.abs(n) < 1e9) return String(n);
+    // 例: 1,234,567,890 → "1.23e+9"
+    return n.toExponential(2);
+}
 
 // オープニング演出用データ
 // ===== SECTION: GAME OBJECT VARIABLES =====
@@ -847,6 +878,7 @@ const FIXED_STAGES = [
     { floor: 12,  title: 'CRAZY-G AMBUSH' },
     { floor: 13,  title: 'POISON SWAMP (SCROLL)',          suppressWind: true },
     { floor: 15,  title: 'FROZEN HALL' },
+    { floor: 16,  title: "SPIDER'S NEST",                      suppressWind: true },
     { floor: 18,  title: 'LABYRINTH ISLAND (FAIRY)' },
     { floor: 20,  title: 'FACTION WAR (FIXED)' },
     { floor: 23,  title: 'FROZEN VAULT (GOLEMS)' },
@@ -1178,7 +1210,7 @@ async function tryEscape() {
     // 位置と階層を更新
     player.offsetY = 0;
     floorLevel = targetFloor;
-    addLog(`Dimensional shift... warping to Floor ${targetFloor}!`);
+    addLog(`Dimensional shift... warping to Floor ${formatFloor(targetFloor)}!`);
 
     // 通常の階層移動処理 (isPlayerVisibleはstartFloorTransition内の着地演出でtrueに戻る)
     await startFloorTransition();
@@ -1280,11 +1312,11 @@ function updateUI() {
     lvElement.innerText = player.level;
     lvElement.style.color = '#ededed';
     const bestFloorEl = document.getElementById('best-floor');
-    if (bestFloorEl) bestFloorEl.innerText = `B${maxReachedFloor}F`;
+    if (bestFloorEl) bestFloorEl.innerText = `B${formatFloor(maxReachedFloor)}F`;
     if (floorLevel === 100) {
         floorElement.innerText = "LAST FLOOR";
     } else if (floorLevel >= 101) {
-        floorElement.innerText = `DEEP ${floorLevel} [${currentScreen.x},${currentScreen.y}]`;
+        floorElement.innerText = `DEEP ${formatFloor(floorLevel)} [${currentScreen.x},${currentScreen.y}]`;
     } else if (multiScreenMode) {
         floorElement.innerText = `${floorLevel}/100`;
     } else {
@@ -3301,6 +3333,91 @@ function initMap() {
                     });
                     break;
                 }
+            }
+        }
+
+        // マルチスクリーン: SPIDER を1体、ランダム画面に配置（25%確率、スタート画面除外）
+        if (Math.random() < 0.25) {
+            const spdCandidates = [];
+            for (let sy2 = 0; sy2 < screenGridSize; sy2++) {
+                for (let sx2 = 0; sx2 < screenGridSize; sx2++) {
+                    if (sx2 === 0 && sy2 === 0) continue;
+                    spdCandidates.push({ sx: sx2, sy: sy2 });
+                }
+            }
+            for (let i = spdCandidates.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [spdCandidates[i], spdCandidates[j]] = [spdCandidates[j], spdCandidates[i]];
+            }
+            for (const pick of spdCandidates) {
+                const sMap = screenGrid.maps[pick.sy][pick.sx];
+                const sEnemies = screenGrid.enemies[pick.sy][pick.sx];
+                const sRooms = allRooms[`${pick.sx},${pick.sy}`] || [];
+                if (sRooms.length === 0) continue;
+                const room = sRooms[Math.floor(Math.random() * sRooms.length)];
+                const sx3 = room.cx, sy3 = room.cy;
+                if (sMap[sy3][sx3] === SYMBOLS.KEY || sMap[sy3][sx3] === SYMBOLS.DOOR || sMap[sy3][sx3] === SYMBOLS.STAIRS) continue;
+                if (sEnemies.some(e => e.x === sx3 && e.y === sy3)) continue;
+                if (sMap[sy3][sx3] !== SYMBOLS.FLOOR) sMap[sy3][sx3] = SYMBOLS.FLOOR;
+                const spdHp = 60 + floorLevel * 8;
+                sEnemies.push({
+                    type: 'SPIDER', x: sx3, y: sy3,
+                    homeX: sx3, homeY: sy3, // 初期位置（獲物が居なくなったら戻る場所）
+                    hp: spdHp, maxHp: spdHp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0,
+                    expValue: 80, stunTurns: 0
+                });
+                // 巣の配置（マルチスクリーン版）: 距離勾配 + 8方向軸 + 近接 + 角ボーナス
+                const webRadius = 5;
+                const baseMul = 0.65;
+                for (let dy = -webRadius; dy <= webRadius; dy++) {
+                    for (let dx = -webRadius; dx <= webRadius; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > webRadius) continue;
+                        const wx = sx3 + dx, wy = sy3 + dy;
+                        if (wx < 1 || wx >= COLS - 1 || wy < 1 || wy >= ROWS - 1) continue;
+                        if (sMap[wy][wx] !== SYMBOLS.FLOOR) continue;
+                        let prob = Math.max(0, 1 - dist / webRadius);
+                        prob = prob * prob * baseMul;
+                        if (Math.max(Math.abs(dx), Math.abs(dy)) <= 2) {
+                            prob = Math.min(1, prob + 0.5);
+                        }
+                        if (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) {
+                            prob = Math.min(1, prob + 0.35);
+                        }
+                        const wallN = wy > 0 && sMap[wy - 1][wx] === SYMBOLS.WALL;
+                        const wallS = wy < ROWS - 1 && sMap[wy + 1][wx] === SYMBOLS.WALL;
+                        const wallE = wx < COLS - 1 && sMap[wy][wx + 1] === SYMBOLS.WALL;
+                        const wallW = wx > 0 && sMap[wy][wx - 1] === SYMBOLS.WALL;
+                        const isCorner = (wallN || wallS) && (wallE || wallW);
+                        if (isCorner) prob = Math.min(1, prob + 0.45);
+                        if (Math.random() < prob) {
+                            sMap[wy][wx] = SYMBOLS.WEB;
+                        }
+                    }
+                }
+                // 蜘蛛討伐体: 同画面内に E(NORMAL) を4〜6体配置
+                const huntCount2 = 4 + Math.floor(Math.random() * 3);
+                let huntPlaced2 = 0;
+                for (let attempt = 0; attempt < 80 && huntPlaced2 < huntCount2; attempt++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 4 + Math.floor(Math.random() * 4);
+                    const hx = Math.round(sx3 + Math.cos(angle) * dist);
+                    const hy = Math.round(sy3 + Math.sin(angle) * dist);
+                    if (hx < 1 || hx >= COLS - 1 || hy < 1 || hy >= ROWS - 1) continue;
+                    if (sMap[hy][hx] !== SYMBOLS.FLOOR) continue;
+                    if (sEnemies.some(en => en.x === hx && en.y === hy)) continue;
+                    sEnemies.push({
+                        type: 'NORMAL', x: hx, y: hy,
+                        hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0
+                    });
+                    huntPlaced2++;
+                }
+                addLog("🕸 A SPIDER is hiding somewhere in this labyrinth...");
+                if (huntPlaced2 > 0) addLog(`⚔️ A hunting party of ${huntPlaced2} has surrounded it.`);
+                break;
             }
         }
 
@@ -9318,6 +9435,90 @@ function initMap() {
         }
     }
 
+    // --- SPIDER 出現: Floor 16 は確定（SPIDER'S NEST）、25+ は3%確率 ---
+    const _spiderGuaranteed = (floorLevel === 16);
+    const _spiderRandom = (floorLevel >= 25 && Math.random() < 0.03);
+    if ((_spiderGuaranteed || _spiderRandom) && rooms.length > 0) {
+        for (let attempt = 0; attempt < 80; attempt++) {
+            const room = rooms[Math.floor(Math.random() * rooms.length)];
+            const sx = room.x + Math.floor(Math.random() * room.w);
+            const sy = room.y + Math.floor(Math.random() * room.h);
+            if (map[sy] && map[sy][sx] === SYMBOLS.FLOOR &&
+                !(sx === player.x && sy === player.y) &&
+                Math.abs(sx - player.x) + Math.abs(sy - player.y) > 5 &&
+                !enemies.some(e => e.x === sx && e.y === sy)) {
+                const spHp = 60 + floorLevel * 8;
+                enemies.push({
+                    type: 'SPIDER', x: sx, y: sy,
+                    homeX: sx, homeY: sy, // 初期位置（獲物が居なくなったら戻る場所）
+                    hp: spHp, maxHp: spHp,
+                    flashUntil: 0, offsetX: 0, offsetY: 0,
+                    expValue: 80, stunTurns: 0
+                });
+                // 巣の配置: 距離による密度勾配 + 蜘蛛の8方向軸ボーナス + 近接ボーナス + 角ボーナス
+                // Floor 16(SPIDER'S NEST)は半径6+高密度、それ以外は半径5+中密度
+                const webRadius = _spiderGuaranteed ? 6 : 5;
+                const baseMul = _spiderGuaranteed ? 1.0 : 0.65;
+                for (let dy = -webRadius; dy <= webRadius; dy++) {
+                    for (let dx = -webRadius; dx <= webRadius; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > webRadius) continue;
+                        const wx = sx + dx, wy = sy + dy;
+                        if (wx < 1 || wx >= COLS - 1 || wy < 1 || wy >= ROWS - 1) continue;
+                        if (map[wy][wx] !== SYMBOLS.FLOOR) continue;
+                        let prob = Math.max(0, 1 - dist / webRadius);
+                        prob = prob * prob * baseMul;
+                        // 蜘蛛のすぐ近く（chebyshev ≤ 2）はボーナス
+                        if (Math.max(Math.abs(dx), Math.abs(dy)) <= 2) {
+                            prob = Math.min(1, prob + 0.5);
+                        }
+                        // 縦・横・斜めの軸上はボーナス
+                        if (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) {
+                            prob = Math.min(1, prob + 0.35);
+                        }
+                        const wallN = wy > 0 && map[wy - 1][wx] === SYMBOLS.WALL;
+                        const wallS = wy < ROWS - 1 && map[wy + 1][wx] === SYMBOLS.WALL;
+                        const wallE = wx < COLS - 1 && map[wy][wx + 1] === SYMBOLS.WALL;
+                        const wallW = wx > 0 && map[wy][wx - 1] === SYMBOLS.WALL;
+                        const isCorner = (wallN || wallS) && (wallE || wallW);
+                        if (isCorner) prob = Math.min(1, prob + 0.45);
+                        if (Math.random() < prob) {
+                            map[wy][wx] = SYMBOLS.WEB;
+                        }
+                    }
+                }
+                // 蜘蛛討伐体: 蜘蛛の周囲に E(NORMAL) を4〜6体配置（床のみ、巣の上は除外）
+                const huntCount = 4 + Math.floor(Math.random() * 3);
+                let huntPlaced = 0;
+                for (let attempt = 0; attempt < 80 && huntPlaced < huntCount; attempt++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 4 + Math.floor(Math.random() * 4); // 4〜7マス
+                    const hx = Math.round(sx + Math.cos(angle) * dist);
+                    const hy = Math.round(sy + Math.sin(angle) * dist);
+                    if (hx < 1 || hx >= COLS - 1 || hy < 1 || hy >= ROWS - 1) continue;
+                    if (map[hy][hx] !== SYMBOLS.FLOOR) continue; // 巣の上・壁・特殊タイルは除外
+                    if (enemies.some(en => en.x === hx && en.y === hy)) continue;
+                    if (Math.abs(hx - player.x) + Math.abs(hy - player.y) < 4) continue; // プレイヤー近接回避
+                    enemies.push({
+                        type: 'NORMAL', x: hx, y: hy,
+                        hp: 3 + floorLevel, maxHp: 3 + floorLevel,
+                        flashUntil: 0, offsetX: 0, offsetY: 0, expValue: 5, stunTurns: 0
+                    });
+                    huntPlaced++;
+                }
+                if (_spiderGuaranteed) {
+                    addLog("🕸 EVENT: SPIDER'S NEST — A great web fills the floor!");
+                    addLog(`⚔️ ${huntPlaced} hunters have come to slay the spider...`);
+                } else {
+                    addLog("🕸 You hear faint scuttling — a SPIDER lurks here!");
+                    if (huntPlaced > 0) addLog(`⚔️ ${huntPlaced} hunters circle the area, weapons drawn.`);
+                }
+                break;
+            }
+        }
+    }
+
     // --- 最低敵数保証：敵ゼロの階をなくす ---
     const minEnemies = floorLevel <= 10 ? 2 : 3;
     if (enemies.length < minEnemies) {
@@ -9848,14 +10049,14 @@ async function startFloorTransition() {
     isPlayerVisible = false; // 遷移開始時に即座に隠す
     SOUNDS.DESCEND();
 
-    // 仲間を次のフロアに連れていく（SPAWNER等のブロックや特殊敵は除外）
-    const _excludedCarryTypes = new Set(['SPAWNER', 'MADMAN', 'KEY_RUNNER', 'DRAGON', 'SUMMONER', 'KING']);
+    // 仲間を次のフロアに連れていく（固定砲台・ブロック・擬態・特殊敵・蜘蛛は除外）
+    const _excludedCarryTypes = new Set(['TURRET', 'HOPPER_TURRET', 'SPAWNER', 'SPIDER', 'MIMIC', 'FAIRY_MIMIC', 'MADMAN', 'KEY_RUNNER', 'DRAGON', 'SUMMONER', 'KING']);
     const _carriedAllies = enemies
         .filter(e => e.isAlly && e.hp > 0 && !e._dead && !_excludedCarryTypes.has(e.type))
         .map(e => ({ ...e, body: undefined, offsetX: 0, offsetY: 0, flashUntil: 0 }));
     transition.active = true;
     transition.mode = 'FALLING';
-    transition.text = `FLOOR ${floorLevel}`;
+    transition.text = `FLOOR ${formatFloor(floorLevel)}`;
     transition.textColor = '#ededed';
     transition.playerY = -50;
     transition.particles = [];
@@ -10792,7 +10993,7 @@ function drawTitle() {
             } else if (i === 1 && hasSave) {
                 ctx.font = '12px Courier New';
                 ctx.fillStyle = '#aaa';
-                ctx.fillText(`— Resume from B${saveFloor}F —`, canvas.width / 2, menuY + i * 40 + 25);
+                ctx.fillText(`— Resume from B${formatFloor(saveFloor)}F —`, canvas.width / 2, menuY + i * 40 + 25);
                 ctx.font = '24px Courier New';
                 ctx.fillStyle = '#ededed';
             } else if (isDescend) {
@@ -10930,8 +11131,29 @@ function drawStatusScreen() {
             ctx.fillText(s.label, sx, y);
             ctx.font = '14px Courier New';
             ctx.fillText(s.val, valX, y);
+            let cursorX = valX + 36;
             if (s.sub) {
-                ctx.fillText(s.sub, valX + 36, y);
+                ctx.fillText(s.sub, cursorX, y);
+                cursorX += ctx.measureText(s.sub).width + 10;
+            }
+
+            // ATTACK行: 指輪の二重装備で付与される属性ダメージを数値の右に並べる
+            if (s.label === 'ATTACK') {
+                ctx.font = '13px Courier New';
+                if (hasRingDoubled('FIRE_RING')) {
+                    const fireBonus = Math.max(2, Math.floor(floorLevel / 4) + 2);
+                    ctx.fillStyle = '#fb923c';
+                    const txt = `(+${fireBonus} 🔥)`;
+                    ctx.fillText(txt, cursorX, y);
+                    cursorX += ctx.measureText(txt).width + 10;
+                }
+                if (hasRingDoubled('POISON_RING')) {
+                    const poisonBonus = Math.max(2, Math.floor(floorLevel / 5) + 1);
+                    ctx.fillStyle = '#a855f7';
+                    const txt = `(+${poisonBonus}) & slow`;
+                    ctx.fillText(txt, cursorX, y);
+                    cursorX += ctx.measureText(txt).width + 10;
+                }
             }
             y += ROW;
         });
@@ -10949,7 +11171,7 @@ function drawStatusScreen() {
             { label: 'LEVEL',   val: `${player.level}` },
             { label: 'EXP',     val: `${player.exp} / ${player.nextExp}` },
             { label: 'STAMINA', val: `${player.stamina}%` },
-            { label: 'FLOOR',   val: `${floorLevel}F` },
+            { label: 'FLOOR',   val: `${formatFloor(floorLevel)}F` },
             { label: 'KILLS',   val: `${player.totalKills}` },
             { label: 'GOLD',    val: `${player.gold}G` },
         ];
@@ -11036,11 +11258,16 @@ function drawStatusScreen() {
 
 // ─── Player Stat Helpers ─────────────────────────────────────────
 function getPlayerMaxHp() {
-    return hasRing('LIFE_RING') ? Math.floor(player.maxHp * 1.5) : player.maxHp;
+    return hasRingDoubled('LIFE_RING') ? player.maxHp * 2
+         : hasRing('LIFE_RING') ? Math.floor(player.maxHp * 1.5)
+         : player.maxHp;
 }
 function getPlayerAttack() {
     const base = 2 + player.level + (player.swordCount * 3);
-    if (hasRing('RED_TEAR_RING') && player.hp < getPlayerMaxHp() * 0.2) return base * 5;
+    if (hasRing('RED_TEAR_RING')) {
+        const threshold = hasRingDoubled('RED_TEAR_RING') ? 0.4 : 0.2;
+        if (player.hp < getPlayerMaxHp() * threshold) return base * 5;
+    }
     return base;
 }
 function getPlayerDefense() {
@@ -11048,7 +11275,9 @@ function getPlayerDefense() {
 }
 // 堅守の指輪: 被ダメージを25%軽減
 function toughDmg(d) {
-    return hasRing('TOUGH_RING') ? Math.floor(d * 0.75) : d;
+    return hasRingDoubled('TOUGH_RING') ? Math.floor(d * 0.5)
+         : hasRing('TOUGH_RING') ? Math.floor(d * 0.75)
+         : d;
 }
 // ドラゴンの炎・爆発耐性（80%軽減、最低1）
 function dragonFireResist(dmg) {
@@ -11428,12 +11657,22 @@ function drawRingsScreen() {
 
             ctx.font = (isSel ? 'bold ' : '') + '13px Courier New';
             ctx.fillStyle = nameColor;
-            ctx.fillText(item.name, RL_X + 48, iy + 14);
+            // 所持数: 2個以上なら名前の後ろに "×N" を付ける
+            const ownedCount = item.id ? player.ownedRings.filter(rid => rid === item.id).length : 0;
+            let nameLine = item.name;
+            if (ownedCount > 1) nameLine += ` ×${ownedCount}`;
+            ctx.fillText(nameLine, RL_X + 48, iy + 14);
             ctx.font = '11px ' + JA_FONT;
             ctx.fillStyle = isSel ? '#999' : '#555';
             ctx.fillText(item.nameJa, RL_X + 48, iy + 27);
 
-            if (isEquippedHere || isEquippedOther) {
+            // スロット装備表示: 両スロットに同じ指輪が入っていれば "Slot 1+2" (二重装備強調)
+            const isDoubled = item.id && player.equippedRings[0] === item.id && player.equippedRings[1] === item.id;
+            if (isDoubled) {
+                ctx.textAlign = 'right'; ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 11px Courier New';
+                ctx.fillText('Slot 1+2 ★', RL_X + LIST_W - 14, iy + 18);
+                ctx.textAlign = 'left';
+            } else if (isEquippedHere || isEquippedOther) {
                 const slotNum = isEquippedHere ? (ringSlotSelection + 1) : (2 - ringSlotSelection);
                 ctx.textAlign = 'right'; ctx.fillStyle = '#ededed'; ctx.font = '11px Courier New';
                 ctx.fillText('Slot ' + slotNum, RL_X + LIST_W - 14, iy + 18);
@@ -11489,9 +11728,99 @@ function drawRingsScreen() {
             const descText = selItem.descJa;
             if (ctx.measureText(descText).width <= descW) {
                 ctx.fillText(descText, dx, ry);
+                ry += 18;
             } else {
                 const parts = descText.split('。').filter(s => s.trim());
                 parts.forEach(p => { ctx.fillText(p + '。', dx, ry); ry += 18; });
+            }
+            // 英語説明（Removeの場合は desc が無いのでスキップ）
+            if (selItem.desc) {
+                ctx.font = '11px Courier New';
+                ctx.fillStyle = '#888';
+                const descEn = selItem.desc;
+                if (ctx.measureText(descEn).width <= descW) {
+                    ctx.fillText(descEn, dx, ry);
+                    ry += 18;
+                } else {
+                    // 単語境界で折り返し
+                    const words = descEn.split(' ');
+                    let line = '';
+                    for (const w of words) {
+                        const tentative = line ? line + ' ' + w : w;
+                        if (ctx.measureText(tentative).width > descW) {
+                            ctx.fillText(line, dx, ry); ry += 14;
+                            line = w;
+                        } else {
+                            line = tentative;
+                        }
+                    }
+                    if (line) { ctx.fillText(line, dx, ry); ry += 14; }
+                }
+            }
+
+            // ── 二重装備効果（もう片方のスロットに同じ指輪が既に入っている時のみ表示）
+            const specialDesc = RING_DOUBLED_DESC[selItem.id];
+            const otherSlotHasSame = selItem.id && player.equippedRings[1 - ringSlotSelection] === selItem.id;
+            if (specialDesc && otherSlotHasSame) {
+                ry += 6;
+                ctx.strokeStyle = 'rgba(237,237,237,0.12)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(dx, ry); ctx.lineTo(RL_X + RL_W - 14, ry); ctx.stroke();
+                ry += 18;
+
+                // ラベル (日本語 / 英語)
+                ctx.font = 'bold 12px ' + JA_FONT;
+                ctx.fillStyle = '#ededed';
+                ctx.fillText('二重装備効果', dx, ry);
+                ctx.font = '11px Courier New';
+                ctx.fillStyle = '#888';
+                const jaLabelW = ctx.measureText('二重装備効果').width; // ← JA_FONT基準で再計測のため少しずれるが許容範囲
+                ctx.fillText('/ Dual Equip Bonus', dx + jaLabelW + 8, ry);
+                ry += 18;
+
+                // 追加効果テキスト (日本語)
+                ctx.font = '12px ' + JA_FONT;
+                ctx.fillStyle = '#ccc';
+                const descJaText = specialDesc.ja;
+                if (ctx.measureText(descJaText).width <= descW) {
+                    ctx.fillText(descJaText, dx, ry);
+                    ry += 16;
+                } else {
+                    const segs = descJaText.split(/(?<=[、。])/);
+                    let line = '';
+                    for (const seg of segs) {
+                        const tentative = line + seg;
+                        if (ctx.measureText(tentative).width > descW) {
+                            ctx.fillText(line, dx, ry); ry += 16;
+                            line = seg;
+                        } else {
+                            line = tentative;
+                        }
+                    }
+                    if (line) { ctx.fillText(line, dx, ry); ry += 16; }
+                }
+
+                // 追加効果テキスト (英語)
+                ctx.font = '11px Courier New';
+                ctx.fillStyle = '#888';
+                const descEnText = specialDesc.en;
+                if (ctx.measureText(descEnText).width <= descW) {
+                    ctx.fillText(descEnText, dx, ry);
+                } else {
+                    // 単語境界で折り返し
+                    const words = descEnText.split(' ');
+                    let line = '';
+                    for (const w of words) {
+                        const tentative = line ? line + ' ' + w : w;
+                        if (ctx.measureText(tentative).width > descW) {
+                            ctx.fillText(line, dx, ry); ry += 14;
+                            line = w;
+                        } else {
+                            line = tentative;
+                        }
+                    }
+                    if (line) ctx.fillText(line, dx, ry);
+                }
             }
         }
 
@@ -11774,6 +12103,11 @@ function hasRing(id) {
     return player.equippedRings.includes(id);
 }
 
+// 同じ指輪を両スロットに装備しているかチェック（二重装備で追加/強化効果が出る）
+function hasRingDoubled(id) {
+    return player.equippedRings[0] === id && player.equippedRings[1] === id;
+}
+
 function spawnXFromWall(x, y) {
     // 壁を壊した位置の隣接する空きマスにBOMBERを出現させる
     const dirs = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
@@ -11972,6 +12306,16 @@ function draw(now) {
                         const swirl = Math.sin(now / 200 + (x + y) * 0.5) * 3;
                         ctx.fillStyle = '#991b1b'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
                         ctx.fillStyle = '#ef4444'; ctx.fillText(SYMBOLS.LAVA, px + TILE_SIZE / 2 + swirl, py + TILE_SIZE / 2);
+                        ctx.restore();
+                    }
+                } else if (char === SYMBOLS.WEB) {
+                    // 蜘蛛の巣: × を描画。ただし蜘蛛が居るマスは × を一時的に隠す
+                    const spiderHere = enemies.some(en =>
+                        en.type === 'SPIDER' && en.hp > 0 && !en._dead && en.x === x && en.y === y);
+                    if (!spiderHere) {
+                        ctx.save();
+                        ctx.fillStyle = '#94a3b8';
+                        ctx.fillText('×', px + TILE_SIZE / 2, py + TILE_SIZE / 2);
                         ctx.restore();
                     }
                 } else if (char === SYMBOLS.ICE) {
@@ -12214,7 +12558,9 @@ function draw(now) {
             }
             const px = e.x * TILE_SIZE + TILE_SIZE / 2 + (e.offsetX || 0);
             const py = e.y * TILE_SIZE + TILE_SIZE / 2 + (e.offsetY || 0);
-            const isFlashing = now < e.flashUntil || (e.stunTurns > 0 && Math.floor(now / 150) % 2 === 0);
+            const isFlashing = now < e.flashUntil
+                || (e.stunTurns > 0 && Math.floor(now / 150) % 2 === 0)
+                || (e._reviveStationary && e._reviveStationary > 0 && Math.floor(now / 150) % 2 === 0);
             ctx.save();
             ctx.globalAlpha = e.alpha !== undefined ? e.alpha : 1.0;
             if (e.type === 'DRAGON') {
@@ -12254,6 +12600,17 @@ function draw(now) {
                 else if (e.type === 'BOMBER') { eColor = '#f97316'; eChar = 'X'; }
                 else if (e.type === 'BREAKER') { eColor = '#f87171'; eChar = SYMBOLS.BREAKER; }
                 else if (e.type === 'LAYER') { eColor = '#f87171'; eChar = SYMBOLS.LAYER; }
+                else if (e.type === 'SPIDER') {
+                    // 赤(#ef4444) と 紫(#a855f7) の間を滑らかに脈動
+                    const phase = (Math.sin(now / 280) + 1) / 2; // 0..1
+                    const cr = Math.round(0xef * (1 - phase) + 0xa8 * phase);
+                    const cg = Math.round(0x44 * (1 - phase) + 0x55 * phase);
+                    const cb = Math.round(0x44 * (1 - phase) + 0xf7 * phase);
+                    eColor = `rgb(${cr},${cg},${cb})`;
+                    eChar = 'Ω';
+                    ctx.shadowColor = eColor;
+                    ctx.shadowBlur = 16;
+                }
                 else if (e.type === 'MIMIC') {
                     eColor = '#ef4444'; eChar = 'M';
                     // 正体暴露の変身演出中は点滅
@@ -12502,7 +12859,25 @@ function draw(now) {
     // --- 以降は画面の揺れ等に影響されないUIエフェクト等 ---
 
     // 攻撃線、ダメージテキスト
-    attackLines.forEach(l => { ctx.strokeStyle = '#ededed'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); });
+    attackLines.forEach(l => {
+        ctx.save();
+        if (l.isStarLaser) {
+            // STAR_RING 二重装備のレーザー: 黄色のグロー + 白いコア
+            ctx.shadowColor = l.color || '#fde047'; ctx.shadowBlur = 20;
+            ctx.strokeStyle = l.glow || 'rgba(253, 224, 71, 0.45)';
+            ctx.lineWidth = l.width || 6;
+            ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.shadowBlur = 10;
+            ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke();
+        } else {
+            ctx.strokeStyle = l.color || '#ededed';
+            ctx.lineWidth = l.width || 3;
+            ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke();
+        }
+        ctx.restore();
+    });
     damageTexts.forEach(d => {
         const elapsed = (now - d.startTime) / (d.duration ?? 400);
         ctx.save(); ctx.globalAlpha = 1 - elapsed; ctx.fillStyle = d.color;
@@ -12633,13 +13008,20 @@ function detonateBomb(bomb) {
     const idx = bombs.indexOf(bomb);
     if (idx !== -1) bombs.splice(idx, 1);
     const damage = bomb.isCorpse ? (35 + player.level * 4) : (15 + player.level * 2);
-    const blastTiles = [
-        { x: bomb.x, y: bomb.y },
-        { x: bomb.x - 1, y: bomb.y },
-        { x: bomb.x + 1, y: bomb.y },
-        { x: bomb.x, y: bomb.y - 1 },
-        { x: bomb.x, y: bomb.y + 1 }
-    ];
+    // BOMB_RING 二重装備: 十字方向に5マス伸びる（ボンバーマン風、壁で止まる）
+    const extendedRange = hasRingDoubled('BOMB_RING') && !bomb.isCorpse ? 5 : 1;
+    const blastTiles = [{ x: bomb.x, y: bomb.y }];
+    const directions = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+    for (const d of directions) {
+        for (let r = 1; r <= extendedRange; r++) {
+            const tx = bomb.x + d.dx * r;
+            const ty = bomb.y + d.dy * r;
+            if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) break;
+            blastTiles.push({ x: tx, y: ty });
+            // 壁に当たったら止まる（壁自体も破壊対象に入れたので1回分は含まれる）
+            if (map[ty] && map[ty][tx] === SYMBOLS.WALL) break;
+        }
+    }
     SOUNDS.EXPLODE();
     setScreenShake(10, 200);
     spawnFloatingText(bomb.x, bomb.y, "BOMB!", "#ef4444");
@@ -12803,8 +13185,22 @@ async function slideIceBlock(block, dx, dy) {
         // 他の tempWall・爆弾でストップ
         if (tempWalls.some(w => w !== block && w.x === nx && w.y === ny)) break;
         if (bombs.some(b => b !== block && b.x === nx && b.y === ny)) break;
-        // 敵・ウィスプにぶつかったらストップ（ダメージなし）
-        if (enemies.some(e => e.x === nx && e.y === ny)) break;
+        // 敵・ウィスプにぶつかったらストップ
+        const hitEnemy = enemies.find(e => e.hp > 0 && !e._dead && e.x === nx && e.y === ny);
+        if (hitEnemy) {
+            // ICE_BLOCK_RING 二重装備: 滑る氷に命中した敵は大ダメージ
+            if (hasRingDoubled('ICE_BLOCK_RING') && hitEnemy.type !== 'DRAGON') {
+                const iceDmg = Math.min(hitEnemy.hp, getPlayerAttack() * 3 + 10);
+                hitEnemy.hp -= iceDmg;
+                hitEnemy.flashUntil = performance.now() + 300;
+                spawnDamageText(hitEnemy.x, hitEnemy.y, iceDmg, '#7dd3fc');
+                spawnFloatingText(hitEnemy.x, hitEnemy.y, "❄SHATTER!", '#bae6fd', 1000);
+                SOUNDS.HIT();
+                addLog(`❄ Ice block shattered into ${hitEnemy.type}! (-${iceDmg})`);
+                if (hitEnemy.hp <= 0) handleEnemyDeath(hitEnemy);
+            }
+            break;
+        }
         if (wisps.some(w => w.x === nx && w.y === ny)) break;
         // 通過したマスをICEに変換（LAVAは freezable に含まれないので自動的にスキップ）
         if (freezable.has(map[block.y][block.x])) map[block.y][block.x] = SYMBOLS.ICE;
@@ -13659,8 +14055,9 @@ async function advanceScrollWalls() {
         if (!mimicHere) {
             addLog("Pushed into the hole — descending!");
             isPlayerVisible = false;
-            floorLevel++;
+            // 最下層で穴を踏んだ → 第二エンディング発動（次の階へは進まない）
             if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
+            floorLevel++;
             await startFloorTransition();
             return;
         }
@@ -13753,8 +14150,9 @@ async function windGustSlide() {
     if (playerFallsIntoHole) {
         addLog("The wind blows you into the hole!");
         isPlayerVisible = false;
-        floorLevel++;
+        // 最下層で穴を踏んだ → 第二エンディング発動
         if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
+        floorLevel++;
         await startFloorTransition();
         return;
     }
@@ -13868,8 +14266,9 @@ async function slidePlayer(dx, dy) {
             }
             addLog("You slid into the dark hole...");
             isPlayerVisible = false;
-            floorLevel++;
+            // 最下層で穴を踏んだ → 第二エンディング発動
             if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
+            floorLevel++;
             await startFloorTransition();
             break;
         }
@@ -14335,9 +14734,9 @@ async function triggerEnding2() {
     await new Promise(r => setTimeout(r, 3000));
 
     await showStoryPages([
-        [{ en: "A faint light.", jp: "ひとつの光" }],
+        [{ en: "A gaze.", jp: "視線を感じる" }],
         [{ en: "Far, far below.", jp: "はるか遠く　下に" }],
-        [{ en: "Something is there.", jp: "何かがある" }],
+        [{ en: "Something is there.", jp: "何かがいる" }],
     ], false, false, 4000);
 
     // 光が広がる（パーティクル増加）
@@ -14358,74 +14757,35 @@ async function triggerEnding2() {
     await new Promise(r => setTimeout(r, 2000));
 
     await showStoryPages([
-        [{ en: "The true core.", jp: "真のコア" }],
-        [{ en: "The heart of the dungeon.", jp: "ダンジョンの心臓" }],
-        [{ en: "It was here all along.", jp: "ずっとここにあった" }],
-        [{ en: "Waiting.", jp: "待っていた" }],
+        [{ en: "Many eyes.", jp: "たくさんの目" }],
+        [{ en: "The dark is watching you.", jp: "暗闇がこちらを見ている" }],
+        [{ en: "Immense.", jp: "はるかに巨大で" }],
+        [{ en: "Beyond imagining.", jp: "想像を絶する偉大さ" }],
+        [{ en: "The abyss was watching you.", jp: "深淵があなたを見ていた" }],
     ], false, false, 4500);
 
-    // ドローン音を強くしながら完全ホワイトアウト
-    drone2.g.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 5);
+    // ドローン音をわずかに強めて余韻を演出
+    drone2.g.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 3);
+    await new Promise(r => setTimeout(r, 2500));
+
+    // 星（目）を消しながら完全暗転へフェード
+    transition.mode = 'BLACK_OUT';
+    transition.particles = [];
     for (let a = transition.alpha; a <= 1.0; a += 0.008) {
         transition.alpha = a;
         draw(performance.now());
         await new Promise(r => setTimeout(r, 20));
     }
-    await new Promise(r => setTimeout(r, 1000));
-    SOUNDS.EXPLODE();
-    setScreenShake(30, 1000);
-
-    transition.mode = 'WHITE_OUT';
-    transition.alpha = 1.0;
-    transition.particles = [];
-    transition.flashAlpha = 1.0;
-    draw(performance.now());
-    await new Promise(r => setTimeout(r, 3000));
-    transition.flashAlpha = 0;
-
-    await showStoryPages([
-        [{ en: "And then —", jp: "そして——" }],
-        [{ en: "silence.", jp: "静寂" }],
-        [{ en: "You understood everything.", jp: "あなたはすべてを理解した" }],
-        [{ en: "The dungeon was never a prison.", jp: "ダンジョンは牢獄ではなかった" }],
-        [{ en: "It was a test.", jp: "それは試練だった" }],
-        [{ en: "And you passed.", jp: "あなたは合格した" }],
-    ], false, false, 4000);
-
-    await new Promise(r => setTimeout(r, 2000));
-
-    // 深淵との対峙
-    await showStoryPages([
-        [{ en: "The abyss looked back at you.", jp: "深淵が、あなたを見返した" }],
-        [{ en: "You did not look away.", jp: "あなたは目を逸らさなかった" }],
-        [{ en: "Something passed between you.", jp: "何かが、交わされた" }],
-        [{ en: "...", jp: "……" }],
-        [{ en: "You reached out your hand.", jp: "あなたは手を、伸ばした" }],
-    ], false, false, 4500);
-
-    await new Promise(r => setTimeout(r, 1500));
-
-    // ドローン停止（長めにフェード）
-    drone2.g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4);
-    setTimeout(() => { drone2.osc.stop(); }, 4500);
-    await new Promise(r => setTimeout(r, 3000));
-
-    // BLACK_OUTへ
-    transition.mode = 'BLACK_OUT';
     transition.alpha = 1.0;
     transition.darken = 1;
     draw(performance.now());
-    await new Promise(r => setTimeout(r, 2000));
 
-    // 闇の中の最後のページ
-    await showStoryPages([
-        [{ en: "Somewhere far above,", jp: "はるか上方では" }],
-        [{ en: "the dungeon breathes.", jp: "ダンジョンが息をしている" }],
-        [{ en: "It has always breathed.", jp: "いつだって、そうだった" }],
-        [{ en: "But now —", jp: "けれど今は——" }],
-    ], false, false, 5000);
+    // ドローン音をゆっくりフェードアウト
+    drone2.g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4);
+    setTimeout(() => { drone2.osc.stop(); }, 4500);
 
-    await new Promise(r => setTimeout(r, 2000));
+    // 静寂の余白（TRUE ENDING表示前に充分な間を取る）
+    await new Promise(r => setTimeout(r, 7000));
 
     // 衝撃音と共にエンディングテキスト
     SOUNDS.BANG();
@@ -14436,21 +14796,11 @@ async function triggerEnding2() {
     await new Promise(r => setTimeout(r, 6000));
     transition.text = "";
 
-    // 特別メッセージ (BLACK_OUTで白文字)
+    // 余韻の後に終了
     transition.mode = 'BLACK_OUT';
     transition.alpha = 1.0;
     draw(performance.now());
-    await new Promise(r => setTimeout(r, 2000));
-
-    await showStoryPages([
-        ["You have reached the limits of the deep layers."],
-        ["The theoretical upper bound was approximately", "18 quintillion tiers."],
-        ["It should have required 1.71 billion years", "of playtime to reach this point."],
-        ["Truly, well done."],
-        ["And\u2026 thank you."],
-    ], true, false, 5000);
-
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 2500));
 
     gameState = 'ENDING';
     transition.active = false;
@@ -14503,6 +14853,60 @@ async function handleAction(dx, dy) {
         }
     } else {
         player.poisonStagger = false;
+    }
+
+    // 蜘蛛の巣に捕まった: 5ターン動けない
+    // 巣マスに乗ったタイミングで webStuckTurns = 5 をセット
+    // 別の巣マスに移動したら再捕獲（位置をトラッキングして判定）
+    if (map[player.y][player.x] === SYMBOLS.WEB) {
+        const onSameWebTile = (player._webStuckAtX === player.x && player._webStuckAtY === player.y);
+        if (player.webStuckTurns === undefined || !onSameWebTile) {
+            player.webStuckTurns = 5;
+            player._webStuckAtX = player.x;
+            player._webStuckAtY = player.y;
+        }
+        if (player.webStuckTurns > 0) {
+            player.webStuckTurns--;
+            if (player.webStuckTurns > 0) {
+                addLog(`🕸 Stuck in the web... (${player.webStuckTurns} turns left)`);
+            } else {
+                addLog("🕸 You finally tear free of the web!");
+            }
+            isProcessing = true;
+            // もがき音（溶岩を歩く時と同じ）
+            SOUNDS.LAVA_BURN();
+            // 振動アニメ: 入力方向へ少し動いて引き戻されるような短い揺れ
+            const jiggleAmp = 7;
+            player.offsetX = dx * jiggleAmp; player.offsetY = dy * jiggleAmp;
+            draw(performance.now());
+            await new Promise(r => setTimeout(r, 70));
+            player.offsetX = -dx * 2; player.offsetY = -dy * 2;
+            draw(performance.now());
+            await new Promise(r => setTimeout(r, 50));
+            player.offsetX = 0; player.offsetY = 0;
+            draw(performance.now());
+            turnCount++;
+            updateUI();
+            try {
+                await windGustSlide();
+                await enemyTurn();
+            } catch(err) {
+                console.error('[turn ERROR]', err);
+            } finally {
+                try { await moveWisps(); } catch(we) { console.error('[wisp ERROR]', we); }
+                moveFairies();
+                moveMadmen();
+                isProcessing = false;
+            }
+            if (bufferedInput) { const b = bufferedInput; bufferedInput = null; handleAction(b.dx, b.dy); }
+            return;
+        }
+        // webStuckTurns === 0: 解放されたので通常移動可（webから出るか、また再捕獲される）
+    } else {
+        // 巣の外に出たらカウンタをリセット（再度踏むとまた5ターン）
+        player.webStuckTurns = undefined;
+        player._webStuckAtX = undefined;
+        player._webStuckAtY = undefined;
     }
 
     // ブロック設置モード（杖を持っている時のみ）
@@ -14586,9 +14990,11 @@ async function handleAction(dx, dy) {
                 const leavingMadmen = enemies.filter(e => e.type === 'MADMAN');
                 leavingMadmen.forEach(m => movingMadmen.push({ ...m, screenX: currentScreen.x, screenY: currentScreen.y }));
                 // isAlly な仲間を画面遷移でプレイヤーに追従させる
-                const leavingAllies = enemies.filter(e => e.isAlly && e.type !== 'MADMAN');
+                // 固定砲台・ブロック・擬態系・蜘蛛は連れていかず、その場に残す
+                const _msExcludedCarry = new Set(['TURRET', 'HOPPER_TURRET', 'SPAWNER', 'SPIDER', 'MIMIC', 'FAIRY_MIMIC', 'MADMAN', 'KEY_RUNNER', 'DRAGON', 'SUMMONER', 'KING']);
+                const leavingAllies = enemies.filter(e => e.isAlly && !_msExcludedCarry.has(e.type));
                 leavingAllies.forEach(a => travelingAllies.push({ ...a }));
-                enemies = enemies.filter(e => e.type !== 'MADMAN' && !e.isAlly);
+                enemies = enemies.filter(e => e.type !== 'MADMAN' && !(e.isAlly && !_msExcludedCarry.has(e.type)));
                 screenGrid.maps[currentScreen.y][currentScreen.x] = map;
                 screenGrid.enemies[currentScreen.y][currentScreen.x] = enemies;
                 screenGrid.wisps[currentScreen.y][currentScreen.x] = wisps;
@@ -14974,8 +15380,8 @@ async function handleAction(dx, dy) {
         return;
     }
 
-    if (victim && victim.isAlly && victim.type !== 'TURRET') {
-        // 味方とは攻撃せず位置を入れ替える（タレットは固定なので除外）
+    if (victim && victim.isAlly) {
+        // 味方とは攻撃せず位置を入れ替える（タレットも含めて）
         const oldX = player.x, oldY = player.y;
         player.x = victim.x; player.y = victim.y;
         victim.x = oldX; victim.y = oldY;
@@ -14985,11 +15391,6 @@ async function handleAction(dx, dy) {
         }
         SOUNDS.MOVE();
         player.stamina = Math.min(100, player.stamina + (hasRing('GOLEM_RING') ? 10 : 20));
-    } else if (victim && victim.isAlly) {
-        // 仲間には攻撃しない（入れ替わりのみ）
-        player.offsetX = dx * 5; player.offsetY = dy * 5;
-        await new Promise(r => setTimeout(r, 50));
-        player.offsetX = 0; player.offsetY = 0;
     } else if (victim) {
         if (player.isStealth) {
             player.isStealth = false;
@@ -14997,7 +15398,7 @@ async function handleAction(dx, dy) {
         }
         player.offsetX = dx * 10; player.offsetY = dy * 10;
         await attackEnemy(victim, nx - player.x, ny - player.y, true);
-        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRing('STAMINA_RING') ? 12 : 20));
+        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRingDoubled('STAMINA_RING') ? 6 : hasRing('STAMINA_RING') ? 12 : 20));
         player.offsetX = 0; player.offsetY = 0;
     } else {
         // 防御(dx=0,dy=0)は+50、移動は+20
@@ -15074,10 +15475,66 @@ async function handleAction(dx, dy) {
             // スクロール壁を破壊した場合、そのエントリを除去（除去しないと次ターンに押し出し連鎖死が起きる）
             { const _si = scrollWalls.findIndex(w => w.x === nx && w.y === ny); if (_si !== -1) scrollWalls.splice(_si, 1); }
             map[ny][nx] = SYMBOLS.FLOOR;
+            // BREAKER_RING 二重装備:
+            //   (1) 主人公の周囲2マス(chebyshev≤2)の壁は確定で全破壊
+            //   (2) さらに半径4マス内からランダムに3ターゲットを選び、主人公からの直線上の壁も破壊
+            if (hasRingDoubled('BREAKER_RING')) {
+                const px = player.x, py = player.y; // 破壊発動時の主人公位置
+                const brokenSet = new Set();
+                const breakWallAt = (tx, ty) => {
+                    const key = `${tx},${ty}`;
+                    if (brokenSet.has(key)) return false;
+                    if (tx >= 1 && tx < COLS - 1 && ty >= 1 && ty < ROWS - 1 && map[ty][tx] === SYMBOLS.WALL) {
+                        const _si2 = scrollWalls.findIndex(w => w.x === tx && w.y === ty);
+                        if (_si2 !== -1) scrollWalls.splice(_si2, 1);
+                        map[ty][tx] = SYMBOLS.FLOOR;
+                        spawnFloatingText(tx, ty, "BREAK!", '#f59e0b');
+                        brokenSet.add(key);
+                        return true;
+                    }
+                    return false;
+                };
+                // (1) 周囲2マス確定破壊
+                for (let ddy = -2; ddy <= 2; ddy++) {
+                    for (let ddx = -2; ddx <= 2; ddx++) {
+                        if (ddx === 0 && ddy === 0) continue;
+                        breakWallAt(px + ddx, py + ddy);
+                    }
+                }
+                // (2) 半径4マス内からランダム3ターゲット（周囲2マスは既に壊したので半径3-4帯が実質対象）
+                const radius = 4;
+                const wallCandidates = [];
+                for (let ddy = -radius; ddy <= radius; ddy++) {
+                    for (let ddx = -radius; ddx <= radius; ddx++) {
+                        if (ddx === 0 && ddy === 0) continue;
+                        const tx = px + ddx, ty = py + ddy;
+                        if (tx >= 1 && tx < COLS - 1 && ty >= 1 && ty < ROWS - 1 && map[ty][tx] === SYMBOLS.WALL) {
+                            wallCandidates.push({ x: tx, y: ty });
+                        }
+                    }
+                }
+                const pickCount = Math.min(3, wallCandidates.length);
+                for (let i = 0; i < pickCount; i++) {
+                    const idx = Math.floor(Math.random() * wallCandidates.length);
+                    const target = wallCandidates.splice(idx, 1)[0];
+                    const steps = Math.max(Math.abs(target.x - px), Math.abs(target.y - py));
+                    for (let s = 1; s <= steps; s++) {
+                        const tx = Math.round(px + (target.x - px) * s / steps);
+                        const ty = Math.round(py + (target.y - py) * s / steps);
+                        breakWallAt(tx, ty);
+                    }
+                }
+                if (brokenSet.size > 0) {
+                    setScreenShake(16, 350);
+                    addLog(`★ Breaker Ring carved ${brokenSet.size + 1} walls into pathways!`);
+                } else {
+                    addLog("★ Breaker Ring shattered the wall!");
+                }
+            }
             player.x = nx; player.y = ny;
             SOUNDS.WALL_BREAK();
             setScreenShake(8, 200);
-            addLog("The Breaker Ring shattered the wall!");
+            if (!hasRingDoubled('BREAKER_RING')) addLog("The Breaker Ring shattered the wall!");
             spawnFloatingText(nx, ny, "BREAK!", '#f59e0b');
             if (!player.isInfiniteStamina) player.stamina = 0;
             // Xステージ: 高確率でBOMBERが出現
@@ -15309,11 +15766,12 @@ async function handleAction(dx, dy) {
                             addLog(`💍 Found a ${ringData.name}! (${ringData.desc})`);
                             spawnFloatingText(nx, ny, `${ringData.name} GET!`, "#fbbf24", 1800);
                         } else if (ringData) {
-                            // 重複: ゴールドに変換
-                            const bonus = ringData.cost;
-                            player.gold += bonus;
-                            addLog(`💍 Found a ${ringData.name}, but you already have one. Converted to ${bonus}G!`);
-                            spawnFloatingText(nx, ny, `+${bonus}G`, "#fbbf24", 1500);
+                            // 重複: ランダムな指輪を1個追加（二重装備用のストック）
+                            const randomRing = RINGS[Math.floor(Math.random() * RINGS.length)];
+                            player.ownedRings.push(randomRing.id);
+                            const newCount = player.ownedRings.filter(rid => rid === randomRing.id).length;
+                            addLog(`💍 Found a ${ringData.name}, but already owned. Randomly gained a ${randomRing.name} ×${newCount}!`);
+                            spawnFloatingText(nx, ny, `${randomRing.name} ×${newCount}`, randomRing.color, 1800);
                         }
                         updateUI();
                     }
@@ -15375,8 +15833,9 @@ async function handleAction(dx, dy) {
                 } else {
                     addLog("You fall into the dark hole...");
                     isPlayerVisible = false;
-                    floorLevel++;
+                    // 最下層で穴を踏んだ → 第二エンディング発動
                     if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
+                    floorLevel++;
                     await startFloorTransition();
                 }
             }
@@ -16268,29 +16727,26 @@ async function handleEnemyDeath(enemy, killedByPlayer = false, killedByWisp = fa
     if (killedByPlayer && hasRing('NECRO_RING') && !enemy.isAlly && !enemy.isFalling) {
         const necroExclude = ['DRAGON', 'GOLD', 'KING', 'SNAKE', 'FAIRY_MIMIC'];
         if (!necroExclude.includes(enemy.type)) {
-            // 撃破音を聞かせてから点滅→蘇生
-            await new Promise(r => setTimeout(r, 500));
-            // 点滅アニメーション（3回）
-            for (let _ni = 0; _ni < 3; _ni++) {
-                spawnFloatingText(enemy.x, enemy.y, "ぐおん", "#7c3aed");
-                draw(); await new Promise(r => setTimeout(r, 120));
-                draw(); await new Promise(r => setTimeout(r, 120));
-            }
+            // 即座に蘇生（待機なし）
             SOUNDS.NECRO_ACTIVATE();
-            await new Promise(r => setTimeout(r, 300));
-            const revivedHp = Math.max(1, Math.floor(enemy.maxHp * 0.5));
+            // NECRO_RING 二重装備: HP全快+攻撃力ブースト
+            const necroDoubled = hasRingDoubled('NECRO_RING');
+            const revivedHp = necroDoubled ? enemy.maxHp : Math.max(1, Math.floor(enemy.maxHp * 0.5));
             const revived = {
                 type: enemy.type, x: enemy.x, y: enemy.y,
                 hp: revivedHp, maxHp: revivedHp,
-                flashUntil: performance.now() + 1500,
+                flashUntil: performance.now() + 1200,
                 offsetX: 0, offsetY: 0,
                 expValue: 0, stunTurns: 0,
-                isAlly: true, _necroRevived: true
+                isAlly: true, _necroRevived: true, _necroBoosted: necroDoubled,
+                _reviveStationary: 3  // 復活直後3ターンはその場で白点滅・無敵・ターゲット不可
             };
             if (enemy.type === 'TURRET' || enemy.type === 'HOPPER_TURRET') revived.dir = enemy.dir || 0;
             enemies.push(revived);
-            spawnFloatingText(enemy.x, enemy.y, "REVIVED!", "#c084fc");
-            addLog(`💍 Necro Ring: The ${enemy.type} rises as your ally!`);
+            spawnFloatingText(enemy.x, enemy.y, necroDoubled ? "REVIVED+!" : "REVIVED!", necroDoubled ? "#fde047" : "#c084fc");
+            addLog(necroDoubled
+                ? `💍✨ Necro Ring x2: The ${enemy.type} rises fully restored and empowered!`
+                : `💍 Necro Ring: The ${enemy.type} rises as your ally!`);
         }
     }
 
@@ -16345,7 +16801,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
         SOUNDS.HIT();
         if (isMain) { player.offsetX = dx * 10; player.offsetY = dy * 10; }
         spawnFloatingText(enemy.x, enemy.y, "IMMUNE!", '#f59e0b');
-        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRing('STAMINA_RING') ? 12 : 20));
+        if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRingDoubled('STAMINA_RING') ? 6 : hasRing('STAMINA_RING') ? 12 : 20));
         draw(); await new Promise(r => setTimeout(r, 100));
         if (isMain) { player.offsetX = 0; player.offsetY = 0; }
         // プレイヤーと反対方向へ進行方向をセット（3〜5ターン維持）
@@ -16379,7 +16835,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
     if (isMain) { player.offsetX = dx * 10; player.offsetY = dy * 10; }
     const staminaFactor = Math.max(0.1, player.stamina / 100);
     let damage = Math.max(1, Math.floor((2 + player.level + (player.swordCount * 3)) * staminaFactor));
-    let isCritical = Math.random() < (hasRing('CRITICAL_RING') ? 0.20 : 0.10); // かいしんの一撃
+    let isCritical = Math.random() < (hasRingDoubled('CRITICAL_RING') ? 0.40 : hasRing('CRITICAL_RING') ? 0.20 : 0.10); // かいしんの一撃
 
     const targetX = player.x + dx;
     const targetY = player.y + dy;
@@ -16405,6 +16861,20 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
 
     // 金色敵（メタルスライム風）はダメージを1に固定
     if (enemy.type === 'GOLD') damage = isCritical ? 3 : 1;
+
+    // FIRE_RING 二重装備: 攻撃に炎ダメージを上乗せ（GOLD以外）
+    if (hasRingDoubled('FIRE_RING') && enemy.type !== 'GOLD') {
+        const fireBonus = Math.max(2, Math.floor(floorLevel / 4) + 2);
+        damage += fireBonus;
+        spawnFloatingText(enemy.x, enemy.y, `🔥+${fireBonus}`, "#fb923c", 900);
+    }
+    // POISON_RING 二重装備: 毒ダメージ上乗せ + 敵を毒状態に(5ターン鈍化)
+    if (hasRingDoubled('POISON_RING') && enemy.type !== 'GOLD' && enemy.type !== 'DRAGON') {
+        const poisonBonus = Math.max(2, Math.floor(floorLevel / 5) + 1);
+        damage += poisonBonus;
+        enemy.poisonedTurns = 5; // 毒状態5ターン（2ターンに1回行動）
+        spawnFloatingText(enemy.x, enemy.y, `☠+${poisonBonus}`, "#a855f7", 900);
+    }
 
     // KING's aura: KINGが生存中は非KING敵へのダメージを軽減（王の守護）
     if (enemy.type !== 'KING' && enemies.some(e => e.type === 'KING' && e.hp > 0 && !e._dead)) {
@@ -16436,7 +16906,7 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
     enemy.hp -= damage; enemy.flashUntil = performance.now() + 200;
     spawnDamageText(player.x + dx, player.y + dy, damage, isCritical ? '#fbbf24' : '#f87171');
     const _staminaBeforeAttack = player.stamina; // GOLEM_RING判定用に攻撃前スタミナを保存
-    if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRing('STAMINA_RING') ? 12 : 20));
+    if (!player.isInfiniteStamina) player.stamina = Math.max(0, player.stamina - (hasRingDoubled('STAMINA_RING') ? 6 : hasRing('STAMINA_RING') ? 12 : 20));
 
     // タレットのノックバック・スライド処理
     if ((enemy.type === 'TURRET' || enemy.type === 'HOPPER_TURRET') && enemy.hp > 0) {
@@ -16486,25 +16956,63 @@ async function attackEnemy(enemy, dx, dy, isMain = true) {
     if (hasRing('KNOCKBACK_RING') && enemy.hp > 0 && enemy.type !== 'TURRET' && enemy.type !== 'HOPPER_TURRET' && enemy.type !== 'SNAKE' && enemy.type !== 'DRAGON' && enemy.type !== 'SUMMONER') {
         const _kbFullStamina = _staminaBeforeAttack >= 100;
         if (_kbFullStamina || enemy.type !== 'ORC') {
-            const kbx = enemy.x + dx;
-            const kby = enemy.y + dy;
-            if (_kbFullStamina && isRealHole(kbx, kby)) {
-                spawnFloatingText(enemy.x, enemy.y, "KNOCKBACK!", "#38bdf8");
-                SOUNDS.HIT();
-                scheduleEnemyFall(enemy, `Knocked ${enemy.type} into the hole!`, true);
-            } else if (canEnemyMove(kbx, kby, enemy)) {
-                enemy.x = kbx;
-                enemy.y = kby;
-                spawnFloatingText(kbx, kby, "KNOCKBACK!", "#38bdf8");
-                SOUNDS.HIT();
-                draw();
-                await new Promise(r => setTimeout(r, 120));
+            // 二重装備なら2マス押し、通常は1マス押し
+            const kbSteps = hasRingDoubled('KNOCKBACK_RING') ? 2 : 1;
+            for (let step = 0; step < kbSteps && enemy.hp > 0 && !enemy._dead; step++) {
+                const kbx = enemy.x + dx;
+                const kby = enemy.y + dy;
+                if (_kbFullStamina && isRealHole(kbx, kby)) {
+                    spawnFloatingText(enemy.x, enemy.y, "KNOCKBACK!", "#38bdf8");
+                    SOUNDS.HIT();
+                    scheduleEnemyFall(enemy, `Knocked ${enemy.type} into the hole!`, true);
+                    break;
+                } else if (canEnemyMove(kbx, kby, enemy)) {
+                    enemy.x = kbx;
+                    enemy.y = kby;
+                    spawnFloatingText(kbx, kby, step === kbSteps - 1 ? "KNOCKBACK!" : "!", "#38bdf8");
+                    SOUNDS.HIT();
+                    draw();
+                    await new Promise(r => setTimeout(r, 120));
+                } else {
+                    // 移動先がブロックされている: 壁・ブロックなら停止、敵なら飛び越える
+                    if (kbx < 0 || kbx >= COLS || kby < 0 || kby >= ROWS) break;
+                    if (isWallAt(kbx, kby)) break;
+                    // 敵が塞いでいる → その上を飛び越えて空きマスまでジャンプ
+                    let jumpX = kbx + dx, jumpY = kby + dy;
+                    let landing = null;
+                    for (let j = 0; j < 10; j++) {
+                        if (jumpX < 0 || jumpX >= COLS || jumpY < 0 || jumpY >= ROWS) break;
+                        if (isWallAt(jumpX, jumpY)) break;
+                        if (canEnemyMove(jumpX, jumpY, enemy)) {
+                            landing = { x: jumpX, y: jumpY };
+                            break;
+                        }
+                        jumpX += dx; jumpY += dy;
+                    }
+                    if (!landing) break; // 飛び越えた先に空きマスなし
+                    spawnFloatingText(enemy.x, enemy.y, "KNOCKBACK!", "#38bdf8");
+                    SOUNDS.HIT();
+                    // 1マスずつジャンプアニメーション（敵の上を通過、オフセットで跳ねて見せる）
+                    while (enemy.x !== landing.x || enemy.y !== landing.y) {
+                        enemy.x += dx; enemy.y += dy;
+                        enemy.offsetY = -8; // 少し浮かせる
+                        draw();
+                        await new Promise(r => setTimeout(r, 90));
+                        enemy.offsetY = 0;
+                    }
+                    spawnFloatingText(enemy.x, enemy.y, step === kbSteps - 1 ? "KNOCKBACK!" : "!", "#38bdf8");
+                    // 着地先が穴なら落下
+                    if (_kbFullStamina && isRealHole(enemy.x, enemy.y)) {
+                        scheduleEnemyFall(enemy, `Knocked ${enemy.type} into the hole!`, true);
+                        break;
+                    }
+                }
             }
         }
     }
 
     // GOLEM_RING: スタミナ満タン時の攻撃でORC（G）と同じ突き飛ばし
-    if (hasRing('GOLEM_RING') && enemy.hp > 0 && _staminaBeforeAttack >= 100) {
+    if (hasRing('GOLEM_RING') && enemy.hp > 0 && (_staminaBeforeAttack >= 100 || hasRingDoubled('GOLEM_RING'))) {
         const _golemNoKB = ['TURRET', 'HOPPER_TURRET', 'SNAKE', 'DRAGON'];
         if (!_golemNoKB.includes(enemy.type)) {
             spawnFloatingText(enemy.x, enemy.y, "GOLEM SMASH!", "#f97316");
@@ -17029,9 +17537,10 @@ async function knockbackPlayer(kx, ky, baseDamage, destroyIcicles = false) {
             } else {
                 addLog("You were knocked into the dark hole!");
                 isPlayerVisible = false;
+                // 最下層で穴を踏んだ → 第二エンディング発動
+                if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
                 floorLevel++;
                 if (pickedDuringSlide.length > 0) await processPickedItems(pickedDuringSlide);
-                if (floorLevel >= DEEP_ENDING_FLOOR) { stopBGM(); await triggerEnding2(); return; }
                 await startFloorTransition();
                 return;
             }
@@ -17155,6 +17664,13 @@ async function enemyTurn() {
         const e = enemies[i];
         if (!e || e.hp <= 0) continue;
 
+        // NECRO_RING で蘇生した直後: 3ターンは無敵で点滅、行動もスキップ
+        // （地形ダメージ・スタン・通常AIなど全てより先に処理する必要があるためループ先頭に配置）
+        if (e._reviveStationary && e._reviveStationary > 0) {
+            e._reviveStationary--;
+            continue;
+        }
+
         // 毒沼または溶岩
         const tile = map[e.y][e.x];
         if (tile === SYMBOLS.POISON || tile === SYMBOLS.LAVA) {
@@ -17204,6 +17720,184 @@ async function enemyTurn() {
         if (e.type === 'HEALER') {
             if (e._slowSkip) { e._slowSkip = false; continue; }
             e._slowSkip = true;
+        }
+
+        // 毒状態: POISON_RING二重装備の攻撃で付与。2ターンに1回しか行動できない
+        if (e.poisonedTurns && e.poisonedTurns > 0) {
+            e.poisonedTurns--;
+            if (e._poisonSkip) { e._poisonSkip = false; spawnFloatingText(e.x, e.y, '☠', '#a855f7', 500); continue; }
+            e._poisonSkip = true;
+        } else {
+            e._poisonSkip = false;
+        }
+
+        // 蜘蛛の巣の上にいる敵は5ターン動けない（蜘蛛本体は自分の巣に免疫）
+        // 別の巣マスに移動したら再捕獲（位置をトラッキング）
+        if (e.type !== 'SPIDER' && map[e.y] && map[e.y][e.x] === SYMBOLS.WEB) {
+            const onSameWeb = (e._webStuckAtX === e.x && e._webStuckAtY === e.y);
+            if (e._webStuck === undefined || !onSameWeb) {
+                e._webStuck = 5;
+                e._webStuckAtX = e.x;
+                e._webStuckAtY = e.y;
+            }
+            if (e._webStuck > 0) {
+                e._webStuck--;
+                // 自分のターン中だけ一瞬もがく: ランダム方向に少し動いて戻る
+                const wDirs = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+                const wd = wDirs[Math.floor(Math.random() * 4)];
+                e.offsetX = wd.x * 5;
+                e.offsetY = wd.y * 5;
+                draw(performance.now());
+                await _w(50);
+                e.offsetX = 0;
+                e.offsetY = 0;
+                continue; // ターン終了、停止状態に戻る
+            }
+            // _webStuck === 0: 解放、今ターンは動ける
+        } else {
+            e._webStuck = undefined;
+            e._webStuckAtX = undefined;
+            e._webStuckAtY = undefined;
+        }
+
+        // === SPIDER 専用AI: ほぼ動かず隣接の敵対者を攻撃 ===
+        // isAlly でない蜘蛛 → プレイヤー + 全ての非ally敵（無派閥として全員から嫌われる）
+        // isAlly な蜘蛛 → プレイヤーには攻撃しない、非ally敵のみ攻撃
+        if (e.type === 'SPIDER') {
+            const adj4 = [{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+            // プレイヤーへの攻撃（敵蜘蛛のみ）
+            if (!e.isAlly) {
+                const dPlayer = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
+                if (dPlayer === 1 && !player.isStealth) {
+                    const dmg = Math.max(2, 4 + Math.floor(floorLevel / 8) - getPlayerDefense());
+                    player.hp -= dmg;
+                    player.flashUntil = performance.now() + 200;
+                    spawnDamageText(player.x, player.y, dmg, '#92400e');
+                    spawnFloatingText(e.x, e.y, "BITE!", '#92400e');
+                    SOUNDS.ENEMY_ATTACK();
+                    if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+                }
+            }
+            // 隣接する敵対する他の敵（非SPIDER）を攻撃 — 捕食モーション
+            // - 敵蜘蛛: 非isAlly の敵を攻撃（無派閥として）
+            // - 味方蜘蛛: 非isAlly の敵を攻撃（プレイヤー陣営として）
+            for (const d of adj4) {
+                const nx = e.x + d.x, ny = e.y + d.y;
+                const target = enemies.find(o =>
+                    o !== e && !o._dead && o.hp > 0 &&
+                    o.x === nx && o.y === ny && o.type !== 'SPIDER' &&
+                    !o.isAlly  // 同じ味方は攻撃しない
+                );
+                if (target) {
+                    // 捕食モーション: 短い飛びかかり → 一瞬の重なり → （生存時のみ）戻る
+                    const targetX = target.x, targetY = target.y;
+                    const stepCount = 3;
+                    const stepMs = 18;
+                    // 行き（コンパクトな飛びかかり、合計約55ms）
+                    for (let s = 1; s <= stepCount; s++) {
+                        e.offsetX = d.x * TILE_SIZE * s / stepCount;
+                        e.offsetY = d.y * TILE_SIZE * s / stepCount;
+                        draw(performance.now());
+                        await new Promise(r => setTimeout(r, stepMs));
+                    }
+                    // ダメージ適用 + 重なって襲っている間（やや長め）
+                    spawnFloatingText(targetX, targetY, "PREDATION!", '#92400e', 800);
+                    SOUNDS.HIT();
+                    const sdmg = 5 + floorLevel;
+                    target.hp -= sdmg;
+                    target.flashUntil = performance.now() + 250;
+                    spawnDamageText(targetX, targetY, sdmg, '#92400e');
+                    draw(performance.now());
+                    await new Promise(r => setTimeout(r, 280));
+                    if (target.hp <= 0) {
+                        // 仕留めた: 蜘蛛は獲物のマスへ移動して留まる
+                        // 元居たマスには蜘蛛の巣を残す（床のみ変換、特殊タイルは保持）
+                        const oldX = e.x, oldY = e.y;
+                        handleEnemyDeath(target, false);
+                        e.x = targetX;
+                        e.y = targetY;
+                        e.offsetX = 0;
+                        e.offsetY = 0;
+                        if (map[oldY] && map[oldY][oldX] === SYMBOLS.FLOOR) {
+                            map[oldY][oldX] = SYMBOLS.WEB;
+                        }
+                        draw(performance.now());
+                    } else {
+                        // 仕留め損なった: 元の位置へ素早く戻る
+                        for (let s = stepCount - 1; s >= 0; s--) {
+                            e.offsetX = d.x * TILE_SIZE * s / stepCount;
+                            e.offsetY = d.y * TILE_SIZE * s / stepCount;
+                            draw(performance.now());
+                            await new Promise(r => setTimeout(r, stepMs));
+                        }
+                        e.offsetX = 0;
+                        e.offsetY = 0;
+                        draw(performance.now());
+                    }
+                    break;
+                }
+            }
+            // 移動判定: 攻撃しなかった蜘蛛は以下の優先度で動く
+            // (1) プレイヤーが巣に捕まっている → プレイヤーへ接近
+            // (2) 周囲に獲物（プレイヤー or 非SPIDER非ally敵）が居ない → 初期位置へ帰巣
+            const moveSpiderTo = (tx, ty) => {
+                const dxx = tx - e.x, dyy = ty - e.y;
+                if (dxx === 0 && dyy === 0) return false;
+                const sx = dxx === 0 ? 0 : (dxx > 0 ? 1 : -1);
+                const sy = dyy === 0 ? 0 : (dyy > 0 ? 1 : -1);
+                const tryDirs = Math.abs(dxx) >= Math.abs(dyy)
+                    ? [{x: sx, y: 0}, {x: 0, y: sy}, {x: sx, y: sy}]
+                    : [{x: 0, y: sy}, {x: sx, y: 0}, {x: sx, y: sy}];
+                for (const md of tryDirs) {
+                    if (md.x === 0 && md.y === 0) continue;
+                    const nx = e.x + md.x, ny = e.y + md.y;
+                    if (nx < 1 || nx >= COLS - 1 || ny < 1 || ny >= ROWS - 1) continue;
+                    if (isRealHole(nx, ny)) continue;
+                    if (map[ny][nx] === SYMBOLS.WALL) continue;
+                    if (enemies.some(o => o !== e && !o._dead && o.hp > 0 && o.x === nx && o.y === ny)) continue;
+                    if (player.x === nx && player.y === ny) continue;
+                    const oldX = e.x, oldY = e.y;
+                    e.x = nx; e.y = ny;
+                    // 元のマスが床なら巣に変換（ホームマスは床のまま残す）
+                    if (map[oldY] && map[oldY][oldX] === SYMBOLS.FLOOR) {
+                        map[oldY][oldX] = SYMBOLS.WEB;
+                    }
+                    return true;
+                }
+                return false;
+            };
+            if (!e.isAlly && !e._dead) {
+                // (1) プレイヤーが巣に捕まっている → プレイヤーへ接近
+                if (player.webStuckTurns > 0) {
+                    const distP = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
+                    if (distP > 1) moveSpiderTo(player.x, player.y);
+                } else {
+                    // (2) 獲物がもう近くに居なければ初期位置へ帰巣
+                    const huntRange = 8;
+                    const distPlayer = Math.abs(player.x - e.x) + Math.abs(player.y - e.y);
+                    const hasNearbyPrey = enemies.some(o =>
+                        o !== e && !o._dead && o.hp > 0 &&
+                        o.type !== 'SPIDER' && !o.isAlly &&
+                        Math.abs(o.x - e.x) + Math.abs(o.y - e.y) <= huntRange);
+                    const hasNearbyPlayer = !player.isStealth && distPlayer <= huntRange;
+                    if (!hasNearbyPrey && !hasNearbyPlayer && e.homeX !== undefined &&
+                        (e.x !== e.homeX || e.y !== e.homeY)) {
+                        moveSpiderTo(e.homeX, e.homeY);
+                    }
+                }
+            }
+            // 巣を増殖（敵味方を問わず）: 隣接床マスへ低確率で拡張
+            if (Math.random() < 0.08) {
+                const shuffled = adj4.slice().sort(() => Math.random() - 0.5);
+                for (const d of shuffled) {
+                    const wx = e.x + d.x, wy = e.y + d.y;
+                    if (wx >= 1 && wx < COLS - 1 && wy >= 1 && wy < ROWS - 1 && map[wy][wx] === SYMBOLS.FLOOR) {
+                        map[wy][wx] = SYMBOLS.WEB;
+                        break;
+                    }
+                }
+            }
+            continue; // 蜘蛛のターン終了
         }
 
         // 全敵共通: 3%の確率でランダム方向へ1歩動いてターン終了（挙動のパターン崩し）
@@ -17816,10 +18510,12 @@ async function enemyTurn() {
                          {x:1,y:1},{x:-1,y:1},{x:1,y:-1},{x:-1,y:-1}];
             let healedAny = false;
             // --- 回復処理（強化版エフェクト + ログ） ---
+            // 内部派閥名(CRIMSON/COBALT)と表示色(緑/紫)が一致しないため、
+            // ログ上は人間の視覚情報に合わせて GREEN/PURPLE で表記する
             const healerLabel = e.isAlly
                 ? 'Allied Healer'
-                : (e.faction === 'CRIMSON' ? 'CRIMSON Healer'
-                    : e.faction === 'COBALT' ? 'COBALT Healer'
+                : (e.faction === 'CRIMSON' ? 'GREEN Healer'
+                    : e.faction === 'COBALT' ? 'PURPLE Healer'
                     : 'Enemy Healer');
             const doHealTarget = (target, tx, ty) => {
                 if (target.hp >= target.maxHp) return false;
@@ -18283,6 +18979,8 @@ async function enemyTurn() {
 
                     // 味方の攻撃力計算 (オークなら強い)
                     let dmg = (e.type === 'ORC' ? 15 : (e.type === 'BREAKER' ? 12 : (e.type === 'LAYER' ? 6 : (e.type === 'SNAKE' ? 10 : (e.type === 'MIMIC' ? 12 : (e.type === 'SUMMONER' ? 8 : 5)))))) + Math.floor(floorLevel / 2);
+                    // NECRO_RING 二重装備で蘇生された味方は攻撃力+3
+                    if (e._necroBoosted) dmg += 3;
                     allyBestTarget.hp -= dmg;
                     allyBestTarget.flashUntil = performance.now() + 100;
                     spawnDamageText(allyBestTarget.x, allyBestTarget.y, dmg, '#ededed');
@@ -18363,18 +19061,37 @@ async function enemyTurn() {
                     const dx = allyBestTarget.x - e.x, dy = allyBestTarget.y - e.y;
                     let sx = dx === 0 ? 0 : dx / Math.abs(dx), sy = dy === 0 ? 0 : dy / Math.abs(dy);
 
-                    // 味方BREAKERの移動判定（壁を壊して進める）
+                    // 味方タレット検知（位置入れ替えの対象）
+                    const findAllyTurretAt = (nx, ny) => enemies.find(oe =>
+                        oe !== e && !oe._dead && oe.hp > 0 &&
+                        oe.x === nx && oe.y === ny && oe.isAlly &&
+                        (oe.type === 'TURRET' || oe.type === 'HOPPER_TURRET'));
+                    // 味方BREAKERの移動判定（壁を壊して進める、穴は避ける、味方タレットとは入れ替わる）
                     const allyBreakerTryMove = (nx, ny) => {
                         if (nx <= 0 || nx >= COLS - 1 || ny <= 0 || ny >= ROWS - 1) return false;
-                        if (enemies.some(oe => oe !== e && oe.x === nx && oe.y === ny)) return false;
+                        if (isRealHole(nx, ny)) return false;
+                        const blocker = enemies.find(oe => oe !== e && oe.x === nx && oe.y === ny);
+                        if (blocker && !findAllyTurretAt(nx, ny)) return false; // 味方タレット以外の敵は通り抜け不可
                         if (map[ny][nx] === SYMBOLS.WALL) {
                             map[ny][nx] = SYMBOLS.FLOOR;
                             SOUNDS.WALL_BREAK(); setScreenShake(8, 200);
                             return true;
                         }
-                        return canEnemyMove(nx, ny, e);
+                        return findAllyTurretAt(nx, ny) ? !(player.x === nx && player.y === ny) : canEnemyMove(nx, ny, e);
                     };
-                    const tryMoveAlly = e.type === 'BREAKER' ? allyBreakerTryMove : (nx, ny) => canEnemyMove(nx, ny, e);
+                    // 通常味方: 穴回避 + 味方タレットは通り抜け可（位置入れ替え）
+                    const tryMoveAlly = e.type === 'BREAKER' ? allyBreakerTryMove
+                        : (nx, ny) => {
+                            if (isRealHole(nx, ny)) return false;
+                            if (findAllyTurretAt(nx, ny)) {
+                                // 味方タレットしか居ないなら通過OK（地形・プレイヤー・仲間の非タレットチェックのみ）
+                                if (player.x === nx && player.y === ny) return false;
+                                if (tempWalls.some(w => w.x === nx && w.y === ny)) return false;
+                                if (bombs.some(b => b.x === nx && b.y === ny)) return false;
+                                return true;
+                            }
+                            return canEnemyMove(nx, ny, e);
+                        };
 
                     let moved = false;
                     if (Math.abs(dx) > Math.abs(dy)) {
@@ -18385,6 +19102,7 @@ async function enemyTurn() {
                         else if (tryMoveAlly(e.x + sx, e.y)) { e.x += sx; moved = true; }
                     }
                     if (moved) {
+                        // 味方タレットとは重なっても素通り（入れ替えしない、タレットはその場に残る）
                         if (e.type === 'SNAKE') {
                             SOUNDS.SNAKE_MOVE();
                             for (let i = e.body.length - 1; i > 0; i--) e.body[i] = { ...e.body[i - 1] };
@@ -18438,19 +19156,37 @@ async function enemyTurn() {
                     let sx = dx === 0 ? 0 : dx / Math.abs(dx), sy = dy === 0 ? 0 : dy / Math.abs(dy);
                     let moved = false;
 
-                    // 味方BREAKERは壁を壊して進む
+                    // 味方タレット検知（位置入れ替えの対象）
+                    const findAllyTurretAt2 = (nx, ny) => enemies.find(oe =>
+                        oe !== e && !oe._dead && oe.hp > 0 &&
+                        oe.x === nx && oe.y === ny && oe.isAlly &&
+                        (oe.type === 'TURRET' || oe.type === 'HOPPER_TURRET'));
+                    // 味方BREAKERは壁を壊して進む（穴は避ける、味方タレットとは入れ替わる）
                     const allyBreakerFollow = (nx, ny) => {
                         if (nx <= 0 || nx >= COLS - 1 || ny <= 0 || ny >= ROWS - 1) return false;
                         if (nx === player.x && ny === player.y) return false;
-                        if (enemies.some(oe => oe !== e && oe.x === nx && oe.y === ny)) return false;
+                        if (isRealHole(nx, ny)) return false;
+                        const blocker = enemies.find(oe => oe !== e && oe.x === nx && oe.y === ny);
+                        if (blocker && !findAllyTurretAt2(nx, ny)) return false;
                         if (map[ny][nx] === SYMBOLS.WALL) {
                             map[ny][nx] = SYMBOLS.FLOOR;
                             SOUNDS.WALL_BREAK(); setScreenShake(8, 200);
                             return true;
                         }
-                        return canEnemyMove(nx, ny, e);
+                        return findAllyTurretAt2(nx, ny) ? true : canEnemyMove(nx, ny, e);
                     };
-                    const tryFollowMove = e.type === 'BREAKER' ? allyBreakerFollow : (nx, ny) => canEnemyMove(nx, ny, e);
+                    // 通常味方: 穴回避 + 味方タレットは通り抜け可（位置入れ替え）
+                    const tryFollowMove = e.type === 'BREAKER' ? allyBreakerFollow
+                        : (nx, ny) => {
+                            if (isRealHole(nx, ny)) return false;
+                            if (findAllyTurretAt2(nx, ny)) {
+                                if (player.x === nx && player.y === ny) return false;
+                                if (tempWalls.some(w => w.x === nx && w.y === ny)) return false;
+                                if (bombs.some(b => b.x === nx && b.y === ny)) return false;
+                                return true;
+                            }
+                            return canEnemyMove(nx, ny, e);
+                        };
 
                     // 優先2方向を試す
                     if (Math.abs(dx) > Math.abs(dy)) {
@@ -18468,6 +19204,7 @@ async function enemyTurn() {
                         }
                     }
                     if (moved) {
+                        // 味方タレットとは重なっても素通り（入れ替えしない、タレットはその場に残る）
                         if (e.type === 'SNAKE') {
                             SOUNDS.SNAKE_MOVE();
                             for (let i = e.body.length - 1; i > 0; i--) e.body[i] = { ...e.body[i - 1] };
@@ -18575,9 +19312,27 @@ async function enemyTurn() {
         }
 
         // 通常の敵：プレイヤー（姿が見えれば）または近くの味方を狙う
+        // NECRO_RINGで蘇生した直後の味方(_reviveStationary>0)は無敵&ターゲット不可なので除外
         const targets = [];
         if (!player.isStealth) targets.push({ x: player.x, y: player.y, isPlayer: true });
-        enemies.filter(ally => ally.isAlly).forEach(ally => targets.push({ x: ally.x, y: ally.y, isAlly: true, obj: ally }));
+        enemies.filter(ally => ally.isAlly && !(ally._reviveStationary > 0))
+            .forEach(ally => targets.push({ x: ally.x, y: ally.y, isAlly: true, obj: ally }));
+
+        // SPIDER は無派閥の嫌われ者: 全員から襲われる（距離無制限、画面全域から集まる）
+        // 除外: SPIDER自身、isAlly味方、BREAKER(壁掘りに夢中)、ORC(G)(蜘蛛が苦手)
+        if (e.type !== 'SPIDER' && e.type !== 'BREAKER' && e.type !== 'ORC' && !e.isAlly) {
+            const nearestSpider = enemies
+                .filter(s => s.type === 'SPIDER' && s.hp > 0 && !s._dead)
+                .map(s => ({ s, d: Math.abs(s.x - e.x) + Math.abs(s.y - e.y) }))
+                .sort((a, b) => a.d - b.d)[0];
+            if (nearestSpider) {
+                // 既存ターゲットを上書きして蜘蛛を最優先に
+                targets.unshift({ x: nearestSpider.s.x, y: nearestSpider.s.y, isSpider: true, obj: nearestSpider.s });
+            }
+        }
+        // ORC(G)は蜘蛛が苦手: 蜘蛛の1マス以内（chebyshev≤1）には近づかない
+        // → 移動制御は canEnemyMove で行う（隣接マスへの移動が拒否される）。
+        //   この結果、ORCは通常AIで動こうとするが、蜘蛛隣接マスは選択肢から除外される。
 
         // ターゲットがいない（ステルス中かつ味方がいない）場合は待機
         // BREAKERはターゲット不在でも自律的に動き続ける
@@ -18615,7 +19370,9 @@ async function enemyTurn() {
 
         // オークは距離に関係なく探知する。隠密の指輪装備時は探知範囲を縮小
         const baseDetect = (e.type === 'ORC' || e.type === 'MADMAN') ? 999 : 8;
-        const detectRange = (e.type !== 'ORC' && hasRing('STEALTH_RING')) ? 5 : baseDetect;
+        const detectRange = (e.type !== 'ORC' && hasRingDoubled('STEALTH_RING')) ? 3
+            : (e.type !== 'ORC' && hasRing('STEALTH_RING')) ? 5
+            : baseDetect;
 
         if (e.type === 'BREAKER') {
             // BREAKERの移動AI: 直進優先で遠くまで掘り進む
@@ -19067,8 +19824,24 @@ async function enemyTurn() {
                     }
                 }
                 if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); return; }
+            } else if (bestTarget.isSpider) {
+                // 蜘蛛への攻撃（仲間意識から本気で殴る、高めのダメージ）
+                const sdmg = (e.type === 'ORC' ? 15 : (e.type === 'BREAKER' ? 12 : (e.type === 'LAYER' ? 6 : 5))) + Math.floor(floorLevel / 2);
+                bestTarget.obj.hp -= sdmg;
+                bestTarget.obj.flashUntil = performance.now() + 150;
+                spawnDamageText(bestTarget.x, bestTarget.y, sdmg, '#ededed');
+                SOUNDS.HIT();
+                if (bestTarget.obj.hp <= 0) {
+                    addLog(`🕸 The SPIDER falls to the swarm!`);
+                    handleEnemyDeath(bestTarget.obj);
+                }
             } else {
                 // 味方への攻撃（ダメージは控えめにして仲間が即死しにくくする）
+                // 蘇生直後の無敵状態ならダメージ無効
+                if (bestTarget.obj._reviveStationary > 0) {
+                    spawnFloatingText(bestTarget.x, bestTarget.y, "INVINCIBLE", '#ededed', 500);
+                    continue;
+                }
                 const dmg = Math.max(1, 2 + Math.floor(floorLevel / 3));
                 bestTarget.obj.hp -= dmg;
                 bestTarget.obj.flashUntil = performance.now() + 100;
@@ -19556,6 +20329,11 @@ async function launchBombProjectile(fromX, fromY, dx, dy) {
 
 // ===== SECTION: PROJECTILE SYSTEM =====
 function launchFlameProjectile(fromX, fromY, dx, dy, fromIceStar = false) {
+    // STAR_RING 二重装備: 炎の代わりにタレット風レーザーを発射（貫通・大ダメージ）
+    if (hasRingDoubled('STAR_RING') && !fromIceStar) {
+        fireStarLaser(fromX, fromY, dx, dy);
+        return;
+    }
     const startX = fromX + dx;
     const startY = fromY + dy;
     if (startX < 0 || startX >= COLS || startY < 0 || startY >= ROWS) return;
@@ -19586,8 +20364,90 @@ function launchFlameProjectile(fromX, fromY, dx, dy, fromIceStar = false) {
         if (player.hp <= 0) { player.hp = 0; updateUI(); triggerGameOver(); }
         return;
     }
-    // 開始位置の敵はアニメーション付きで当たるよう即殺しない → 通常プロジェクタイルとして追加
     flameProjectiles.push({ x: startX, y: startY, dx, dy, life: 40, fromIceStar });
+}
+
+// STAR_RING 二重装備: タレット風の黄色レーザービームを発射（貫通、大ダメージ、約0.8秒表示）
+// 星ブロック(FIRE_BLOCK)に命中すると、そのブロックからも後方を除く3方向へレーザーを連鎖発射
+// （星ブロックの炎チェーン仕様を参考）
+function fireStarLaser(fromX, fromY, dx, dy) {
+    SOUNDS.DART_FIRE();
+    const queue = [{ x: fromX, y: fromY, dx, dy }];
+    const hitEnemies = new Set();
+    const chainedBlocks = new Set();
+    const maxRange = 30;
+    const allDirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+
+    while (queue.length > 0) {
+        const shot = queue.shift();
+        const sdx = shot.dx, sdy = shot.dy;
+        let lx = shot.x + sdx, ly = shot.y + sdy;
+        let lastValidX = lx, lastValidY = ly;
+
+        for (let step = 0; step < maxRange; step++) {
+            if (lx < 0 || lx >= COLS || ly < 0 || ly >= ROWS) break;
+
+            // 星ブロック命中チェックを壁判定より先に実行（isWallAtはFIRE_BLOCKも壁扱いするため）
+            // レーザーは星ブロックのマスまで届いて停止、そこから後方を除く3方向にチェーン発射
+            const chainBlock = tempWalls.find(w => w.type === 'FIRE_BLOCK' && w.x === lx && w.y === ly);
+            if (chainBlock) {
+                lastValidX = lx; lastValidY = ly;
+                if (!chainedBlocks.has(chainBlock)) {
+                    chainedBlocks.add(chainBlock);
+                    for (const d of allDirs) {
+                        if (!(d.dx === -sdx && d.dy === -sdy)) {
+                            queue.push({ x: lx, y: ly, dx: d.dx, dy: d.dy });
+                        }
+                    }
+                }
+                break;
+            }
+
+            if (isWallAt(lx, ly)) break;
+            lastValidX = lx; lastValidY = ly;
+
+            // 敵に貫通ヒット（プレイヤーは素通り）
+            const en = enemies.find(o => o.hp > 0 && !o._dead && !o.isAlly &&
+                ((o.x === lx && o.y === ly) ||
+                 ((o.type === 'DRAGON' || o.type === 'SNAKE') && o.body && o.body.some(s => s.x === lx && s.y === ly))));
+            if (en) hitEnemies.add(en);
+            lx += sdx; ly += sdy;
+        }
+
+        // レーザービーム描画（attackLines、~800ms で消える）
+        const startX = shot.x * TILE_SIZE + TILE_SIZE / 2 + (sdx * TILE_SIZE / 2);
+        const startY = shot.y * TILE_SIZE + TILE_SIZE / 2 + (sdy * TILE_SIZE / 2);
+        const endX = lastValidX * TILE_SIZE + TILE_SIZE / 2 + (sdx * TILE_SIZE / 2);
+        const endY = lastValidY * TILE_SIZE + TILE_SIZE / 2 + (sdy * TILE_SIZE / 2);
+        attackLines.push({
+            x1: startX, y1: startY, x2: endX, y2: endY,
+            until: performance.now() + 800,
+            color: '#fde047', glow: 'rgba(253, 224, 71, 0.45)', width: 5, isStarLaser: true
+        });
+    }
+
+    // 全命中敵にダメージ
+    const hitList = [...hitEnemies];
+    for (const e of hitList) {
+        let dmg = Math.min(e.hp, getPlayerAttack() * 4 + 15);
+        if (e.type === 'DRAGON') dmg = dragonFireResist(dmg);
+        e.hp -= dmg;
+        e.flashUntil = performance.now() + 200;
+        spawnDamageText(e.x, e.y, dmg, '#fde047');
+    }
+    if (hitList.length > 0) {
+        const chainCount = chainedBlocks.size;
+        addLog(chainCount > 0
+            ? `★ Star Laser chained ${chainCount} block(s) + pierced ${hitList.length} enemy(ies)!`
+            : `★ Star Laser pierces ${hitList.length} enemy(ies)!`);
+        for (const e of hitList) {
+            if (e.hp <= 0) handleEnemyDeath(e);
+        }
+    } else if (chainedBlocks.size > 0) {
+        addLog(`★ Star Laser chained ${chainedBlocks.size} block(s)!`);
+    } else {
+        addLog("★ Star Laser fires!");
+    }
 }
 
 // 炎の飛翔体を1マス前進させ、衝突判定を行う
@@ -19724,6 +20584,14 @@ function canEnemyMove(x, y, mover = null) {
     // レーザーの経路は避ける (移動する本人のレーザーは無視。CRAZY_Gは狂ってるので気にしない)
     if (isTileInLaser(x, y, mover) && !(mover && mover.type === 'CRAZY_G')) return false;
 
+    // ORC(G)は蜘蛛の1マス以内（chebyshev≤1）には移動しない
+    if (mover && mover.type === 'ORC' && !mover.isAlly) {
+        if (enemies.some(s => s.type === 'SPIDER' && s.hp > 0 && !s._dead &&
+            Math.abs(s.x - x) <= 1 && Math.abs(s.y - y) <= 1)) {
+            return false;
+        }
+    }
+
     return !enemies.some(e => {
         if (e === mover) return false; // 自分自身は無視
         if (e.x === x && e.y === y) return true;
@@ -19734,6 +20602,9 @@ function canEnemyMove(x, y, mover = null) {
 
 window.debugWin = triggerEnding; // コンソールからデバッグ可能に
 window.debugWin2 = triggerEnding2; // 第二エンディングデバッグ用
+// 最下層（DEEP_ENDING_FLOOR = MAX_SAFE_INTEGER）に直接テストプレイジャンプ
+// コンソールで `debugBottomFloor()` と入力すると、その階から開始（テストモード、全指輪×2）
+window.debugBottomFloor = () => startGame(DEEP_ENDING_FLOOR, true);
 
 // URLパラメーターによるデバッグ起動
 (function() {
@@ -19842,7 +20713,8 @@ async function startGame(startFloor = 1, isTestMode = false) {
     if (isTestMode) {
         player.breakerTomes = 3;
         player.gold = 9999;
-        player.ownedRings = RINGS.map(r => r.id);
+        // テストモードでは各指輪を2個ずつ所持（二重装備テスト用）
+        player.ownedRings = [...RINGS.map(r => r.id), ...RINGS.map(r => r.id)];
         player.fairyCount = 3;
     }
 
@@ -19875,7 +20747,7 @@ async function startGame(startFloor = 1, isTestMode = false) {
         addLog("Goal: Reach B100F and destroy the Core.");
         await triggerStage1StartStory();
     } else {
-        addLog(`🔧 TEST MODE: Started from Floor ${startFloor} (Lv ${player.level}) 🔧`);
+        addLog(`🔧 TEST MODE: Started from Floor ${formatFloor(startFloor)} (Lv ${player.level}) 🔧`);
         player.hasteTomes = 5;
         player.charmTomes = 5;
         player.stealthTomes = 5;
@@ -19952,11 +20824,35 @@ async function startDeepRun() {
     const deepStorySeen = localStorage.getItem('deep_story_seen') === '1';
     if (!deepStorySeen) {
         await showStoryPages([
-            ["You survived the dungeon.", "", "あなたはダンジョンを生き延びた。"],
-            ["But something calls from below.", "", "しかし、何かが下から呼んでいる。"],
-            ["Deeper.", "", "もっと深く。"],
-            ["Much deeper.", "", "はるか深くへ。"],
-        ], false, false, 3000);
+            [
+                "You became a hunted man,",
+                "guilty of killing your former comrades.",
+                "",
+                "あなたは　追われる身となった",
+                "かつての仲間を　殺した罪で"
+            ],
+            [
+                "Fleeing from your pursuers,",
+                "you reached the ruins of the collapsed dungeon.",
+                "",
+                "追っ手から　逃れるうちに",
+                "崩壊したダンジョンの　跡地へ来ていた"
+            ],
+            [
+                "A deep, dark hole gaped before you.",
+                "To flee from your sins, you leapt in.",
+                "",
+                "深く暗い穴がある",
+                "あなたは　罪から逃れるために　飛びこんだ"
+            ],
+            [
+                "Falling, endlessly,",
+                "into the depths of the abyss.",
+                "",
+                "落ちていく　どこまでも",
+                "深淵の奥へ"
+            ],
+        ], false, false, 4500);
         localStorage.setItem('deep_story_seen', '1');
     }
 
@@ -20324,14 +21220,15 @@ window.addEventListener('keydown', async e => {
                     player.equippedRings[ringSlotSelection] = null;
                     if (prev) addLog(`Slot ${ringSlotSelection + 1} の指輪を外した。`);
                 } else {
-                    const otherSlot = 1 - ringSlotSelection;
-                    if (player.equippedRings[otherSlot] === chosen.id) {
-                        // 反対スロットの指輪を選んだ場合はスワップ
-                        player.equippedRings[otherSlot] = player.equippedRings[ringSlotSelection];
-                    }
+                    // 同じ指輪を両スロットに装備可能（二重装備で強化効果）
                     player.equippedRings[ringSlotSelection] = chosen.id;
                     SOUNDS.GET_ITEM();
-                    addLog(`Slot ${ringSlotSelection + 1} に ${chosen.nameJa} を装備した！`);
+                    const otherSlot = 1 - ringSlotSelection;
+                    if (player.equippedRings[otherSlot] === chosen.id) {
+                        addLog(`Slot ${ringSlotSelection + 1} にも ${chosen.nameJa} を装備！★二重装備の効果発動★`);
+                    } else {
+                        addLog(`Slot ${ringSlotSelection + 1} に ${chosen.nameJa} を装備した！`);
+                    }
                 }
                 // 装備変更後すぐに表示を更新
                 hpElement.innerText = `${player.hp}/${getPlayerMaxHp()}`;
